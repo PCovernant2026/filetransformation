@@ -1,0 +1,241 @@
+First Name,Last Name,Job Title,Email,Mobile Phone,Business Phone,Parent Account,Company Name (raw),Owner,Include Flag
+Kelly,Medley,Purchasing Manager (CSCS),kelly.medley@cscscoop.com,816-768-6762,,,Applebee's/IHOP,Greg Thiel,Include
+Melanie,Byler,Chief Purchasing Officer (CSCS),melanie.byler@cscscoop.com,816-768-8074,,,Applebee's/IHOP,Greg Thiel,Include
+Kejo,Liu,QA Manager (DineBrands),kejo.liu@dinebrands.com,626-689-1838,818-637-3063,,Applebee's/IHOP,Greg Thiel,Include
+Elisabetta,Brinis,Director of QA (DineBrands),elisabetta.brinis@dinebrands.com,310-807-6474,818-637-3031,,Applebee's/IHOP,Greg Thiel,Include
+Kelly,Medley,Purchasing Manager (CSCS),kelly.medley@cscscoop.com,816-768-6762,,,Applebee's/IHOP,Greg Thiel,Include
+Melanie,Byler,Chief Purchasing Officer (CSCS),melanie.byler@cscscoop.com,816-768-8074,,,Applebee's/IHOP,Greg Thiel,Include
+Alan,Santa,Director of Purchasing (CSCS),alan.santa@cscscoop.com,816-768-6702,,,Applebee's/IHOP,Greg Thiel,Include
+Kejo,Liu,QA Manager (DineBrands),kejo.liu@dinebrands.com,626-689-1838,818-637-3063,,Applebee's/IHOP,Greg Thiel,
+Elisabetta,Brinis,Director of QA (DineBrands),elisabetta.brinis@dinebrands.com,310-807-6474,818-637-3031,,Applebee's/IHOP,Greg Thiel,
+Johnny,Mosquera,Applebee's R&D Innovation Director,johnny.moquera@applebees.com,661-917-8237,913-890-0400,,Applebee's/IHOP,Greg Thiel,
+Scott,Rodriguez,Applebee's Chief Culinary Officer,scott.rodriguez@applebees.com,,,,Applebee's/IHOP,Greg Thiel,
+Scott,Randolph,IHOP Director of R&D,scott.randolph@dinebrands.com,972-662-4823,,,Applebee's/IHOP,Greg Thiel,
+Bryan,Eoff,Director Purchasing,bryan.eoff@brinker.com,214-505-9997,972-770-3278,,Brinker International,Greg Thiel,Include
+Scott,Hale,QA - Sauces,scott.hale@brinker.com,9727704192,972-770-4192,,Brinker International,Greg Thiel,
+Jessica,Veurink,Purchasing,jessica.veurink@brinker.com,817-800-1521,972-770-9893,,Brinker International,Greg Thiel,
+Brooke,Dickerson,Purchasing Manager,brooke.dickerson@caseys.com,515-343-7181,,Casey's,Casey's,Greg Thiel,Include
+Jessi,Webb,Director Purchasing,jessi.webb@caseys.com,515-336-4422,,Casey's,Casey's,Greg Thiel,Include
+Corbin,Clark,Pizza Category Manager,Corbin.Clark@caseys.com,515-381-5859,,Casey's,Casey's,Greg Thiel,Include
+Andrew,Kintigh,Director of R&D,andrew.kintigh@caseys.com,515-965-6521,,Casey's,Casey's,Greg Thiel,Include
+Brad,Haga,VP of Prepared Foods & Bev,brad.haga@caseys.com,,,Casey's,Casey's,Greg Thiel,Exclude
+Eric,Long,Directory of Prepared Foods & Bev,Eric.Long@caseys.com,515-381-5667,,Casey's,Casey's,Greg Thiel,Exclude
+Jill,Sump,R&D and QA Specialist,jill.sump@caseys.com,515-419-9286,,Casey's,Casey's,Greg Thiel,Exclude
+Tony,Barron,VP Purchasing,abarron@cecentertainment.com,972-258-8507,,,Chuck E Cheese,Greg Thiel,Include
+Montana,Womble,Purchasing Manager,womble@cecentertainment.com,9725157574,9722585491,,Chuck E Cheese,Greg Thiel,Include
+Teresa,Broaddus,Supply Chain Mgr.,teresa.broaddus@fazolis.com,859 285 9256,859 825 6280,,Fazolis,Greg Thiel,Include
+Harold,Ikard,VP Purchasing,harold.ikard@fazolis.com,859-552-8065,859 825 6272,,Fazolis,Greg Thiel,Include
+Randy,Evans,Chef/Purchasing,evans.randy@heb.com,713-263-4556,,HEB,HEB,Greg Thiel,
+Sarah,Bloxham,R&D/Purchasing,bloham.sarah@heb.com,210-365-4012,,HEB,HEB,Greg Thiel,
+Tish,DeHoyos,R&D/Purchasing,dehoyos-rawe.tish@heb.com,,,HEB,HEB,Greg Thiel,
+Don,Potvin,Purchasing,dpotvin@incrediblepizza.com,(918) 232-0182,(417) 890-1408 x201,Incredible Pizza,Incredible Pizza,Greg Thiel,Include
+Ashley,McGuire,Purchasing - Main,ashley@incrediblepizza.com,,417-300-3900,Incredible Pizza,Incredible Pizza,Greg Thiel,
+Brad,Edwards,R&D,bedwards@incrediblepizza.com,,,Incredible Pizza,Incredible Pizza,Greg Thiel,
+Greg Thiel,Coughenour,Purchasing,Greg Thiel.coughenour@jasonsdeli.com,,972-602-4305x13090,Jason's Deli,Jason's Deli,Greg Thiel,
+Clare,Wilson,R&D,clare.wilson@jasonsdeli.com,513-520-4852,,Jason's Deli,Jason's Deli,Greg Thiel,
+Mia,White,Sr. Supply Chain,mia.white@jasonsdeli.com,,,Jason's Deli,Jason's Deli,Greg Thiel,
+Toby,Paxton,Purchasing/QA/Culinary,tpaxton@johnnysph.com,318-237-5536,,Johnny's Pizza,Johnny's Pizza,Greg Thiel,Include
+Connie,Banning,R&D/QA,cbanning@larosas.com,,513-603-0624,,LaRosas,Amy,Include
+Brooke,Vollrath,Supply Chain,bstock@larosas.com,513-347-2797,,,LaRosas,Amy,Include
+Kyle,Lore,R&D,kyle.lore@maverik.com,801-693-3976,,Maverik,Maverik,Greg Thiel,
+Jessica,Pierce,Director Purchasing/Marketing,jessica.pierce@maverik.com,801-425-0249,,Maverik,Maverik,Greg Thiel,
+Tanner,Jacobson,Purchasing Manager,tanner.jacobson@maverik.com,,,Maverik,Maverik,Greg Thiel,
+Haley,Ward,Purchasing Manager,hward@mazzios.com,918-641-1258,,Mazzio's,Mazzio's,Greg Thiel,Include
+Stuart,Myers,Director Purchasing/Marketing,smyers@mazzio's.com,918-641-1257,,Mazzio's,Mazzio's,Greg Thiel,Include
+Jeff,Dunnigan,R&D,jdunnigan@mazzios.com,(918) 760-0781,(918) 663-8880,Mazzio's,Mazzio's,Greg Thiel,Include
+Scott,Sewell,Purchasing,scott@mrjims.pizza,(972) 679-0435,(972) 267-5467,Mr. Jim's,Mr. Jim's,Greg Thiel,Include
+David,Sparrow,Purchasing,dsparrow@qchek.com,908-230-6537,908-534-7273,QuickChek,QuickChek,Greg Thiel,
+Farrokh,Larijani,R&D,farrokh.larijani@qchek.com,206-388-7276,,QuickChek,QuickChek,Greg Thiel,
+Todd,Caves,Purchasing,tcaves@quiktrip.com,918-232-5493,918-615-7217,Quik Trip,Quik Trip,Greg Thiel,Include
+Mike,Truesdell,R&D,mtruesde@quiktrip.com,918-408-0658,,Quik Trip,Quik Trip,Greg Thiel,Include
+Nick,Powell,Chef,npowell@quicktrip.com,918-625-7963,918-615-7221,Quik Trip,Quik Trip,Greg Thiel,Include
+Stephanie,Hurt,VP R&D,shurt@quiktrip.com,918-8961237,918-615-7098,Quik Trip,Quik Trip,Greg Thiel,Include
+Brittany,Mancini,Purchasing,bmancini@readyfoods.biz,(661) 313-0078,,Ready Foods,Ready Foods,Greg Thiel,Include
+Sarah,Stribling,Sr. Purchasing - Cafe & Prepared Foods,sarah.stribling@walmart.com,479-670-3604,,Sam's Club,Sam's Club,Greg Thiel,
+Laura,Warren,Cafe Director of Purchasing,laura.warren@samsclub.com,,,Sam's Club,Sam's Club,Greg Thiel,
+Glenn,Lewis,R&D - Cafe & HMS,glenn.lewis@walmart.com,479-510-3877,,Sam's Club,Sam's Club,Greg Thiel,
+Jain,Johnson,HMS - R&D,jain.johnson@samsclub.com,479-340-6666,,Sam's Club,Sam's Club,Greg Thiel,
+Marifer,Franco,HMS - Purchasing,m.franco@walmart.com,,,Sam's Club,Sam's Club,Greg Thiel,
+BJ,Dumond,President/Purchasing,bjdumond@sspizzacorp.com,918-605-0803,918-496-1272,Simple Simon's,Simple Simon's,Greg Thiel,Include
+Matt,Dumond,Franchise/Purchasing,mdumond@sspizzacorp.com,918-812-6932,918-248-2407,Simple Simon's,Simple Simon's,Greg Thiel,Include
+Howard,Cox,Franchise/Purchasing,hcox@sspizzacorp.com,918-520-6168,,Simple Simon's,Simple Simon's,Greg Thiel,Include
+Dustin,Jones,Franchise/Purchasing,djones@sspizzacorp.com,918-230-96593,,Simple Simon's,Simple Simon's,Greg Thiel,Include
+Chris,Gleason,Assistan Buyer Fresh Foods,cjgleason@costco.com,,425-313-2776,Costco,COSTCO,Kevin,
+Chris,Hildebrant,Dir of Risk Management,childebrand@jmc-rd.com,708-606-3751,-,,JMC/CiCi's,Kevin,
+Jolie,Rogers,Dir. of Purchasing,jrogers@jmc-rd.com,817-480-5384,972-544-9770,,JMC/CiCi's,Kevin,
+Sharon,Reding,Purchasing,sreding@jmc-rd.com,,-,,JMC/CiCi's,Kevin,
+Claire,Brandenburg,"Assoc Manager, Pipeline Innovation",claire.brandenburg@yum.com,502-599-3676,502-874-8083,KFC,KFC,Kevin,
+Alvaro,Novoa,Sr. Category Manager,alvaro.novoa@daveandbusters.com,904-338-3641,469-661-2625,,Main Event,Kevin,
+Adi,Radoncic,Supply Chain Manager,adi.radoncic@daveandbusters.com,214-929-4221,214-357-9588,,Main Event,Kevin,
+Brad,McDaniel,Category Manager F&B,brad.mcdaniel@daveandbusters.com,-,214-904-2547,Main Event/D&B,Main Event/D&B,Kevin,
+Barbie,King,Food Innovation,barbie.king@daveandbusters.com,214-697-1684,-,Main Event/D&B,Main Event/D&B,Kevin,
+Griffin,Ramsdell,Sourcing Manager,griffin.ramsdell@modpizza.com,,,,MOD Pizza,Kevin,
+Ronda,Schaefer,VP Procurement,ronda_schaefer@papajohns.com,502-500-1292,-,Papa Johns,Papa Johns,Kevin,
+Sean,Stapleton,Quality Assurance,sean_stapleton@papajohns.com,812-786-0818,502-261-4975,Papa Johns,Papa Johns,Kevin,
+Rita,Palmer,Quality Assurance,rita_palmer@papajohns.com,502-439-8371,502-261-4237,Papa Johns,Papa Johns,Kevin,
+Kurt,Milburn,CPO,kurt_milburn@papajohns.com,614-270-3252,-,Papa Johns,Papa Johns,Kevin,
+Jeremy,Smith,Purchasing Manager,jeremy_smith@papajohns.com,502-930-5079,502-261-4215,Papa Johns,Papa Johns,Kevin,
+Sarah,Doyle,Sr. Manager Commercialization,sarah_doyle@papajohns.com,574-274-9148,-,Papa Johns,Papa Johns,Kevin,
+Rachel,Antalek,CFIO,rachel.antalek@yum.com,-,972-338-7700,Pizza Hut,Pizza Hut,Kevin,
+Lauren,Bazih,Manager Nutrition & Food Innovation,lauren.bazih@yum.com,214-529-8006,972-338-7572,Pizza Hut,Pizza Hut,Kevin,
+Breanne,Smith,Director of Food Innovation,breanne.smith@yum.com,,972-338-7700,Pizza Hut,Pizza Hut,Kevin,
+Chris,Pull,Manager Food Innovatin & Technology,chris.pull@yum.com,469-363-5794,972-338-7537,Pizza Hut,Pizza Hut,Kevin,
+Maria,Beierschmitt,Sr. Manager Core Product Development,maria.beierschmitt@yum.com,972-757-0153,972-338-7308,Pizza Hut,Pizza Hut,Kevin,
+Lauren,Dean,"Sr. Scientist, Product Development FIT",lauren.dean@yum.com,214-284-7093,972-338-8172,Pizza Hut,Pizza Hut,Kevin,
+David,Abney,Director of Food Safety & Quality,david.abney@yum.com,405-210-1278,972-338-7700,Pizza Hut,Pizza Hut,Kevin,
+Lori,Cade,"QA Scientist, Food Innovatin Technology",lori.cade@yum.com,281-468-5177,972-338-8666,Pizza Hut,Pizza Hut,Kevin,
+Vicky,Hogue,"Product Manager, Food Safety & Quality",vicky.hogue@yum.com,972-948-6385,972-338-8732,Pizza Hut,Pizza Hut,Kevin,
+Tina,Rhodes,QA Manager,tina.rhodes@yum.com,469-502-8339,972-338-7700,Pizza Hut,Pizza Hut,Kevin,
+Jenny,Nguyen,Food Qualtiy Systems,jenny.nguyen@yum.com,972-333-4904,972-338-7543,Pizza Hut,Pizza Hut,Kevin,
+Travis,Bitton,Restaurant Readiness - Pizza Hut,travis.bitton@yum.com,972-689-2634,972-338-6985,Pizza Hut,Pizza Hut,Kevin,
+Todd,Imhoff,President CEO,todd.imhoff@rscs.com,,,,RSCS,Kevin,
+Todd,Silberg,Chief Operating Officer,todd.silberg@rscs.com,,502-891-2795,,RSCS,Kevin,
+Roger,Larsh,Chief Procurement Officer,roger.larsh@rscs.com,937-570-6770,502-893-4152,,RSCS,Kevin,
+Brad,Freeman,Sr. VP Program Managment -TB,brad.freeman@rscs.com,,,,RSCS,Kevin,
+Joelle,Johnson,Sr. Director Concept Development,joelle.johnson@rscs.com,214-505-7790,502-892-4126,,RSCS,Kevin,
+Eduardo,Villegas,"Sr. Director, International Sourcing",eduardo.villegas@rscs.com,940-595-4315,502-893-4121,,RSCS,Kevin,
+Julian,Perez,International Procurement Manager,julian.perez@rscs.com,832-564-7788,502-891-4782,,RSCS,Kevin,
+Sina,Ghalambor,"Sr. Manager, Supply Chain",sina.ghalambor@rscs.com,714-292-5689,-,,RSCS,Kevin,
+Amy,Blanchard,Procurement Category Sr. Manager,amy.blanchard@rscs.com,502-435-9054,-,,RSCS,Kevin,
+Brigitte,Bechara,Program Manager,brigitte.bechara@rscs.com,786-817-3399,-,,RSCS,Kevin,
+Jill,Quinn,Sr. Director Supply Chain,jill.quinn@rscs.com,412-266-2113,972-338-7700,,RSCS,Kevin,
+Akira,Shimbo,Sr. Manager Supply Chain - TB,akira.shimbo@rscs.com,760-500-2131,502-891-2727,,RSCS,Kevin,
+Kurt,Alger,Director of Supply Planning,kurt.alger@rscs.com,502-376-2901,502-891-4788,,RSCS,Kevin,
+Travis,Shepherd,Senior Logistics Manager,travis.shepherd@rscs,972-567-9940,502-896-5924,,RSCS,Kevin,
+Chelsey,Garza,Sr. Manager Food Procurement,chelsey.garza@rscs.com,502-777-0662,502-891-2796,,RSCS,Kevin,
+Liz,Matthews,Chief Food Innovation Officer,elizabeth.matthews@yum.com,,949-893-4351,Taco Bell,Taco Bell,Kevin,
+Heather,Mottershaw,VP Food Innovation - TB,heahter.mottershaw@yum.com,760-828-2217,-,Taco Bell,Taco Bell,Kevin,
+Rene,Piscoitti,Sr. Manager Food Innovation,rene.piscoitti@yum.com,949-375-1227,949-863-4621,Taco Bell,Taco Bell,Kevin,
+Kristine,Paquet,Food Innovatoin Team,kristine.paquet@yum.com,-,949-863-3644,Taco Bell,Taco Bell,Kevin,
+Nancy,Kanis,Manager Commercialization - TB,nancy.kanis@yum.com,614-359-3757,949-863-2112,Taco Bell,Taco Bell,Kevin,
+Missy,Schaaphok,Dietary & Nutritionist - TB,missy.schaaphok@yum.com,408-893-5137,949-863-4565,Taco Bell,Taco Bell,Kevin,
+Mark,Seyfert,Qualtiy & Food Safety Manager,mark.seyfert@yum.com,316-640-9160,-,Taco Bell,Taco Bell,Kevin,
+Maureen,Dilao,Sr. Manager Food Safety & Quality,maureen.dilao@yum.com,949-795-4956,-,Taco Bell,Taco Bell,Kevin,
+Erin,Peffly,Sr. Manager Food Innovation,erin.peffly@yum.com,626-327-9528,-,Taco Bell,Taco Bell,Kevin,
+Hector,Kim,Quality & Food Safety Manager,hector.kim@yum.com,-,949-863-3685,Taco Bell,Taco Bell,Kevin,
+Nola,Krieg,Food Innovation,nola.krieg@yum.com,-,949-863-3811,Taco Bell,Taco Bell,Kevin,
+Daniel,Vlodaver,R&D Project Manager FIT,daniel.vlodaver@yum.com,952-388-3899,-,Taco Bell,Taco Bell,Kevin,
+Nancy,Yi,Food Innovation,nancy.yi@yum.com,714-350-7709,949-863-3687,Taco Bell,Taco Bell,Kevin,
+Marissa,Thiry,Food Innovation,marissa.thiry@yum.com,-,949-863-2121,Taco Bell,Taco Bell,Kevin,
+Sara,Dawson,Procurement Coordinator/TRH,sara.dawson@texasroadhouse.com,502-814-1699,502-814-1699,,Texas Roadhouse,Kevin,
+Quintessa Todd,Stark,Procuremnt,tessat@texasroadhouse.com,502-515-7256,502-515-7256,,Texas Roadhouse,Kevin,
+Krish,Goyal,Category & Data Manager,krishabh.goyal@upgc.com,647-999-4370,"416-674-3001, x 6023",,UPGC - YUM Canada,Kevin,
+Zhaleh,Golwalla,Dir Procurement & Brand Liaison,zhaleh.gotwalla@upgc.com,647-463-4034,"416-674-3001, 6006",,UPGC - YUM Canada,Kevin,
+Kaila,Vishal,Sr. Commodities Category Manager - TB,vishal.kalia@upgc.com,905-264-6598,"416-674-3001, x 6011",,UPGC - YUM Canada,Kevin,
+Singh,Parampreet,Director Category & Data,parampreet.singh@upgc.com,-,-,,UPGC - YUM Canada,Kevin,
+Polly,Law,Technical Supplier Development Manager,polly.law@upgc.com,-,"416-674-3001, x 6026",,UPGC - YUM Canada,Kevin,
+David,Vendramin,Chief Supply Chain Officer,david.vendramin@upgc.com,416-739-2952,416-674-3001,,UPGC - YUM Canada,Kevin,
+Kory,Gibbs,Purchasing,kgibbs@darden.com,407-361-8411,,Darden,Darden,Mike,Include
+Chris,Ford,Dir of Purch,cford@darden.com,4579-7350,407-245-4317,Darden,Darden,Mike,Include
+Jessi,Hoskins,QA Manager,jhoskins@darden.com,,407-245-6108,Darden,Darden,Mike,Exclude
+Emilia,Springett,Senior Dir of Purch,espringett@darden.com,,407-245-4718,Darden,Darden,Mike,Include
+Terrance,Tookes,Culinary OG,ttookes@olivegarden.com,,407-245-6912,Darden,Darden,Mike,Include
+Eric,Cook,Owner/President,eric.cook@dpdough.com,607-745-1045,,DP Dough,DP Dough,Mike,Include
+Jason,Griffin,Purchasing,Jason.griffin@dpdough.com,607-745-8825,,DP Dough,DP Dough,Mike,Include
+Jeff,Salls,Senior Manager Supply Chain,jeff.salls@firehousesubs.com,904-248-2883,,Firehouse,Firehouse,Mike,Include
+Jay,Miller,Dir of Product Development,jay.miller@firehousesubs.com,901-395-6764,904-606-5265,Firehouse,Firehouse,Mike,Include
+John,Raulerson,VP of QA,jraulerson@firehousesubs.com,904-874-3334,904-674-3425,Firehouse,Firehouse,Mike,Exclude
+Brent,Cordial,VP of Operations,brent@giovannispizza.com,606-923-7015,,Giovanni's,Giovanni's,Mike,Include
+Steve,Thacker,Purchasing,steve@giovannispizza.com,740-302-9743,,Giovanni's,Giovanni's,Mike,Include
+Dave,Soukup,Director Purchasing,dsoukup@godfathers.com,402-255-2581,,Godfather's,Godfather's,Mike,Include
+Robin,Jaros,Purchasing Manager,rjaros@godfathers.com,(402) 255-2505,,Godfather's,Godfather's,Mike,Include
+Heather,Miller,R&D,hmiller@godfathers.com,402-255-2632,,Godfather's,Godfather's,Mike,Include
+Pat,Olsen,Distribution,polsen@godfathers.com,(515) 559-4708,(402) 255-2666,Godfather's,Godfather's,Mike,Include
+David,Hartzler,QA Manager,dhartzler@godfathers.com,402-255-2673,,Godfather's,Godfather's,Mike,Exclude
+Jim,Howell,President/Purchasing,jim@perkyspizza.com,813-382-6044,,Perky's,Perky's,Mike,Include
+Daniel,Morrison,Owner/President,dmorrison@pizzaplusinc.com,,423-279-9335,Pizza Plus,Pizza Plus,Mike,Include
+Andrew,Zawalich,Purchasing/QA Lead,azawalich@toppers.com,262-473-9367,,Toppers,Toppers,Mike,Include
+Jim,Christiansen,Dir of Supply Chain,jchristiansen@toppers.com,262-731-3359,,Toppers,Toppers,Mike,Include
+Craig,Williams,R&D,craig.williams@wawa.com,215-388-1038,,Wawa,Wawa,Greg Thiel,Include
+Wendi,Clauss,VP of Culinary,wendi.clauss@wawa.com,,,Wawa,Wawa,Greg Thiel,Include
+Scott,Drozdowski,Buyer,scott.drozdowski@wawa.com,,215-360-8924,Wawa,Wawa,Greg Thiel,
+Allison,Fitzgerald,Assortment Manager - Fresh Foods,allison.fitzgerald@wawa.com,610-312-4258,,Wawa,Wawa,Greg Thiel,Include
+Janine,Ballato,QA - Pizza,janine.ballato@wawa.com,,,Wawa,Wawa,Greg Thiel,
+Paul,Glass,SCC Product Mgnt. / Procurement,paul.glass@dominos.com,269 425 9362,,Domino's,Domino's,Susan,
+Bryan,Gross,Supply Chain Director,bryan.gross@dominos.com,248 703 3009,,Domino's,Domino's,Susan,
+Carrie,Ballew,Supply Chain VP,carrie.ballew@dominos.com,804 426 4046,,Domino's,Domino's,Susan,
+Nicole,Gaydek,Supply Chain Mgr,nicole.gaydek@dominos.com,810 599 0502,,Domino's,Domino's,Susan,
+Ali,Foliart,Supply Chain Mgr.,ali.foliart@modpizza.com,206 639 0337,,,MODS,Susan,
+Marc,Amelio,Sourcing and Contract Manager,mamelio@bellff.com,,(847) 291-4053,,Bell Flavors & Fragrances,Tad,Exclude
+Tracey L.,Gossman,Purchasing Agent,tgossman@BELLFF.com,,(847) 715-3659,,Bell Flavors & Fragrances,Tad,Exclude
+Becky,Zoeller,Purchasing,bzoeller@bloemerfoods.com,,(502) 584-8338 Ext. 23,,Bloemer Food Sales Co.,Tad,Exclude
+Matt,Meidlinger,Category Manager,matt.meidlinger@jmswank.com,,(319) 449-0868,Brenntag (JM Swank),Brenntag (JM Swank),Tad,Exclude
+Paul,Gill,Owner,buffalogills@aol.com,(410) 499-9721,(866) 535-2834,Buffalo Gills,Buffalo Gills,Tad,Exclude
+Karen,Willis,Category Manager - Ingredients,KWillis@cheltenhouse.com,,(856) 467-1600 ext. 287,,Chelton House Products,Tad,Exclude
+Stacy,Dunne,Product Developement Manager,sdunne@cheltenhouse.com,(201) 572-4410,856-467-1600 ext. 333,,Chelton House Products,Tad,Exclude
+Tammy,Naulls,Planning & Purchasing Manager,KellyH@depalofoods.com,,(704) 827-0245 ext 104,DePalo Foods,DePalo Foods,Tad,Exclude
+Rick,Lekoski,R&D Manager,r&d@depalofoods.com,,(704) 827-0245 ext 204,DePalo Foods,DePalo Foods,Tad,Exclude
+Judy,Embree,"Vice President, Procurement",jembree@kensfoods.com,,(508) 229-1100,,Ken's Food Inc.,Tad,Exclude
+Mat,O'Connor,Director of Sourcing,moconnor@kensfoods.com,(443) 822-2287,(508) 229-1190,,Ken's Food Inc.,Tad,Exclude
+Luis,Torres,Procurement - Sr. Sourcing,ltorres@kensfoods.com,(508) 579-0769,(508) 597-4227,,Ken's Food Inc.,Tad,Exclude
+Lindsay,Horback,Buyer / Manager,lhorback@kensfoods.com,,(508) 229-1100 ext. 1152,,Ken's Food Inc.,Tad,Exclude
+Al,Slingluff,Vice President Reasearch and Developement,aslingluff@kensfoods.com,(412) 337-6670,(508) 597-4294,,Ken's Food Inc.,Tad,Exclude
+Elizabeth,McColl,R&D Manager,emccoll@kensfoods.com,(781) 266-7474,(508) 229-5340,,Ken's Food Inc.,Tad,Exclude
+Matt,Szargowicz,Corporate Manager Ingredients / Microbiology,mszargowicz@kensfoods.com,(508) 423-3368,(508) 229-1125,,Ken's Food Inc.,Tad,Exclude
+Dale,Bowman,Chef Procutrement Officer,dale.bohman@marzetti.com,(614) 296-3986,(614) 396-3024,,Marzetti Company,Tad,Exclude
+Jessica,Darkes,Purchasing Manager- Ingredients,Jessica.Darkes@marzetti.com,(614) 406-6156,,,Marzetti Company,Tad,Exclude
+Natalie,Godfrey,Materials Manager,Natalie.Godfrey@marzetti.com,,,,Marzetti Company,Tad,Exclude
+Lisa,Zajac,Purchasing - Horse Cave Facility,lzajac@marzetti.com,,(270) 859-3105,,Marzetti Company,Tad,Exclude
+Tom,McGirty,VP R&D,tmcgirty@marzetti.com,(614) 581-3415,(614) 827-2920,,Marzetti Company,Tad,Exclude
+Jamie,Hannen,Sr. Food Scientist,jhannen@marzetti.com,,(614) 827-2900,,Marzetti Company,Tad,Exclude
+Rachel,Basalla,"Innovation Manager, R&D",rbasalla@marzetti.com,(614) 496-4773,(614) 827-2900,,Marzetti Company,Tad,Exclude
+Nadine,Gionet,Purchasing Manager,nading@maxi.com,,(450) 439-9612,,Maxi Canada Inc,Tad,Exclude
+Suzie,Bernard,Director of R&D,Suzie@maxi.com,,(450) 439-2500,,Maxi Canada Inc,Tad,Exclude
+Frederique,Berube,R&D Technologist,FrederiqueB@maxi.com,,(450) 439-2500 ext. 138,,Maxi Canada Inc,Tad,Exclude
+Marie-Eve,Leveille,R&D Technician,Marie-evel@maxi.com,,(450) 439-2500 ext. 138,,Maxi Canada Inc,Tad,Exclude
+Daniel,Ellison,Purchasing Director,DEllison@newlywedsfoods.com,(630) 306-6632,(773) 888-5851,Newly Weds Foods (Mullins),Newly Weds Foods (Mullins),Tad,Exclude
+Sophia,Harroudi,Purchasing Manager,SHarroudi@newlywedsfoods.com,,(773) 888-5877,Newly Weds Foods (Mullins),Newly Weds Foods (Mullins),Tad,Exclude
+Chassie,Dejativong,Purchasing Buyer,CDejativong@newlywedsfoods.com,,(708) 497-4107,Newly Weds Foods (Mullins),Newly Weds Foods (Mullins),Tad,Exclude
+Brad,Ballieu,R&D Manager,BBallieu@newlywedsfoods.com,(773) 294-2153,,Newly Weds Foods (Mullins),Newly Weds Foods (Mullins),Tad,Exclude
+Michael,Mulier,Strategic Supply Chain & Sourcing Manager,MMulier@ohly.us,(910) 322-5194,(715) 643-2600,Ohly,Ohly,Tad,Exclude
+Pat,Nichols,Purchasing,pnichols@ohly.us,,(715) 643-2069,Ohly,Ohly,Tad,Exclude
+Benjamin,Ashley,R&D,BAshley@ohly.us,,(715) 643-2600 ext 227,Ohly,Ohly,Tad,Exclude
+Chad,Gray,R&D Manager,CGray@ohly.us,,(715) 643-2600,Ohly,Ohly,Tad,Exclude
+Ryan,Brunnert,General Manager,ryanb@ottfoods.com,(417) 388-2042,(800) 866-2585,,Ott Food Products LLC,Tad,Exclude
+Ann,Ingram,Purchasing,anni@ottfoods.com,,(800) 866-2585,,Ott Food Products LLC,Tad,Exclude
+Valerie,Fultz,Corporate Procurement Specialist,vfultz@sauerbrands.com,,(804) 359-5786 ext. 676,Sauer Brands,Sauer Brands,Tad,Exclude
+Jay,Staiger,"Director, Research and Product Developement",jstaiger@sauerbrands.com,(864) 581-0315,(864) 288-3211 ext.422,Sauer Brands,Sauer Brands,Tad,Exclude
+Ralph,Lambros,Vice President Procurement,Ralph.Lambros@solina.com,(951) 415-3017,(951) 270-9603,,Solina (Saratoga),Tad,Exclude
+Sylvia,Barraza,Senior Buyer,Sylvia.Barraza@Solina.com,(951) 496-6255,(951) 270-9604,,Solina (Saratoga),Tad,Exclude
+Nichelle,Jackson,Associate R&D Food Technician,Nichelle.Jackson@solina.com,,,,Solina (Saratoga),Tad,Exclude
+Ivan,Chen,"Sr. Director, Procurement",ichen@venturafoods.com,717-496-1873,714-257-4081,,Ventura Foods,Tad,Exclude
+Zeeshan,Ashraff,"Sr. Manager, Procurement",Zashraff@venturafoods.com,908-456-2962,,,Ventura Foods,Tad,Exclude
+Donna,Davis,Procurement - Forth Worth,ddavis@venturafoods.com,-,"800-295-5312, x 171",,Ventura Foods,Tad,Exclude
+Hanisha,Balani,Sr. Procurement Analyst,hbalani@venturafoods.com,-,714-257-3748,,Ventura Foods,Tad,Exclude
+Rob,Beauseau,VP Technical Services,rbeauseau@venturafoods.com,817-907-3052,817-232-5440,,Ventura Foods,Tad,Exclude
+Glenn,Lobo,Director of R&D,globo@venturafoods.com,,(714) 510-9340,,Ventura Foods,Tad,Exclude
+Andy,French,Owner/President,andy@aubrees.com,734-216-6555,,,Aubree's Pizza,Todd,
+,TBD,TBD,TBD,TBD,,,Burger King Canada (RSI),Todd,
+Juan,Tapia,Buyer,jtapia@rsilink.com,305-877-0948,,,Burger King U.S. (RSI),Todd,
+Rick,Birndorf,Procurement,thefoodsource2@aol.com,248-459-9621,,Cottage Inn,Cottage Inn,Todd,
+Scot,Sloan,COO,ssloan@cottageinn.com,248-890-4445,734-663-2827,Cottage Inn,Cottage Inn,Todd,
+Mark,Reed,Sr. Director of Purchasing,mreed@donatos.com,614-804-6180,614-416-7779,Donatos,Donatos,Todd,
+Cynthia,Ottavio,Director of Culinary,cottavio@donatos.com,614-416-7832,,Donatos,Donatos,Todd,
+Shadd Greg,Thielg,Buyer/Broker,Shad@lomanbrown.com,419-295-0564,,,Eberhardt Foods,Todd,
+Ken,Devoie,President,kenneth.devoie@hometownpizza.com,502-755-1990,,Hometown Pizza,Hometown Pizza,Todd,
+Nikki,Hernandez,Director of Procurement,nhernandez@marcos.com,305-733-3744,,Marco's,Marco's,Todd,
+Cathy,Kinzer,VP Procurement,ckinzer@marcos.com,586-709-8826,,Marco's,Marco's,Todd,
+Lacey,Beck,Buyer,laceyh@onesourcefoodsolutions.com,360-887-9430,,,One Source Food Solutions,Todd,
+Rick,Leinenbach,President,rickl@onesourcefoodsolutions.com,360-887-9430,,,One Source Food Solutions,Todd,
+Adam,Hansen,Owner/President,pizzabyhanny@gmail.com,270-485-6007,,Pizza Guy,Pizza Guy,Todd,
+Justin,Wallace,Business Development Mgr.,jwallace@redgold.com,,765-557-5500 ext. 1177,Red Gold,Red Gold,Todd,
+Michael,Barr,Sr. Bus Dev Mgr.,mbarr@redgold.com,,765-557-5500 ext. 1174,Red Gold,Red Gold,Todd,
+Jose,Toral,Manager Purchasing,jtoral@ipcoop.com,786-502-5101,786-270-1249,,Subway,Todd,
+Joy,Morshed,Dir. R&D,jmorshed@timhortons,905-339-6210,,Tim Horton's,Tim Horton's,Todd,
+Wendy,Fan,Supply Planning,wfan1@rbi.com,905-338-5864,,Tim Horton's,Tim Horton's,Todd,
+Kim,Stevenson,QA Manager (DineBrands),kim.stevenson@dominos.com,734 249 2248,,,Dominos,,
+Mike,Katsefaras,Technical Mgr,mike.katsefaras@dominos.com,734 476 8012,,,Dominos,,
+Stacy,Boyles,R&D,stacy.boyles@dominos.com,810 348 7644,,,Dominos,,
+Roxane,Swamba,R&D,roxane.swamba@dominos.com,734 657 3468,,,Dominos,,
+David,Johnson,Dir of Supply Chain,djohnson3@RBI.com,407-455-3561,,Firehouse,Firehouse,,Include
+Phil,Worley,Purchasing Director,pworley@hungryhowies.com,419 205 0645,,Hungry Howies,Hungry Howies,,
+Connie,Banning,R&D and QA,cbanning@larosas.com,513 520 9279,,,La Rosas,,
+Christine,Massa,Buyer,christine.massa@lcecorp.com,248-417-0416,,,Little Caesar's,,
+Chris,Kerrigan,VP Purchasing,christina.kerrigan@lcecorp.com,248-496-0874,,,Little Caesar's,,
+Pam,Puzdrowski,QA Mgr.,pamela.puzdrowski@lcecorp.com,586-303-5034,,,Little Caesar's,,
+Jessica,Foust,Dir. of R&D,jessica.foust@lcecorp.com,312-882-5504,,,Little Caesar's,,
+Bill,Holmberg,QA Director,wholmberg@marcos.com,734-358-4887,,Marco's,Marco's,,
+Katelyn,Robb,Purchasing Manager,katelyn.robb@qdoba.com,,858-766-4863,,Qdoba,Greg Thiel,
+Pauline,Castaneda,Director of Purchasing,pauline.castaneda@qdoba.com,,858-766-4572,,Qdoba,Greg Thiel,
+Ken,Barlahan,Quality Assurance,ken.barlahan@qdoba.com,,858-766-4784,,Qdoba,Greg Thiel,
+Andrea,Lopez,R&D,andrea.lopez@qdoba.com,,619-993-8241,,Qdoba,Greg Thiel,
