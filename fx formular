@@ -1,1 +1,2 @@
 update
+IF(customAgingStartDate IS NULL, NULL, DIFFINDAYS(customAgingStartDate, NOW()))
