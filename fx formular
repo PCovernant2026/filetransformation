@@ -1,2 +1,5 @@
-update
-IF(customAgingStartDate IS NULL, NULL, DIFFINDAYS(customAgingStartDate, NOW()))
+If(
+    IsBlank(AgingStartDate),
+    Blank(),
+    DateDiff(AgingStartDate, Today(), Days)
+)
