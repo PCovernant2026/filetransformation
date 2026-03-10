@@ -78,37 +78,29 @@ VGSD_WorkOrderAging.calculateAging = function (executionContext) {
 
 
 function vgsd_getAgingIcon(rowData, userLCID) {
-    var row = JSON.parse(rowData);
-    var status = row.vgsd_agingstatus;
+    try {
+        var row = JSON.parse(rowData);
 
-    if (status === 328890001) {
-        return "vgsd_warningyellow.png";
+        // Choice fields in views may come through as either *_Value or directly
+        var status = row.vgsd_agingstatus_Value || row.vgsd_agingstatus;
+        status = parseInt(status, 10);
+
+        switch (status) {
+            case 328980001:
+                return ["vgsd_warningyellow.png", "Warning: 21 to 29 days old"];
+
+            case 328980002:
+                return ["vgsd_criticalred.png", "Critical: 30 or more days old"];
+
+            default:
+                return ["", ""];
+        }
+    } catch (e) {
+        return ["", ""];
     }
-
-    if (status === 328890002) {
-        return "vgsd_criticalred.png";
-    }
-
-    return null;
 }
 
-function vgsd_getAgingTooltip(rowData, userLCID) {
-    var row = JSON.parse(rowData);
-    var status = row.vgsd_agingstatus;
-
-    if (status === 328890001) {
-        return "Warning: 21 to 29 days old";
-    }
-
-    if (status === 328890002) {
-        return "Critical: 30 or more days old";
-    }
-
-    return "";
-}
-
-
-
+Icon web resouse names 
 
 vgsd_criticalred.png
 vgsd_warningyellow.png
