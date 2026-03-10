@@ -1,4 +1,127 @@
+
+
+
+
+var VGSD_WorkOrderAging = VGSD_WorkOrderAging || {};
+
+VGSD_WorkOrderAging.calculateAging = function (executionContext) {
+    var formContext = executionContext.getFormContext();
+
+    var createdOnAttr = formContext.getAttribute("createdon");
+    var dueDateAttr = formContext.getAttribute("vgsd_duedate");
+    var agingDaysAttr = formContext.getAttribute("vgsd_agingdays");
+    var agingStatusAttr = formContext.getAttribute("vgsd_agingstatus");
+
+    if (!createdOnAttr || !createdOnAttr.getValue()) {
+        return;
+    }
+
+    var createdOn = createdOnAttr.getValue();
+
+    // Normalize dates to midnight so aging is based on calendar days only
+    var createdDate = new Date(
+        createdOn.getFullYear(),
+        createdOn.getMonth(),
+        createdOn.getDate()
+    );
+
+    var today = new Date();
+    var todayDate = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+    );
+
+    // Due Date = Created On + 30 calendar days
+    var dueDate = new Date(createdDate);
+    dueDate.setDate(dueDate.getDate() + 30);
+
+    // Aging Days
+    var msPerDay = 24 * 60 * 60 * 1000;
+    var agingDays = Math.floor((todayDate - createdDate) / msPerDay);
+
+    if (agingDays < 0) {
+        agingDays = 0;
+    }
+
+    // Aging Status
+    var agingStatus;
+    if (agingDays >= 30) {
+        agingStatus = 289900002; // Critical
+    } else if (agingDays >= 21) {
+        agingStatus = 289900001; // Warning
+    } else {
+        agingStatus = 289900000; // Normal
+    }
+
+    // Set values only if changed
+    if (dueDateAttr) {
+        var currentDueDate = dueDateAttr.getValue();
+        if (
+            !currentDueDate ||
+            currentDueDate.getFullYear() !== dueDate.getFullYear() ||
+            currentDueDate.getMonth() !== dueDate.getMonth() ||
+            currentDueDate.getDate() !== dueDate.getDate()
+        ) {
+            dueDateAttr.setValue(dueDate);
+            dueDateAttr.setSubmitMode("always");
+        }
+    }
+
+    if (agingDaysAttr && agingDaysAttr.getValue() !== agingDays) {
+        agingDaysAttr.setValue(agingDays);
+        agingDaysAttr.setSubmitMode("always");
+    }
+
+    if (agingStatusAttr && agingStatusAttr.getValue() !== agingStatus) {
+        agingStatusAttr.setValue(agingStatus);
+        agingStatusAttr.setSubmitMode("always");
+    }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 LabelValueNormal289900000Warning289900001Critical289900002
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
