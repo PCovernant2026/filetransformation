@@ -83,7 +83,38 @@ VGSD_WorkOrderAging.calculateAging = function (executionContext) {
 
 
 
+/////////////////////////////////////////
 
+
+function vgsd_getAgingIcon(rowData, userLCID) {
+    var row = JSON.parse(rowData);
+    var status = row.vgsd_agingstatus;
+
+    if (status === 289900001) {
+        return "vgsd_warningyellow_16x16_tight.png";
+    }
+
+    if (status === 289900002) {
+        return "vgsd_criticalred_16x16_tight.png";
+    }
+
+    return null;
+}
+
+function vgsd_getAgingTooltip(rowData, userLCID) {
+    var row = JSON.parse(rowData);
+    var status = row.vgsd_agingstatus;
+
+    if (status === 289900001) {
+        return "Warning: 21 to 29 days old";
+    }
+
+    if (status === 289900002) {
+        return "Critical: 30 or more days old";
+    }
+
+    return "";
+}
 
 
 
