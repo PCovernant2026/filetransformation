@@ -1,3 +1,11 @@
+Aging Statusvgsd_agingstatusDue Datevgsd_duedateSystem Statusmsdyn_systemstatus
+
+
+
+
+
+
+
 Aging Calculation
 
 Work order age is calculated based on the Work Order Received Date.
