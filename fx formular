@@ -106,3 +106,9 @@ function vgsd_getAgingTooltip(rowData, userLCID) {
 
     return "";
 }
+
+
+
+
+vgsd_criticalred.png
+vgsd_warningyellow.png
