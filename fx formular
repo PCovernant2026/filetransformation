@@ -1,7 +1,3 @@
-
-
-
-
 var VGSD_WorkOrderAging = VGSD_WorkOrderAging || {};
 
 VGSD_WorkOrderAging.calculateAging = function (executionContext) {
@@ -47,11 +43,11 @@ VGSD_WorkOrderAging.calculateAging = function (executionContext) {
     // Aging Status
     var agingStatus;
     if (agingDays >= 30) {
-        agingStatus = 289900002; // Critical
+        agingStatus = 328980002; // Critical
     } else if (agingDays >= 21) {
-        agingStatus = 289900001; // Warning
+        agingStatus = 328980001; // Warning
     } else {
-        agingStatus = 289900000; // Normal
+        agingStatus = 328980000; // Normal
     }
 
     // Set values only if changed
@@ -81,21 +77,16 @@ VGSD_WorkOrderAging.calculateAging = function (executionContext) {
 
 
 
-
-
-/////////////////////////////////////////
-
-
 function vgsd_getAgingIcon(rowData, userLCID) {
     var row = JSON.parse(rowData);
     var status = row.vgsd_agingstatus;
 
-    if (status === 289900001) {
-        return "vgsd_warningyellow_16x16_tight.png";
+    if (status === 328890001) {
+        return "vgsd_warningyellow.png";
     }
 
-    if (status === 289900002) {
-        return "vgsd_criticalred_16x16_tight.png";
+    if (status === 328890002) {
+        return "vgsd_criticalred.png";
     }
 
     return null;
@@ -105,88 +96,13 @@ function vgsd_getAgingTooltip(rowData, userLCID) {
     var row = JSON.parse(rowData);
     var status = row.vgsd_agingstatus;
 
-    if (status === 289900001) {
+    if (status === 328890001) {
         return "Warning: 21 to 29 days old";
     }
 
-    if (status === 289900002) {
+    if (status === 328890002) {
         return "Critical: 30 or more days old";
     }
 
     return "";
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-LabelValueNormal289900000Warning289900001Critical289900002
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Aging Statusvgsd_agingstatusDue Datevgsd_duedateSystem Statusmsdyn_systemstatus
-
-
-
-
-
-
-
-Aging Calculation
-
-Work order age is calculated based on the Work Order Received Date.
-30 days from day WO was created
-Calculation should be stored in a new field "Due Date"
-The “Target Start Date” from the PDF is not used in aging calculations.
-Aging is calculated in calendar days.
-No exceptions for holidays or weekends
-Aging updates automatically as time progresses without manual updates.
-Visual Indicators
-
-When a work order reaches 21 days, a warning icon is displayed.
-When a work order reaches 30 days or more, a bold red critical icon is displayed.
-The 21‑day and 30‑day icons are visually distinct.
-Icons appear in all relevant work order list views. - TBD
-Icons do not affect text readability, column layout, or row background colors.
-View Readability
-
-Icons are used instead of color‑coded rows or fields.
-No new required fields (such as “Completion By” or “Due Date”) are introduced to support this feature.
-Existing work order views do not require restructuring.
-Scheduling Considerations
-
-The solution supports future enhancement to introduce a Due Date / Completion By field.
-If implemented, the Schedule Board can be ordered by Due Date.
-Ordering the Schedule Board by Due Date is sufficient without requiring color or icon indicators.
