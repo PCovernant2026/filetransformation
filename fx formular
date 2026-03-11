@@ -102,38 +102,17 @@ function vgsd_getAgingIcon(rowData, userLCID) {
     switch (parseInt(coldata, 10)) { 
         case 328980000:  
             imgName = "vgsd_greenicon";  
-            switch (userLCID) {  
-                case 1036:  
-                    tooltip = "Normal : moins de 21 jours";  
-                    break;  
-                default:  
-                    tooltip = "Normal: less than 21 days old";  
-                    break;  
-            }  
+            tooltip = "Normal: less than 21 days old";  
             break;  
 
         case 328980001:  
             imgName = "vgsd_yellowIcon";  
-            switch (userLCID) {  
-                case 1036:  
-                    tooltip = "Avertissement : 21 à 29 jours";  
-                    break;  
-                default:  
-                    tooltip = "Warning: 21 to 29 days old";  
-                    break;  
-            }  
+            tooltip = "Warning: 21 to 29 days old";  
             break;  
 
         case 328980002:  
             imgName = "vgsd_RedIcon";  
-            switch (userLCID) {  
-                case 1036:  
-                    tooltip = "Critique : 30 jours ou plus";  
-                    break;  
-                default:  
-                    tooltip = "Critical: 30 or more days old";  
-                    break;  
-            }  
+            tooltip = "Critical: 30 or more days old";  
             break;  
 
         default:  
@@ -145,9 +124,6 @@ function vgsd_getAgingIcon(rowData, userLCID) {
     var resultarray = [imgName, tooltip];  
     return resultarray;  
 }
-
-
-
 
 
 Icon web resouse names 
