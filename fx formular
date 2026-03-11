@@ -1,5 +1,43 @@
 
 
+test funtion
+
+"use strict";
+
+function vgsd_getAgingIcon(rowData, userLCID) {
+    return ["vgsd_yellowIcon", "Test"];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 vgsd_greenicon
 vgsd_RedIcon
 vgsd_yellowIcon
