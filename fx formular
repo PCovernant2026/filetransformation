@@ -1,180 +1,36 @@
-https://vgsuat.crm.dynamics.com/WebResources/vgsd_RedIcon?preview=1
-https://vgsuat.crm.dynamics.com/WebResources/vgsd_greenicon?preview=1
-https://vgsuat.crm.dynamics.com/WebResources/vgsd_greenicon?preview=1
-https://vgsuat.crm.dynamics.com/WebResources/vgsd_yellowIcon?preview=1
-
-test funtion
-
 "use strict";
 
 function vgsd_getAgingIcon(rowData, userLCID) {
-    return ["vgsd_yellowIcon", "Test"];
-}
+    try {
+        var str = JSON.parse(rowData);
+        var coldata = str.vgsd_agingstatus_Value || str.vgsd_agingstatus;
+        var imgName = "";
+        var tooltip = "";
 
+        switch (parseInt(coldata, 10)) {
+            case 328980000:
+                imgName = "vgsd_greenicon";
+                tooltip = "Normal: less than 21 days old";
+                break;
 
+            case 328980001:
+                imgName = "vgsd_yellowIcon";
+                tooltip = "Warning: 21 to 29 days old";
+                break;
 
+            case 328980002:
+                imgName = "vgsd_RedIcon";
+                tooltip = "Critical: 30 or more days old";
+                break;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-vgsd_greenicon
-vgsd_RedIcon
-vgsd_yellowIcon
-
-
-
-
-
-
-
-
-
-var VGSD_WorkOrderAging = VGSD_WorkOrderAging || {};
-
-VGSD_WorkOrderAging.calculateAging = function (executionContext) {
-    var formContext = executionContext.getFormContext();
-
-    var createdOnAttr = formContext.getAttribute("createdon");
-    var dueDateAttr = formContext.getAttribute("vgsd_duedate");
-    var agingDaysAttr = formContext.getAttribute("vgsd_agingdays");
-    var agingStatusAttr = formContext.getAttribute("vgsd_agingstatus");
-
-    if (!createdOnAttr || !createdOnAttr.getValue()) {
-        return;
-    }
-
-    var createdOn = createdOnAttr.getValue();
-
-    // Normalize dates to midnight so aging is based on calendar days only
-    var createdDate = new Date(
-        createdOn.getFullYear(),
-        createdOn.getMonth(),
-        createdOn.getDate()
-    );
-
-    var today = new Date();
-    var todayDate = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate()
-    );
-
-    // Due Date = Created On + 30 calendar days
-    var dueDate = new Date(createdDate);
-    dueDate.setDate(dueDate.getDate() + 30);
-
-    // Aging Days
-    var msPerDay = 24 * 60 * 60 * 1000;
-    var agingDays = Math.floor((todayDate - createdDate) / msPerDay);
-
-    if (agingDays < 0) {
-        agingDays = 0;
-    }
-
-    // Aging Status
-    var agingStatus;
-    if (agingDays >= 30) {
-        agingStatus = 328980002; // Critical
-    } else if (agingDays >= 21) {
-        agingStatus = 328980001; // Warning
-    } else {
-        agingStatus = 328980000; // Normal
-    }
-
-    // Set values only if changed
-    if (dueDateAttr) {
-        var currentDueDate = dueDateAttr.getValue();
-        if (
-            !currentDueDate ||
-            currentDueDate.getFullYear() !== dueDate.getFullYear() ||
-            currentDueDate.getMonth() !== dueDate.getMonth() ||
-            currentDueDate.getDate() !== dueDate.getDate()
-        ) {
-            dueDateAttr.setValue(dueDate);
-            dueDateAttr.setSubmitMode("always");
+            default:
+                imgName = "";
+                tooltip = "";
+                break;
         }
+
+        return [imgName, tooltip];
+    } catch (e) {
+        return ["", ""];
     }
-
-    if (agingDaysAttr && agingDaysAttr.getValue() !== agingDays) {
-        agingDaysAttr.setValue(agingDays);
-        agingDaysAttr.setSubmitMode("always");
-    }
-
-    if (agingStatusAttr && agingStatusAttr.getValue() !== agingStatus) {
-        agingStatusAttr.setValue(agingStatus);
-        agingStatusAttr.setSubmitMode("always");
-    }
-};
-
-/////////////////////////////////////
-
-"use strict";
-
-function vgsd_getAgingIcon(rowData, userLCID) {      
-    var str = JSON.parse(rowData);  
-    var coldata = str.vgsd_agingstatus_Value || str.vgsd_agingstatus;  
-    var imgName = "";  
-    var tooltip = "";  
-
-    switch (parseInt(coldata, 10)) { 
-        case 328980000:  
-            imgName = "vgsd_greenicon";  
-            tooltip = "Normal: less than 21 days old";  
-            break;  
-
-        case 328980001:  
-            imgName = "vgsd_yellowIcon";  
-            tooltip = "Warning: 21 to 29 days old";  
-            break;  
-
-        case 328980002:  
-            imgName = "vgsd_RedIcon";  
-            tooltip = "Critical: 30 or more days old";  
-            break;  
-
-        default:  
-            imgName = "";  
-            tooltip = "";  
-            break;  
-    }  
-
-    var resultarray = [imgName, tooltip];  
-    return resultarray;  
 }
-
-
-Icon web resouse names 
-
-vgsd_getAgingIcon
-
-vgsd_criticalred.png
-vgsd_warningyellow.png
-
-
-/////////////////////////
-
-https://learn.microsoft.com/en-us/dynamics365/customerengagement/on-premises/customize/display-custom-icons-instead?view=op-9-1
