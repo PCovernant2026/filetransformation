@@ -1,3 +1,17 @@
+
+
+vgsd_greenicon
+vgsd_RedIcon
+vgsd_yellowIcon
+
+
+
+
+
+
+
+
+
 var VGSD_WorkOrderAging = VGSD_WorkOrderAging || {};
 
 VGSD_WorkOrderAging.calculateAging = function (executionContext) {
