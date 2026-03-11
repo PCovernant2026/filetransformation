@@ -89,30 +89,66 @@ VGSD_WorkOrderAging.calculateAging = function (executionContext) {
     }
 };
 
+/////////////////////////////////////
 
+"use strict";
 
-function vgsd_getAgingIcon(rowData, userLCID) {
-    try {
-        var row = JSON.parse(rowData);
+function vgsd_getAgingIcon(rowData, userLCID) {      
+    var str = JSON.parse(rowData);  
+    var coldata = str.vgsd_agingstatus_Value || str.vgsd_agingstatus;  
+    var imgName = "";  
+    var tooltip = "";  
 
-        // Choice fields in views may come through as either *_Value or directly
-        var status = row.vgsd_agingstatus_Value || row.vgsd_agingstatus;
-        status = parseInt(status, 10);
+    switch (parseInt(coldata, 10)) { 
+        case 328980000:  
+            imgName = "vgsd_greenicon";  
+            switch (userLCID) {  
+                case 1036:  
+                    tooltip = "Normal : moins de 21 jours";  
+                    break;  
+                default:  
+                    tooltip = "Normal: less than 21 days old";  
+                    break;  
+            }  
+            break;  
 
-        switch (status) {
-            case 328980001:
-                return ["vgsd_warningyellow.png", "Warning: 21 to 29 days old"];
+        case 328980001:  
+            imgName = "vgsd_yellowIcon";  
+            switch (userLCID) {  
+                case 1036:  
+                    tooltip = "Avertissement : 21 à 29 jours";  
+                    break;  
+                default:  
+                    tooltip = "Warning: 21 to 29 days old";  
+                    break;  
+            }  
+            break;  
 
-            case 328980002:
-                return ["vgsd_criticalred.png", "Critical: 30 or more days old"];
+        case 328980002:  
+            imgName = "vgsd_RedIcon";  
+            switch (userLCID) {  
+                case 1036:  
+                    tooltip = "Critique : 30 jours ou plus";  
+                    break;  
+                default:  
+                    tooltip = "Critical: 30 or more days old";  
+                    break;  
+            }  
+            break;  
 
-            default:
-                return ["", ""];
-        }
-    } catch (e) {
-        return ["", ""];
-    }
+        default:  
+            imgName = "";  
+            tooltip = "";  
+            break;  
+    }  
+
+    var resultarray = [imgName, tooltip];  
+    return resultarray;  
 }
+
+
+
+
 
 Icon web resouse names 
 
