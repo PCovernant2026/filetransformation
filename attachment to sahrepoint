@@ -1,0 +1,143 @@
+User Story
+As a Dynamics 365 Opportunity user,
+I want file attachments added through Timeline Notes on Opportunity records to be automatically copied into the Opportunity’s SharePoint document folder,
+so that the files remain available on the Note in Dynamics, accessible to users who do not have Dynamics 365 access, and visible in the Opportunity Documents tab.
+
+Description
+Currently, files added through the Opportunity Documents tab are stored in SharePoint and are accessible through SharePoint permissions. However, files attached through Timeline Notes remain stored only as Note attachments in Dynamics 365 and are not automatically available in the Opportunity’s SharePoint document folder or Documents tab.
+
+A Power Automate solution is needed to detect Note attachments created on Opportunity records and copy only the attachment file into the same SharePoint folder used by the Opportunity Documents tab.
+
+If the Opportunity already has a SharePoint document location, the file should be copied there. If the Opportunity does not yet have a SharePoint document location or folder, the automation should create the missing Opportunity folder in the same standard SharePoint directory structure used for Opportunity documents, create the related SharePoint Document Location record in Dataverse, and then upload the file there.
+
+The original attachment must remain on the Note in Dynamics. Note text must not be copied.
+
+Business Value
+This will:
+
+make Opportunity files attached from Timeline Notes accessible to non-Dynamics users through SharePoint
+
+preserve current user behavior in Dynamics
+
+centralize Opportunity documents in SharePoint
+
+ensure files attached through Notes are visible in the Opportunity Documents tab just like files uploaded directly through Documents
+
+Acceptance Criteria
+
+Process only Opportunity Note attachments
+Given a Note is created in Dynamics 365
+When the Note is regarding an Opportunity and contains a file attachment
+Then the automation processes the Note
+And if the Note is not regarding an Opportunity or has no attachment, it is ignored
+
+Copy file to existing Opportunity SharePoint folder
+Given an Opportunity already has a valid SharePoint document location
+When a user adds a Timeline Note with an attachment to that Opportunity
+Then the file attachment is copied into the existing Opportunity SharePoint folder
+And the original Note attachment remains in Dynamics
+And the file becomes visible in the Opportunity Documents tab
+
+Create missing folder and document location when needed
+Given an Opportunity does not yet have a SharePoint document location or folder
+When a user adds a Timeline Note with an attachment to that Opportunity
+Then the automation creates the missing Opportunity SharePoint folder in the standard Opportunity SharePoint structure
+And creates the related SharePoint Document Location record in Dataverse
+And uploads the attachment into that folder
+And the file becomes visible in the Opportunity Documents tab
+
+Do not copy note text
+Given a Timeline Note contains both note text and a file attachment
+When the automation runs
+Then only the file attachment is copied to SharePoint
+And the note text is not copied
+
+Subsequent files use the same Opportunity folder
+Given an Opportunity folder has already been found or created
+When additional Timeline Note attachments are created for that same Opportunity
+Then those files are copied into the same Opportunity SharePoint folder
+
+Original Note attachment remains intact
+Given a Timeline Note attachment is copied to SharePoint
+When the automation completes
+Then the original attachment is still available on the Timeline Note in Dynamics
+
+Duplicate handling is controlled
+Given a file with the same name already exists in the Opportunity SharePoint folder
+When another attachment with the same filename is processed
+Then the system applies the agreed duplicate handling rule
+And does not silently fail
+
+Errors are traceable
+Given a file cannot be copied because of missing permissions, invalid path, or SharePoint failure
+When the automation runs
+Then the failure is visible in flow run history
+And, if tracking fields are implemented, the Note is marked with an error status/message
+
+In Scope
+
+Opportunity records only
+
+Timeline Note attachments only
+
+Copy attachment file only
+
+Create missing Opportunity SharePoint folder if needed
+
+Create missing SharePoint Document Location if needed
+
+Make copied files visible in Opportunity Documents tab
+
+Out of Scope
+
+Other Dynamics tables
+
+Copying Note text
+
+Historical backfill of old Notes
+
+SharePoint-to-Dynamics sync
+
+Deleting SharePoint files when Notes are deleted
+
+Technical Notes
+
+Source table: Notes (annotation)
+
+Opportunity table: opportunity
+
+Attachment indicators/fields:
+
+isdocument
+
+filename
+
+documentbody
+
+SharePoint target is the Opportunity document folder tied through sharepointdocumentlocation
+
+Recommended Note tracking fields:
+
+new_sharepointsynced
+
+new_sharepointfileurl
+
+new_sharepointerror
+
+Definition of Done
+
+Flow is built and deployed
+
+Flow processes Opportunity Note attachments only
+
+Existing-folder scenario works
+
+Missing-folder fallback scenario works
+
+Files copied by flow appear in the Opportunity Documents tab
+
+Original Note attachments remain in Dynamics
+
+Error handling is in place
+
+Solution is tested and documented
