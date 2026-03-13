@@ -140,4 +140,90 @@ Original Note attachments remain in Dynamics
 
 Error handling is in place
 
+
+
+////////////////////////
+
+1. Trigger: When a row is added, modified, or deleted
+Entity: opportunity
+Filter: isdocument eq true
+Type: OpenApiConnectionWebhook
+2. varOppId: Initialize Variable
+Name: varOppId (String)
+Type: string
+Value:
+triggerOutputs()?['body/_objectid_value']
+3. varFileName: Initialize Variable
+Name: varFileName
+Type: string
+Value:
+triggerOutputs()?['body/filename']
+4. Compose
+Inputs:
+base64ToBinary(triggerOutputs()?['body/documentbody'])
+5. varTargetFolderName: Initialize Variable
+Name: varTargetFolderName
+Type: string
+Value:
+concat( outputs('Get_a_row_by_ID')?['body/name'], '', variables('varOppId') )
+6. Condition
+Expression:
+equals( @triggerOutputs()?['body/_objectid_value@Microsoft.Dynamics.CRM.lookuplogicalname'], 'opportunity' )
+If Yes:
+Get_a_row_by_ID
+
+entityName: opportunities
+recordId:
+@variables('varOppId (String)')
+Set_variable
+
+Name: varTargetFolderName
+Value:
+concat( outputs('Get_a_row_by_ID')?['body/name'], '', variables('varOppId') )
+(You will add the SharePoint "Create file" action here, using:
+
+Site Address:
+variables('ctp_SPOSiteURL')
+Folder Path:
+variables('varTargetFolderName')
+File Name:
+variables('varFileName')
+File Content:
+outputs('Compose')
+*)
+
+If No:
+Terminate
+Status: Succeeded
+7. Scope
+List_rows
+
+entityName: sharepointdocumentlocation
+$filter:
+@equals(triggerOutputs()?['body/_objectid_value'], variables('varOppId (String)'))
+Condition_DocumentLocationFound
+
+Expression:
+greater( @length(outputs('List_rows')?['body/value']), 0 )
+If Yes:
+Compose_1
+Inputs:
+first(outputs('List_rows')?['body/value'])
+Compose_2
+Inputs:
+outputs('ExistingDocLoc')?['relativeurl']
+Compose_3
+Inputs:
+concat( '/', 'opportunity', '/', outputs('OppFolderName') )
+Create_file
+dataset: https://wincowindow.sharepoint.com/sites/CRMDocuments
+folderPath:
+outputs('TargetFolderPath')
+name:
+variables('varFileName')
+body:
+outputs('Compose')
+If No:
+(No further actions)
+
 Solution is tested and documented
