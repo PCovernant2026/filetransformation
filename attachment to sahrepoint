@@ -227,3 +227,137 @@ If No:
 (No further actions)
 
 Solution is tested and documented
+//////////////////////////////////////////////
+
+
+Build a solution-aware Power Automate cloud flow named:
+"Opportunity Note Attachment -> SharePoint (Opportunity Library)"
+
+Use the Microsoft Dataverse connector (apiName: shared_commondataserviceforapps) and SharePoint connector.
+Goal: When a Note (annotation) is created with an attachment and is regarding an Opportunity, copy ONLY the attachment file into the Opportunity’s SharePoint folder used by the Documents tab. Do not copy note text. Keep the original Note attachment intact.
+
+Environment variables (Text) to use:
+- env_SPO_SiteUrl = https://wincowindow.sharepoint.com/sites/CRMDocuments
+- env_SPO_DocLibrary = opportunity
+- env_DuplicateMode = rename or overwrite
+
+TRIGGER
+1) Microsoft Dataverse trigger: When a row is added
+   Table: Notes (annotation)
+   Filter rows: isdocument eq true
+
+INIT / COMPOSE
+2) Initialize variable varOppId (String) = triggerOutputs()?['body/_objectid_value']
+3) Initialize variable varFileName (String) = triggerOutputs()?['body/filename']
+4) Compose FileContentBinary = base64ToBinary(triggerOutputs()?['body/documentbody'])
+5) Initialize variable varTargetFolderName (String) = '' (blank)
+
+GUARDRAIL
+6) Condition: only proceed if the note is regarding an Opportunity:
+   equals(triggerOutputs()?['body/_objectid_value@Microsoft.Dynamics.CRM.lookuplogicalname'],'opportunity')
+   If No: Terminate (Succeeded)
+
+STEP 4 (Opportunity + folder naming)
+7) Dataverse Get a row by ID:
+   Table: Opportunities
+   Row ID: variables('varOppId')
+8) Set variable varTargetFolderName to Opportunity Name + '' + OppId:
+   concat(outputs('Get_a_row_by_ID')?['body/name'],'',variables('varOppId'))
+
+SCOPES
+9) Create Scope TRY and Scope CATCH.
+   Put all logic below into TRY.
+   Configure CATCH to run after TRY has failed or timed out.
+
+STEP 5 (List document locations for this Opportunity)
+10) Dataverse List rows:
+    Table: SharePoint Document Locations (sharepointdocumentlocation)
+    Filter rows (OData):
+    _regardingobjectid_value eq @{variables('varOppId')}
+
+11) Condition DocumentLocationFound:
+    length(outputs('List_rows')?['body/value']) > 0
+
+PATH A (If YES) — Use existing document location folder
+A1) Compose ExistingDocLoc:
+    first(outputs('List_rows')?['body/value'])
+
+A2) Compose OppFolderName:
+    outputs('ExistingDocLoc')?['relativeurl']
+
+A2) Compose TargetFolderPath:
+    concat('/', variables('env_SPO_DocLibrary'), '/', outputs('OppFolderName'))
+
+A4) Duplicate handling using env_DuplicateMode:
+    Condition:
+    equals(toLower(variables('env_DuplicateMode')),'rename')
+
+    If rename:
+      - Compose SafeFileName:
+        if(
+          contains(variables('varFileName'),'.'),
+          concat(
+            substring(variables('varFileName'),0,lastIndexOf(variables('varFileName'),'.')),
+            '_',
+            formatDateTime(utcNow(),'yyyyMMddHHmmss'),
+            substring(variables('varFileName'),lastIndexOf(variables('varFileName'),'.'))
+          ),
+          concat(variables('varFileName'),'_',formatDateTime(utcNow(),'yyyyMMddHHmmss'))
+        )
+      - SharePoint Create file:
+        Site Address: variables('env_SPO_SiteUrl')
+        Folder Path: outputs('TargetFolderPath')
+        File Name: outputs('SafeFileName')
+        File Content: outputs('FileContentBinary')
+
+    If overwrite:
+      - Compose FullFilePath:
+        concat(outputs('TargetFolderPath'),'/',variables('varFileName'))
+      - Try: SharePoint Get file metadata using path (File Path = FullFilePath)
+      - If file exists: Delete file then Create file (same name) OR Update file if available
+      - If not exists: Create file
+      - Create file settings:
+        Site Address: variables('env_SPO_SiteUrl')
+        Folder Path: outputs('TargetFolderPath')
+        File Name: variables('varFileName')
+        File Content: outputs('FileContentBinary')
+
+PATH B (If NO) — Create folder + create doc location + upload
+B1) SharePoint Create new folder:
+    Site Address: variables('env_SPO_SiteUrl')
+    Library: variables('env_SPO_DocLibrary')
+    Folder Name: variables('varTargetFolderName')
+
+B2) Ensure a SharePoint Document Location record exists for this Opportunity folder:
+    - First, find the library-root document location record for the 'opportunity' library (the parent).
+      (Use a Dataverse List rows on sharepointdocumentlocation to find the record where relativeurl = variables('env_SPO_DocLibrary') and parent document location is null.)
+    - Then, Dataverse Add a new row to sharepointdocumentlocation for the Opportunity:
+      Set Regarding = Opportunity (varOppId),
+      Relative URL = varTargetFolderName,
+      Parent Document Location = the library-root document location found above.
+      (Also set Parent Site as required by the table fields in this environment.)
+
+B3) Upload the file to the newly created folder:
+    - Compose TargetFolderPath_New:
+      concat('/', variables('env_SPO_DocLibrary'), '/', variables('varTargetFolderName'))
+    - Apply the same A4 duplicate handling logic (rename/overwrite) but using TargetFolderPath_New.
+
+OPTIONAL NOTE TRACKING (if fields exist)
+On success at end of TRY:
+- Dataverse Update a row (annotation) Row ID: triggerOutputs()?['body/annotationid']
+  new_sharepointsynced = true
+  new_sharepointfileurl = the created file link if available
+  new_sharepointerror = null
+
+CATCH scope:
+- Compose ErrorMessage = string(result('TRY'))
+- Dataverse Update a row (annotation) Row ID: triggerOutputs()?['body/annotationid']
+  new_sharepointsynced = false
+  new_sharepointerror = ErrorMessage
+- Terminate (Failed)
+
+Important constraints:
+- Do NOT copy note text, only the attachment file.
+- Do NOT remove the original note attachment.
+- Files must land under /opportunity/<OpportunityFolder>/ so they appear in the Opportunity Documents tab.
+``
