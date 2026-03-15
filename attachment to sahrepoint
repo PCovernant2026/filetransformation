@@ -7,3 +7,28 @@
 
 
 new_sharepointfileurl → Single line of text
+
+
+
+
+new_name — Single line of text
+
+new_annotationid — Lookup to Note
+
+new_opportunityid — Lookup to Opportunity
+
+new_spsyncstatus — Choice
+
+new_targetfoldername — Single line of text
+
+new_sharepointsynced — Yes/No
+
+new_sharepointerror — Multiple lines of text
+
+new_sharepointfileurl — Single line of text
+
+new_filename — Single line of text
+
+new_processedon — Date and Time
+
+new_attemptcount — Whole number
