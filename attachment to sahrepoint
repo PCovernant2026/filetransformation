@@ -1,34 +1,10 @@
-| Field                  | Type                   | Suggested settings                               |
-| ---------------------- | ---------------------- | ------------------------------------------------ |
-| `new_spsyncstatus`     | Choice                 | Pending, In Progress, Succeeded, Failed, Skipped |
-| `new_targetfoldername` | Single line of text    | Max length 300                                   |
-| `new_sharepointsynced` | Yes/No                 | Default = No                                     |
-| `new_sharepointerror`  | Multiple lines of text | Max length 4000                                  |
-
-
-new_sharepointfileurl → Single line of text
-
-
-
-
-new_name — Single line of text
-
-new_annotationid — Lookup to Note
-
-new_opportunityid — Lookup to Opportunity
-
-new_spsyncstatus — Choice
-
-new_targetfoldername — Single line of text
-
-new_sharepointsynced — Yes/No
-
-new_sharepointerror — Multiple lines of text
-
-new_sharepointfileurl — Single line of text
-
-new_filename — Single line of text
-
-new_processedon — Date and Time
-
-new_attemptcount — Whole number
+| Display Name           | Logical Name            | Data Type              | Required | Purpose                                                    |
+| ---------------------- | ----------------------- | ---------------------- | -------- | ---------------------------------------------------------- |
+| Name                   | `new_name`              | Single line of text    | Yes      | Primary name of the tracking record                        |
+| Opportunity            | `new_opportunityid`     | Lookup to Opportunity  | Yes      | Links the tracking row to the Opportunity                  |
+| Annotation ID          | `new_annotationidtext`  | Single line of text    | Yes      | Stores the Note `annotationid` as text                     |
+| File Name              | `new_filename`          | Single line of text    | Yes      | Stores the original attachment file name                   |
+| SharePoint Sync Status | `new_spsyncstatus`      | Choice                 | Yes      | Tracks Pending, In Progress, Succeeded, Failed, or Skipped |
+| Target Folder Name     | `new_targetfoldername`  | Single line of text    | Yes      | Stores the SharePoint-safe folder name                     |
+| SharePoint Error       | `new_sharepointerror`   | Multiple lines of text | No       | Stores error or skip reason                                |
+| SharePoint File URL    | `new_sharepointfileurl` | Single line of text    | No       | Stores the final SharePoint file URL                       |
