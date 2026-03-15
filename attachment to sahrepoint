@@ -57,6 +57,7 @@ namespace Paul.Crm.Plugins
             var serviceFactory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
             var service = serviceFactory.CreateOrganizationService(context.UserId);
 
+            tracingService.Trace("ENTERED AnnotationToSharePointSyncTrackerPlugin");
             TraceContext(tracingService, context, "START");
 
             try
@@ -175,7 +176,8 @@ namespace Paul.Crm.Plugins
 
                 if (existingRows.Entities.Count > 0)
                 {
-                    tracingService.Trace("EXIT: Tracking row already exists for annotation {0}. Existing tracking row Id: {1}",
+                    tracingService.Trace(
+                        "EXIT: Tracking row already exists for annotation {0}. Existing tracking row Id: {1}",
                         note.Id,
                         existingRows.Entities[0].Id);
                     return;
