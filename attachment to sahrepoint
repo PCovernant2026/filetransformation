@@ -4,7 +4,7 @@
 | Opportunity ID         | `ctp_opportunityid`     | Lookup to Opportunity  | Yes      | Links the tracking row to the Opportunity                  |
 | Annotation ID          | `ctp_annotationid`      | Single line of text    | Yes      | Stores the Note `annotationid` as text                     |
 | Doc Name               | `ctp_docname`           | Single line of text    | Yes      | Stores the original attachment file name                   |
-| SharePoint Sync Status | `ctp_spsyncstatus`      | Choice                 | Yes      | Tracks Pending, In Progress, Succeeded, Failed, or Skipped |
+| SP Sync Status         | `ctp_spsyncstatus`      | Choice                 | Yes      | Tracks Pending, In Progress, Succeeded, Failed, or Skipped |
 | Target Folder Name     | `ctp_targetfoldername`  | Single line of text    | Yes      | Stores the SharePoint-safe folder name                     |
 | SharePoint Error       | `ctp_sharepointerror`   | Multiple lines of text | No       | Stores error or skip reason                                |
 | SharePoint File URL    | `ctp_sharepointfileurl` | Single line of text    | No       | Stores the final SharePoint file URL                       |
