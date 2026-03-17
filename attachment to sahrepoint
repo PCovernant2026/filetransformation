@@ -404,7 +404,6 @@ namespace Paul.Crm.Plugins
 ////////////////////////////////////////////////////
 
 
-
 {
   "type": "If",
   "expression": {
