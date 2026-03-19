@@ -406,6 +406,109 @@ namespace Paul.Crm.Plugins
 /////////////////////////////////////
 
 {
+  "type": "OpenApiConnectionWebhook",
+  "inputs": {
+    "parameters": {
+      "subscriptionRequest/message": 4,
+      "subscriptionRequest/entityname": "ctp_notesharepointsync",
+      "subscriptionRequest/scope": 4,
+      "subscriptionRequest/filterexpression": "ctp_spsyncstatus eq 961490000",
+      "subscriptionRequest/name": "59dad34c-cb20-f111-8342-00224808d3e1"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+      "connection": "shared_commondataserviceforapps",
+      "operationId": "SubscribeWebhookTrigger"
+    }
+  },
+  "metadata": {
+    "operationMetadataId": "98bdd1e3-8d09-40fa-b5b6-7fee9536da54"
+  }
+}
+
+
+{
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
+        "name": "varSiteUrl",
+        "type": "string",
+        "value": "https://wincowindow.sharepoint.com/sites/CRMDocuments"
+      }
+    ]
+  },
+  "runAfter": {},
+  "metadata": {
+    "operationMetadataId": "d9731b67-0e09-44cf-9248-280c93f00efe"
+  }
+}
+
+{
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
+        "name": "varLibraryName",
+        "type": "string",
+        "value": "Opportunity"
+      }
+    ]
+  },
+  "runAfter": {
+    "varSiteUrl": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "bbfe22b6-3e27-4ff9-b202-8ab679289220"
+  }
+}
+
+{
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
+        "name": "varParentFolder",
+        "type": "string",
+        "value": "Opportunity"
+      }
+    ]
+  },
+  "runAfter": {
+    "varLibraryName": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "b6599a33-c570-4f94-bed5-107e2ca2c165"
+  }
+}
+
+{
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
+        "name": "varDuplicateMode",
+        "type": "string",
+        "value": "ctp_DuplicateMode"
+      }
+    ]
+  },
+  "runAfter": {
+    "varParentFolder": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "ac5a6b4b-b545-459c-90a7-d14f137db854"
+  }
+}
+
+
+{
   "type": "If",
   "expression": {
     "equals": [
@@ -861,7 +964,7 @@ namespace Paul.Crm.Plugins
               },
               "FileUrl_": {
                 "type": "Compose",
-                "inputs": "@concat(\r\n  variables('varSiteUrl'),\r\n  '/',\r\n  variables('varLibraryName'),\r\n  '/',\r\n  body('TargetFolderName'),\r\n  '/',\r\n  body('FinalFileName1')\r\n)",
+                "inputs": "@concat(\r\n  variables('varSiteUrl'),\r\n  '/',\r\n  variables('varLibraryName'),\r\n  '/',\r\n  body('TargetFolderName'),\r\n  '/',\r\n  outputs('FinalFileName1')\r\n)",
                 "runAfter": {
                   "Create_file_(Path_B)": [
                     "Succeeded"
