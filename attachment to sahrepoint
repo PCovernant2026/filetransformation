@@ -1136,3 +1136,94 @@ namespace Paul.Crm.Plugins
 updates 
 
 _regardingobjectid_value eq @{outputs('OpportunityId')} and relativeurl eq '@{outputs('TargetFolderName')}'
+
+
+////////////////////////////////////////////////
+
+
+| Environment Variable Display Name      | Suggested Schema Name            | Type | What goes in the value                                                                                                 | Example Value                                           | Actions to update in the flow                                                                                                              |
+| -------------------------------------- | -------------------------------- | ---: | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| SharePoint Site URL                    | `ctp_SharePointSiteUrl`          | Text | Full SharePoint site URL used by SharePoint actions                                                                    | `https://wincowindow.sharepoint.com/sites/CRMDocuments` | `varSiteUrl` initialization, `Create_file`, `Create_file_2`, `Create_new_folder`, `Create_file_(Path_B)`, and all file URL compose actions |
+| SharePoint Library Name                | `ctp_SharePointLibraryName`      | Text | Exact document library name                                                                                            | `Opportunity`                                           | `varLibraryName` initialization, `TargetFolderPath`, `Create_new_folder`, `TargetFolderPath_New`, `FileUrl_A`, `FileUrl_A2_`, `FileUrl_`   |
+| SharePoint Parent Folder Name          | `ctp_SharePointParentFolderName` | Text | Parent folder/library-relative folder name if your design depends on it                                                | `Opportunity`                                           | `varParentFolder` initialization; only needed if you truly use parent folder logic in path construction                                    |
+| Parent SharePoint Document Location ID | `ctp_ParentDocumentLocationId`   | Text | GUID of the parent `sharepointdocumentlocation` row in Dataverse used in the bind when creating new document locations | `cbeb6f18-c321-f111-8341-002248081a6f`                  | `Add_a_new_row` action: `item/parentsiteorlocation_sharepointdocumentlocation@odata.bind`                                                  |
+| Duplicate Handling Mode                | `ctp_DuplicateMode`              | Text | Behavior to use when file name already exists                                                                          | `rename` or `fail`                                      | `varDuplicateMode` initialization, `Duplicate_handling_decision`, `FinalFileName`, `FinalFileName1`                                        |
+
+
+
+
+What each one should contain
+1. SharePoint Site URL
+
+This should be the full site URL, not just the host.
+
+Use:
+
+https://wincowindow.sharepoint.com/sites/CRMDocuments
+
+This replaces:
+
+varSiteUrl = "https://wincowindow.sharepoint.com/sites/CRMDocuments"
+2. SharePoint Library Name
+
+This should be the exact SharePoint library name used by the connector.
+
+Use:
+
+Opportunity
+
+This replaces:
+
+varLibraryName = "Opportunity"
+3. SharePoint Parent Folder Name
+
+Only keep this as an environment variable if you actually use it in logic. Right now your flow initializes:
+
+varParentFolder = "Opportunity"
+
+But in the JSON you shared, it is not doing much useful work. If your path is simply:
+
+/Opportunity/<TargetFolderName>
+
+then this variable may be unnecessary.
+
+If you keep it, value would be:
+
+Opportunity
+4. Parent SharePoint Document Location ID
+
+This is the big one for deployment.
+
+Right now you hardcoded:
+
+/sharepointdocumentlocations(cbeb6f18-c321-f111-8341-002248081a6f)
+
+That GUID will almost certainly be different in Dev, Test, and Prod.
+
+So the environment variable value should be just the GUID:
+
+cbeb6f18-c321-f111-8341-002248081a6f
+
+Then the bind should be built dynamically.
+
+5. Duplicate Handling Mode
+
+Right now your flow initializes:
+
+varDuplicateMode = "ctp_DuplicateMode"
+
+That is just the literal text ctp_DuplicateMode, not the actual mode.
+
+This variable should hold the real behavior value, such as:
+
+rename
+
+or
+
+fail
+
+For your solution, I would recommend:
+
+fail
+
+unless the business explicitly wants same-name files preserved automatically.
