@@ -1131,3 +1131,8 @@ namespace Paul.Crm.Plugins
     "operationMetadataId": "a192c96f-cfb6-4fbe-8fc4-a033828ef95c"
   }
 }
+///////////////////////////////////////
+
+updates 
+
+_regardingobjectid_value eq @{outputs('OpportunityId')} and relativeurl eq '@{outputs('TargetFolderName')}'
