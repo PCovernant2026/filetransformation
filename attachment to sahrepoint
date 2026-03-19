@@ -12,21 +12,27 @@
 
 cbeb6f18-c321-f111-8341-002248081a6f
 
+TargetFolderPath_New
 
-Pending
-961,490,000
-In Progress
-961,490,001
-Succeeded
-961,490,002
-Failed
-961,490,003
-Skipped
-961,490,004
-
-ctp_notesharepointsync
+@concat(
+  '/',
+  variables('varLibraryName'),
+  '/',
+  outputs('TargetFolderName')
+)
 
 
+FileUrl
+
+@concat(
+  variables('varSiteUrl'),
+  '/',
+  variables('varLibraryName'),
+  '/',
+  outputs('TargetFolderName'),
+  '/',
+  outputs('FinalFileName1')
+)
 
 
 //////////////////////////////////////
