@@ -1229,3 +1229,5 @@ fail
 unless the business explicitly wants same-name files preserved automatically.
 
 concat('/sharepointdocumentlocations(', variables('varParentDocumentLocationId'), ')')
+
+/sharepointdocumentlocations(cbeb6f18-c321-f111-8341-002248081a6f)
