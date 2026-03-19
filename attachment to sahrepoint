@@ -1227,3 +1227,5 @@ For your solution, I would recommend:
 fail
 
 unless the business explicitly wants same-name files preserved automatically.
+
+concat('/sharepointdocumentlocations(', variables('varParentDocumentLocationId'), ')')
