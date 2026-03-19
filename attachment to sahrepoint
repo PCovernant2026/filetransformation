@@ -29,6 +29,7 @@ ctp_notesharepointsync
 
 
 
+//////////////////////////////////////
 using System;
 using System.Linq;
 using System.ServiceModel;
@@ -401,8 +402,8 @@ namespace Paul.Crm.Plugins
         }
     }
 }
-////////////////////////////////////////////////////
 
+/////////////////////////////////////
 
 {
   "type": "If",
