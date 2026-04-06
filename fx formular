@@ -1,4 +1,22 @@
 
+If(
+    DateDiff(createdon, Today(), TimeUnit.Days) < 21, 328980000,
+    DateDiff(createdon, Today(), TimeUnit.Days) < 30, 328980001,
+    328980002
+)
+
+
+
+Condition 1: DIFFINDAYS(createdon, Now()) < 21
+Action: set value to 328980000 or Normal
+Else If Condition 2: DIFFINDAYS(createdon, Now()) < 30
+Action: set value to 328980001 or Warning
+Else
+Action: set value to 328980002 or Critical
+
+
+
+
 
 
 "use strict";
