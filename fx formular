@@ -1,3 +1,18 @@
+Table logical Name : product
+
+product 1 
+
+Product name (name) : Concrete - Structural 
+product ID (productnumber) : 000002 
+
+
+Product 2 
+
+Product Name (name) : Concrete - Finish
+product ID (productnumber) : 000001 
+
+
+
 
 If(
     DateDiff(createdon, Today(), TimeUnit.Days) < 21, 328980000,
@@ -6,52 +21,110 @@ If(
 )
 
 
+using System;
+using Microsoft.Xrm.Sdk;
 
-Condition 1: DIFFINDAYS(createdon, Now()) < 21
-Action: set value to 328980000 or Normal
-Else If Condition 2: DIFFINDAYS(createdon, Now()) < 30
-Action: set value to 328980001 or Warning
-Else
-Action: set value to 328980002 or Critical
+namespace VGS.Dynamics365.Plugins
+{
+    /// <summary>
+    /// Plugin that creates two vgsd_holecalculations records when a vgsd_holedetails record is created.
+    /// Register this plugin on the Create message of the vgsd_holedetails entity in PostOperation stage.
+    /// It will set:
+    /// - vgsd_holedetail lookup to the created hole detail
+    /// - vgsd_workorderid if present
+    /// - vgsd_concretetype (Finishing / Structural)
+    /// </summary>
+    public class Class1 : IPlugin
+    {
+        public void Execute(IServiceProvider serviceProvider)
+        {
+            if (serviceProvider == null) throw new ArgumentNullException(nameof(serviceProvider));
 
+            var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            var tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            var factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+            var service = factory.CreateOrganizationService(context.UserId);
 
+            try
+            {
+                // Validate target
+                if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity target))
+                {
+                    tracing?.Trace("Target not found or invalid.");
+                    return;
+                }
 
+                if (!string.Equals(target.LogicalName, "vgsd_holedetails", StringComparison.OrdinalIgnoreCase))
+                {
+                    tracing?.Trace($"Plugin invoked for entity '{target.LogicalName}', expected 'vgsd_holedetails'.");
+                    return;
+                }
 
+                // Get created record ID
+                Guid holeDetailId = Guid.Empty;
 
+                if (context.OutputParameters != null && context.OutputParameters.Contains("id"))
+                {
+                    holeDetailId = (Guid)context.OutputParameters["id"];
+                }
+                else if (target.Id != Guid.Empty)
+                {
+                    holeDetailId = target.Id;
+                }
 
-"use strict";
+                if (holeDetailId == Guid.Empty)
+                {
+                    tracing?.Trace("Could not determine created hole detail id.");
+                    return;
+                }
 
-function vgsd_getAgingIcon(rowData, userLCID) {
-    try {
-        var str = JSON.parse(rowData);
-        var coldata = str.vgsd_agingstatus_Value || str.vgsd_agingstatus;
-        var imgName = "";
-        var tooltip = "";
+                // Get Work Order lookup if exists
+                EntityReference workOrderRef = null;
 
-        switch (parseInt(coldata, 10)) {
-            case 328980000:
-                imgName = "vgsd_greenicon";
-                tooltip = "Normal: less than 21 days old";
-                break;
+                if (target.Contains("vgsd_workorderid") && target["vgsd_workorderid"] is EntityReference wref)
+                {
+                    workOrderRef = wref;
+                }
 
-            case 328980001:
-                imgName = "vgsd_yellowIcon";
-                tooltip = "Warning: 21 to 29 days old";
-                break;
+                // OptionSet values
+                const int FINISHING = 328980000;
+                const int STRUCTURAL = 328980001;
 
-            case 328980002:
-                imgName = "vgsd_RedIcon";
-                tooltip = "Critical: 30 or more days old";
-                break;
+                // Create two hole calculation records
+                for (int i = 0; i < 2; i++)
+                {
+                    var calc = new Entity("vgsd_holecalculations");
 
-            default:
-                imgName = "";
-                tooltip = "";
-                break;
+                    // Link to hole detail
+                    calc["vgsd_holedetail"] = new EntityReference("vgsd_holedetails", holeDetailId);
+
+                    // Copy work order if present
+                    if (workOrderRef != null)
+                    {
+                        calc["vgsd_workorderid"] = workOrderRef;
+                    }
+
+                    // Set concrete type
+                    if (i == 0)
+                    {
+                        calc["vgsd_concretetype"] = new OptionSetValue(FINISHING);
+                    }
+                    else
+                    {
+                        calc["vgsd_concretetype"] = new OptionSetValue(STRUCTURAL);
+                    }
+
+                    // Optional naming
+                    calc["vgsd_name"] = $"Hole Calculation {i + 1} for {holeDetailId:D}";
+
+                    service.Create(calc);
+                }
+            }
+            catch (Exception ex)
+            {
+                tracing?.Trace("Class1 plugin error: {0}", ex.ToString());
+                throw;
+            }
         }
-
-        return [imgName, tooltip];
-    } catch (e) {
-        return ["", ""];
     }
 }
