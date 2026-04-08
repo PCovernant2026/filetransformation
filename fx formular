@@ -1,3 +1,10 @@
+determine the parent Work Order
+collect all Hole Calculations for that Work Order
+group them by product
+sum the Volume
+update the 2 Work Order Product records
+
+
 Here is the relationship as I understand it:
 
 Work Order
