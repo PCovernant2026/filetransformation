@@ -1,3 +1,31 @@
+
+CrmServiceClient ctpService;
+            EntityReference workOrder = new EntityReference();
+            QueryExpression holeCalculationSearch = new QueryExpression()
+            {
+                EntityName = "vgs_holecaluclation",
+                ColumnSet = new ColumnSet(false),
+                Criteria =
+                {
+                    Conditions =
+                    {
+                        new ConditionExpression("vgs_workorderid", ConditionOperator.Equal, workOrder.Id),
+                        new ConditionExpression("vgs_volume", ConditionOperator.NotNull),
+                        new ConditionExpression("statecode", ConditionOperator.Equal, 0),//Active
+                        new ConditionExpression("vgs_productid", ConditionOperator.NotNull),//Active
+                    }
+                }
+            };
+            EntityCollection results = ctpService.RetrieveMultiple(holeCalculationSearch);
+            List<EntityReference> unquieProducts = results.Entities.Select(x => (EntityReference)x["vgs_productid"]).Distinct().ToList();
+
+
+
+
+
+
+
+
 Hole Calculation volume field
 Work Order Product table logical name
 Work Order Product total volume field
