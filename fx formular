@@ -1,30 +1,6 @@
-determine the parent Work Order
-collect all Hole Calculations for that Work Order
-group them by product
-sum the Volume
-update the 2 Work Order Product records
-
-
-Here is the relationship as I understand it:
-
-Work Order
-has many Hole Details
-each Hole Detail has 2 Hole Calculations
-one Hole Calculation has product 000002 = Structural
-one Hole Calculation has product 000001 = Finish
-
-Each Hole Calculation also has a Volume field.
-
-Then you have another table, which I understand as Work Order Product, where for each Work Order you keep a rolled-up total by product type:
-
-one Work Order Product row for Structural
-one Work Order Product row for Finish
-
-And the value on each Work Order Product row should be:
-
-Structural total = sum of all Hole Calculation volumes for that Work Order where vgsd_product = 000002
-Finish total = sum of all Hole Calculation volumes for that Work Order where vgsd_product = 000001
-
-So in plain words:
-
-For a given Work Order, you want to aggregate all related Hole Calculation volumes by product type, and update the corresponding Work Order Product records with those totals.
+Hole Calculation volume field
+Work Order Product table logical name
+Work Order Product total volume field
+Work Order Product lookup to Work Order
+Work Order Product lookup to Product
+Whether Hole Calculation has direct lookup to Work Order or only through Hole Detail
