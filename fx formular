@@ -11,7 +11,6 @@ namespace VGS.Dynamics365.Plugins
     /// - Message: Create
     /// - Primary Entity: vgsd_holedetails
     /// - Stage: PostOperation
-    /// - Execution Mode: Synchronous or Asynchronous
     ///
     /// Logic:
     /// - Creates 2 related vgsd_holecalculations records
@@ -40,17 +39,24 @@ namespace VGS.Dynamics365.Plugins
             if (serviceProvider == null)
                 throw new ArgumentNullException(nameof(serviceProvider));
 
-            var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
-            var tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
-            var factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
-            var service = factory.CreateOrganizationService(context.UserId);
+            IPluginExecutionContext context =
+                (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
 
-            tracing.Trace("CreateHoleCalculationsOnHoleDetailCreate started. Message={0}, PrimaryEntity={1}, Depth={2}, Mode={3}, Stage={4}",
+            ITracingService tracing =
+                (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+
+            IOrganizationServiceFactory factory =
+                (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+
+            IOrganizationService service = factory.CreateOrganizationService(context.UserId);
+
+            tracing.Trace(
+                "CreateHoleCalculationsOnHoleDetailCreate started. Message={0}, PrimaryEntity={1}, Depth={2}, Mode={3}, Stage={4}",
                 context.MessageName, context.PrimaryEntityName, context.Depth, context.Mode, context.Stage);
 
             try
             {
-                // Safety check: only run on Create of vgsd_holedetails
+                // Run only for Create of vgsd_holedetails
                 if (!string.Equals(context.MessageName, "Create", StringComparison.OrdinalIgnoreCase))
                 {
                     tracing.Trace("Exiting: Message is not Create.");
@@ -63,27 +69,30 @@ namespace VGS.Dynamics365.Plugins
                     return;
                 }
 
-                // Depth guard
+                // Prevent unintended recursion
                 if (context.Depth > 1)
                 {
-                    tracing.Trace("Exiting: Depth > 1 to prevent unintended recursion.");
+                    tracing.Trace("Exiting: Depth > 1.");
                     return;
                 }
 
                 // Validate target
-                if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity target))
+                if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity))
                 {
                     tracing.Trace("Exiting: Target not found or invalid.");
                     return;
                 }
 
+                Entity target = (Entity)context.InputParameters["Target"];
+
                 if (!string.Equals(target.LogicalName, HoleDetailsEntityName, StringComparison.OrdinalIgnoreCase))
                 {
-                    tracing.Trace("Exiting: Target logical name {0} does not match expected {1}.", target.LogicalName, HoleDetailsEntityName);
+                    tracing.Trace("Exiting: Target logical name {0} does not match expected {1}.",
+                        target.LogicalName, HoleDetailsEntityName);
                     return;
                 }
 
-                var holeDetailId = GetCreatedRecordId(context, target, tracing);
+                Guid holeDetailId = GetCreatedRecordId(context, target, tracing);
                 if (holeDetailId == Guid.Empty)
                 {
                     tracing.Trace("Exiting: Could not determine created hole detail ID.");
@@ -99,29 +108,33 @@ namespace VGS.Dynamics365.Plugins
                     return;
                 }
 
-                var workOrderRef = target.GetAttributeValue<EntityReference>(WorkOrderField);
-                if (workOrderRef != null)
+                EntityReference workOrderRef = null;
+                if (target.Attributes.Contains(WorkOrderField) && target[WorkOrderField] is EntityReference)
                 {
-                    tracing.Trace("Work order found: {0} ({1})", workOrderRef.Name, workOrderRef.Id);
+                    workOrderRef = (EntityReference)target[WorkOrderField];
+                    tracing.Trace("Work order found: Id={0}, Name={1}", workOrderRef.Id, workOrderRef.Name);
                 }
                 else
                 {
                     tracing.Trace("No work order found on source hole detail.");
                 }
 
-                var structuralProductRef = GetProductReferenceByNumber(service, StructuralProductNumber, tracing);
-                var finishProductRef = GetProductReferenceByNumber(service, FinishProductNumber, tracing);
+                EntityReference structuralProductRef =
+                    GetProductReferenceByNumber(service, StructuralProductNumber, tracing);
+
+                EntityReference finishProductRef =
+                    GetProductReferenceByNumber(service, FinishProductNumber, tracing);
 
                 if (structuralProductRef == null)
                 {
                     throw new InvalidPluginExecutionException(
-                        $"Required product not found. productnumber = {StructuralProductNumber} (Concrete - Structural).");
+                        "Required product not found. productnumber = 000002 (Concrete - Structural).");
                 }
 
                 if (finishProductRef == null)
                 {
                     throw new InvalidPluginExecutionException(
-                        $"Required product not found. productnumber = {FinishProductNumber} (Concrete - Finish).");
+                        "Required product not found. productnumber = 000001 (Concrete - Finish).");
                 }
 
                 CreateHoleCalculation(
@@ -140,11 +153,12 @@ namespace VGS.Dynamics365.Plugins
                     "Hole Calculation - Finish",
                     tracing);
 
-                tracing.Trace("CreateHoleCalculationsOnHoleDetailCreate completed successfully for hole detail {0}.", holeDetailId);
+                tracing.Trace("CreateHoleCalculationsOnHoleDetailCreate completed successfully for hole detail {0}.",
+                    holeDetailId);
             }
             catch (Exception ex)
             {
-                tracing.Trace("CreateHoleCalculationsOnHoleDetailCreate error: {0}", ex);
+                tracing.Trace("CreateHoleCalculationsOnHoleDetailCreate error: {0}", ex.ToString());
                 throw;
             }
         }
@@ -153,7 +167,7 @@ namespace VGS.Dynamics365.Plugins
         {
             if (context.OutputParameters != null && context.OutputParameters.Contains("id"))
             {
-                var id = (Guid)context.OutputParameters["id"];
+                Guid id = (Guid)context.OutputParameters["id"];
                 tracing.Trace("Record ID obtained from OutputParameters: {0}", id);
                 return id;
             }
@@ -170,7 +184,7 @@ namespace VGS.Dynamics365.Plugins
 
         private static bool HoleCalculationsAlreadyExist(IOrganizationService service, Guid holeDetailId, ITracingService tracing)
         {
-            var query = new QueryExpression(HoleCalculationsEntityName)
+            QueryExpression query = new QueryExpression(HoleCalculationsEntityName)
             {
                 ColumnSet = new ColumnSet(false),
                 TopCount = 1
@@ -178,16 +192,18 @@ namespace VGS.Dynamics365.Plugins
 
             query.Criteria.AddCondition(HoleDetailLookupField, ConditionOperator.Equal, holeDetailId);
 
-            var existing = service.RetrieveMultiple(query);
-            var exists = existing.Entities.Count > 0;
+            EntityCollection results = service.RetrieveMultiple(query);
+            bool exists = results.Entities.Count > 0;
 
-            tracing.Trace("Duplicate check for hole detail {0}: Existing hole calculations found = {1}", holeDetailId, exists);
+            tracing.Trace("Duplicate check for hole detail {0}: Existing hole calculations found = {1}",
+                holeDetailId, exists);
+
             return exists;
         }
 
         private static EntityReference GetProductReferenceByNumber(IOrganizationService service, string productNumber, ITracingService tracing)
         {
-            var query = new QueryExpression(ProductEntityName)
+            QueryExpression query = new QueryExpression(ProductEntityName)
             {
                 ColumnSet = new ColumnSet("productid", "name", "productnumber"),
                 TopCount = 1
@@ -195,7 +211,7 @@ namespace VGS.Dynamics365.Plugins
 
             query.Criteria.AddCondition("productnumber", ConditionOperator.Equal, productNumber);
 
-            var results = service.RetrieveMultiple(query);
+            EntityCollection results = service.RetrieveMultiple(query);
 
             if (results.Entities.Count == 0)
             {
@@ -203,12 +219,16 @@ namespace VGS.Dynamics365.Plugins
                 return null;
             }
 
-            var product = results.Entities[0];
-            var productName = product.GetAttributeValue<string>("name");
+            Entity product = results.Entities[0];
+            string productName = product.GetAttributeValue<string>("name");
 
-            tracing.Trace("Product found: Name={0}, ProductNumber={1}, Id={2}", productName, productNumber, product.Id);
+            tracing.Trace("Product found: Name={0}, ProductNumber={1}, Id={2}",
+                productName, productNumber, product.Id);
 
-            return new EntityReference(ProductEntityName, product.Id, productName);
+            EntityReference productRef = new EntityReference(ProductEntityName, product.Id);
+            productRef.Name = productName;
+
+            return productRef;
         }
 
         private static void CreateHoleCalculation(
@@ -219,18 +239,18 @@ namespace VGS.Dynamics365.Plugins
             string recordName,
             ITracingService tracing)
         {
-            var holeCalculation = new Entity(HoleCalculationsEntityName);
+            Entity holeCalculation = new Entity(HoleCalculationsEntityName);
 
             holeCalculation[HoleDetailLookupField] = new EntityReference(HoleDetailsEntityName, holeDetailId);
             holeCalculation[ProductLookupField] = productRef;
-            holeCalculation[NameField] = $"{recordName} - {holeDetailId:D}";
+            holeCalculation[NameField] = string.Format("{0} - {1}", recordName, holeDetailId.ToString("D"));
 
             if (workOrderRef != null)
             {
                 holeCalculation[WorkOrderField] = workOrderRef;
             }
 
-            var createdId = service.Create(holeCalculation);
+            Guid createdId = service.Create(holeCalculation);
 
             tracing.Trace(
                 "Created hole calculation. Id={0}, HoleDetailId={1}, ProductId={2}, ProductName={3}, Name={4}",
