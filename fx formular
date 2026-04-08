@@ -1,130 +1,244 @@
-Table logical Name : product
-
-product 1 
-
-Product name (name) : Concrete - Structural 
-product ID (productnumber) : 000002 
-
-
-Product 2 
-
-Product Name (name) : Concrete - Finish
-product ID (productnumber) : 000001 
-
-
-
-
-If(
-    DateDiff(createdon, Today(), TimeUnit.Days) < 21, 328980000,
-    DateDiff(createdon, Today(), TimeUnit.Days) < 30, 328980001,
-    328980002
-)
-
-
 using System;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
 
 namespace VGS.Dynamics365.Plugins
 {
     /// <summary>
-    /// Plugin that creates two vgsd_holecalculations records when a vgsd_holedetails record is created.
-    /// Register this plugin on the Create message of the vgsd_holedetails entity in PostOperation stage.
-    /// It will set:
-    /// - vgsd_holedetail lookup to the created hole detail
-    /// - vgsd_workorderid if present
-    /// - vgsd_concretetype (Finishing / Structural)
+    /// Creates two vgsd_holecalculations records when a vgsd_holedetails record is created.
+    ///
+    /// Registration:
+    /// - Message: Create
+    /// - Primary Entity: vgsd_holedetails
+    /// - Stage: PostOperation
+    /// - Execution Mode: Synchronous or Asynchronous
+    ///
+    /// Logic:
+    /// - Creates 2 related vgsd_holecalculations records
+    /// - Sets vgsd_holedetail lookup
+    /// - Sets vgsd_workorderid if present on the source record
+    /// - Sets vgsd_product lookup:
+    ///      Concrete - Structural -> productnumber = 000002
+    ///      Concrete - Finish     -> productnumber = 000001
     /// </summary>
-    public class Class1 : IPlugin
+    public class CreateHoleCalculationsOnHoleDetailCreate : IPlugin
     {
+        private const string HoleDetailsEntityName = "vgsd_holedetails";
+        private const string HoleCalculationsEntityName = "vgsd_holecalculations";
+        private const string ProductEntityName = "product";
+
+        private const string HoleDetailLookupField = "vgsd_holedetail";
+        private const string WorkOrderField = "vgsd_workorderid";
+        private const string ProductLookupField = "vgsd_product";
+        private const string NameField = "vgsd_name";
+
+        private const string StructuralProductNumber = "000002";
+        private const string FinishProductNumber = "000001";
+
         public void Execute(IServiceProvider serviceProvider)
         {
-            if (serviceProvider == null) throw new ArgumentNullException(nameof(serviceProvider));
+            if (serviceProvider == null)
+                throw new ArgumentNullException(nameof(serviceProvider));
 
             var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
             var tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
             var factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
             var service = factory.CreateOrganizationService(context.UserId);
 
+            tracing.Trace("CreateHoleCalculationsOnHoleDetailCreate started. Message={0}, PrimaryEntity={1}, Depth={2}, Mode={3}, Stage={4}",
+                context.MessageName, context.PrimaryEntityName, context.Depth, context.Mode, context.Stage);
+
             try
             {
+                // Safety check: only run on Create of vgsd_holedetails
+                if (!string.Equals(context.MessageName, "Create", StringComparison.OrdinalIgnoreCase))
+                {
+                    tracing.Trace("Exiting: Message is not Create.");
+                    return;
+                }
+
+                if (!string.Equals(context.PrimaryEntityName, HoleDetailsEntityName, StringComparison.OrdinalIgnoreCase))
+                {
+                    tracing.Trace("Exiting: Primary entity is not {0}.", HoleDetailsEntityName);
+                    return;
+                }
+
+                // Depth guard
+                if (context.Depth > 1)
+                {
+                    tracing.Trace("Exiting: Depth > 1 to prevent unintended recursion.");
+                    return;
+                }
+
                 // Validate target
                 if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity target))
                 {
-                    tracing?.Trace("Target not found or invalid.");
+                    tracing.Trace("Exiting: Target not found or invalid.");
                     return;
                 }
 
-                if (!string.Equals(target.LogicalName, "vgsd_holedetails", StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(target.LogicalName, HoleDetailsEntityName, StringComparison.OrdinalIgnoreCase))
                 {
-                    tracing?.Trace($"Plugin invoked for entity '{target.LogicalName}', expected 'vgsd_holedetails'.");
+                    tracing.Trace("Exiting: Target logical name {0} does not match expected {1}.", target.LogicalName, HoleDetailsEntityName);
                     return;
                 }
 
-                // Get created record ID
-                Guid holeDetailId = Guid.Empty;
-
-                if (context.OutputParameters != null && context.OutputParameters.Contains("id"))
-                {
-                    holeDetailId = (Guid)context.OutputParameters["id"];
-                }
-                else if (target.Id != Guid.Empty)
-                {
-                    holeDetailId = target.Id;
-                }
-
+                var holeDetailId = GetCreatedRecordId(context, target, tracing);
                 if (holeDetailId == Guid.Empty)
                 {
-                    tracing?.Trace("Could not determine created hole detail id.");
+                    tracing.Trace("Exiting: Could not determine created hole detail ID.");
                     return;
                 }
 
-                // Get Work Order lookup if exists
-                EntityReference workOrderRef = null;
+                tracing.Trace("Hole detail ID resolved: {0}", holeDetailId);
 
-                if (target.Contains("vgsd_workorderid") && target["vgsd_workorderid"] is EntityReference wref)
+                // Duplicate protection
+                if (HoleCalculationsAlreadyExist(service, holeDetailId, tracing))
                 {
-                    workOrderRef = wref;
+                    tracing.Trace("Exiting: Hole calculation records already exist for hole detail {0}.", holeDetailId);
+                    return;
                 }
 
-                // OptionSet values
-                const int FINISHING = 328980000;
-                const int STRUCTURAL = 328980001;
-
-                // Create two hole calculation records
-                for (int i = 0; i < 2; i++)
+                var workOrderRef = target.GetAttributeValue<EntityReference>(WorkOrderField);
+                if (workOrderRef != null)
                 {
-                    var calc = new Entity("vgsd_holecalculations");
-
-                    // Link to hole detail
-                    calc["vgsd_holedetail"] = new EntityReference("vgsd_holedetails", holeDetailId);
-
-                    // Copy work order if present
-                    if (workOrderRef != null)
-                    {
-                        calc["vgsd_workorderid"] = workOrderRef;
-                    }
-
-                    // Set concrete type
-                    if (i == 0)
-                    {
-                        calc["vgsd_concretetype"] = new OptionSetValue(FINISHING);
-                    }
-                    else
-                    {
-                        calc["vgsd_concretetype"] = new OptionSetValue(STRUCTURAL);
-                    }
-
-                    // Optional naming
-                    calc["vgsd_name"] = $"Hole Calculation {i + 1} for {holeDetailId:D}";
-
-                    service.Create(calc);
+                    tracing.Trace("Work order found: {0} ({1})", workOrderRef.Name, workOrderRef.Id);
                 }
+                else
+                {
+                    tracing.Trace("No work order found on source hole detail.");
+                }
+
+                var structuralProductRef = GetProductReferenceByNumber(service, StructuralProductNumber, tracing);
+                var finishProductRef = GetProductReferenceByNumber(service, FinishProductNumber, tracing);
+
+                if (structuralProductRef == null)
+                {
+                    throw new InvalidPluginExecutionException(
+                        $"Required product not found. productnumber = {StructuralProductNumber} (Concrete - Structural).");
+                }
+
+                if (finishProductRef == null)
+                {
+                    throw new InvalidPluginExecutionException(
+                        $"Required product not found. productnumber = {FinishProductNumber} (Concrete - Finish).");
+                }
+
+                CreateHoleCalculation(
+                    service,
+                    holeDetailId,
+                    workOrderRef,
+                    structuralProductRef,
+                    "Hole Calculation - Structural",
+                    tracing);
+
+                CreateHoleCalculation(
+                    service,
+                    holeDetailId,
+                    workOrderRef,
+                    finishProductRef,
+                    "Hole Calculation - Finish",
+                    tracing);
+
+                tracing.Trace("CreateHoleCalculationsOnHoleDetailCreate completed successfully for hole detail {0}.", holeDetailId);
             }
             catch (Exception ex)
             {
-                tracing?.Trace("Class1 plugin error: {0}", ex.ToString());
+                tracing.Trace("CreateHoleCalculationsOnHoleDetailCreate error: {0}", ex);
                 throw;
             }
+        }
+
+        private static Guid GetCreatedRecordId(IPluginExecutionContext context, Entity target, ITracingService tracing)
+        {
+            if (context.OutputParameters != null && context.OutputParameters.Contains("id"))
+            {
+                var id = (Guid)context.OutputParameters["id"];
+                tracing.Trace("Record ID obtained from OutputParameters: {0}", id);
+                return id;
+            }
+
+            if (target.Id != Guid.Empty)
+            {
+                tracing.Trace("Record ID obtained from Target.Id: {0}", target.Id);
+                return target.Id;
+            }
+
+            tracing.Trace("Unable to determine record ID from context.");
+            return Guid.Empty;
+        }
+
+        private static bool HoleCalculationsAlreadyExist(IOrganizationService service, Guid holeDetailId, ITracingService tracing)
+        {
+            var query = new QueryExpression(HoleCalculationsEntityName)
+            {
+                ColumnSet = new ColumnSet(false),
+                TopCount = 1
+            };
+
+            query.Criteria.AddCondition(HoleDetailLookupField, ConditionOperator.Equal, holeDetailId);
+
+            var existing = service.RetrieveMultiple(query);
+            var exists = existing.Entities.Count > 0;
+
+            tracing.Trace("Duplicate check for hole detail {0}: Existing hole calculations found = {1}", holeDetailId, exists);
+            return exists;
+        }
+
+        private static EntityReference GetProductReferenceByNumber(IOrganizationService service, string productNumber, ITracingService tracing)
+        {
+            var query = new QueryExpression(ProductEntityName)
+            {
+                ColumnSet = new ColumnSet("productid", "name", "productnumber"),
+                TopCount = 1
+            };
+
+            query.Criteria.AddCondition("productnumber", ConditionOperator.Equal, productNumber);
+
+            var results = service.RetrieveMultiple(query);
+
+            if (results.Entities.Count == 0)
+            {
+                tracing.Trace("No product found with productnumber = {0}", productNumber);
+                return null;
+            }
+
+            var product = results.Entities[0];
+            var productName = product.GetAttributeValue<string>("name");
+
+            tracing.Trace("Product found: Name={0}, ProductNumber={1}, Id={2}", productName, productNumber, product.Id);
+
+            return new EntityReference(ProductEntityName, product.Id, productName);
+        }
+
+        private static void CreateHoleCalculation(
+            IOrganizationService service,
+            Guid holeDetailId,
+            EntityReference workOrderRef,
+            EntityReference productRef,
+            string recordName,
+            ITracingService tracing)
+        {
+            var holeCalculation = new Entity(HoleCalculationsEntityName);
+
+            holeCalculation[HoleDetailLookupField] = new EntityReference(HoleDetailsEntityName, holeDetailId);
+            holeCalculation[ProductLookupField] = productRef;
+            holeCalculation[NameField] = $"{recordName} - {holeDetailId:D}";
+
+            if (workOrderRef != null)
+            {
+                holeCalculation[WorkOrderField] = workOrderRef;
+            }
+
+            var createdId = service.Create(holeCalculation);
+
+            tracing.Trace(
+                "Created hole calculation. Id={0}, HoleDetailId={1}, ProductId={2}, ProductName={3}, Name={4}",
+                createdId,
+                holeDetailId,
+                productRef.Id,
+                productRef.Name,
+                holeCalculation[NameField]);
         }
     }
 }
