@@ -1,53 +1,11 @@
-
-RecalculateWorkOrderProductTotalsPlugin started. Message=Update, PrimaryEntity=vgsd_holecalculations, Stage=40, Mode=1, Depth=1, CorrelationId=00bf3a09-b234-41d4-aeb3-214468444d29
+RecalculateWorkOrderProductTotalsPlugin started. Message=Update, PrimaryEntity=vgsd_holecalculations, Stage=40, Mode=1, Depth=1
 ResolveWorkOrderIdFromHoleCalculation: source row is null.
-Loaded product info. ProductId=d7fb51b3-fe31-f111-88b4-7c1e5269a426, ProductNumber=000001, ProductName=Concrete - Finish
-Recalculating Work Order Products for Work Order 487df8fc-6f76-f011-b4cb-000d3a1d5335.
-Found 1 Hole Detail rows for Work Order 487df8fc-6f76-f011-b4cb-000d3a1d5335.
-Retrieved 2 Hole Calculation rows for Work Order 487df8fc-6f76-f011-b4cb-000d3a1d5335.
-Loaded product info. ProductId=855ae276-c332-f111-88b4-7c1e5269a426, ProductNumber=000002, ProductName=Concrete - Structural
-Subtotal -> WorkOrder=487df8fc-6f76-f011-b4cb-000d3a1d5335, ProductId=855ae276-c332-f111-88b4-7c1e5269a426, ProductNumber=000002, ProductName=Concrete - Structural, Quantity=222.2200000000
-Subtotal -> WorkOrder=487df8fc-6f76-f011-b4cb-000d3a1d5335, ProductId=d7fb51b3-fe31-f111-88b4-7c1e5269a426, ProductNumber=000001, ProductName=Concrete - Finish, Quantity=833.3300000000
-Updated Work Order Product. Id=7abad752-5a34-f111-88b4-7c1e5269a426, WorkOrder=487df8fc-6f76-f011-b4cb-000d3a1d5335, ProductKey=000002, OldQuantity=0, NewQuantity=222.2200000000
-Updated Work Order Product. Id=e9cd41f4-5734-f111-88b4-7c1e5269a426, WorkOrder=487df8fc-6f76-f011-b4cb-000d3a1d5335, ProductKey=000001, OldQuantity=0, NewQuantity=833.3300000000
+Resolved Work Order 4c7df8fc-6f76-f011-b4cb-000d3a1d5335 from Hole Detail a1ff4625-3714-f111-8407-00224826ccfb.
+ResolveProductIdFromHoleCalculation: Product not found.
+Recalculating Work Order Product totals for Work Order 4c7df8fc-6f76-f011-b4cb-000d3a1d5335.
+Found 2 Hole Detail rows for Work Order 4c7df8fc-6f76-f011-b4cb-000d3a1d5335.
+Calculated totals for Work Order 4c7df8fc-6f76-f011-b4cb-000d3a1d5335. ProductCount=0
 RecalculateWorkOrderProductTotalsPlugin completed successfully.
-
-
-
-RecalculateWorkOrderProductTotalsPlugin started. Message=Update, PrimaryEntity=vgsd_holecalculations, Stage=40, Mode=1, Depth=1, CorrelationId=1553e277-8877-42dd-8245-6f9e1ba49222
-ResolveWorkOrderIdFromHoleCalculation: source row is null.
-Loaded product info. ProductId=d7fb51b3-fe31-f111-88b4-7c1e5269a426, ProductNumber=000001, ProductName=Concrete - Finish
-Recalculating Work Order Products for Work Order 487df8fc-6f76-f011-b4cb-000d3a1d5335.
-Found 1 Hole Detail rows for Work Order 487df8fc-6f76-f011-b4cb-000d3a1d5335.
-Retrieved 2 Hole Calculation rows for Work Order 487df8fc-6f76-f011-b4cb-000d3a1d5335.
-Loaded product info. ProductId=855ae276-c332-f111-88b4-7c1e5269a426, ProductNumber=000002, ProductName=Concrete - Structural
-Subtotal -> WorkOrder=487df8fc-6f76-f011-b4cb-000d3a1d5335, ProductId=855ae276-c332-f111-88b4-7c1e5269a426, ProductNumber=000002, ProductName=Concrete - Structural, Quantity=222.2200000000
-Subtotal -> WorkOrder=487df8fc-6f76-f011-b4cb-000d3a1d5335, ProductId=d7fb51b3-fe31-f111-88b4-7c1e5269a426, ProductNumber=000001, ProductName=Concrete - Finish, Quantity=416.6700000000
-RecalculateWorkOrderProductTotalsPlugin error: System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal (Fault Detail is equal to Exception details: 
-ErrorCode: 0x80040203
-Message: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal
-TimeStamp: 2026-04-09T21:15:15.0000000Z
-OriginalException: System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal (Fault Detail is equal to Exception details: 
-ErrorCode: 0x80040203
-Message: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal
-TimeStamp: 2026-04-09T21:15:15.1809148Z
---
-Exception details: 
-ErrorCode: 0x80040203
-Message: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal
-TimeStamp: 2026-04-09T21:15:15.1809148Z
---
-Exception details: 
-ErrorCod...).
-
-
-
-
-
-
-
-
-
 
 
 
