@@ -1,4 +1,74 @@
+3. Register the assembly
 
+Use the Plug-in Registration Tool to register the built DLL into Dataverse. Microsoft documents PRT as the standard tool for registering plugin assemblies and steps, and for Dataverse online you keep the default assembly options as Sandbox and Database.
+
+4. Register 3 plugin steps
+
+Create these three steps against the same plugin class:
+
+Create
+Primary Entity: vgsd_holecalculations
+Stage: PostOperation
+Mode: Asynchronous
+Update
+Primary Entity: vgsd_holecalculations
+Stage: PostOperation
+Mode: Asynchronous
+Delete
+Primary Entity: vgsd_holecalculations
+Stage: PostOperation
+Mode: Asynchronous
+
+Microsoft’s registration docs confirm that step registration is where you choose the message, entity, stage, and sync vs async behavior.
+
+5. Add filtering attributes on the Update step
+
+For the Update step, set filtering attributes to only:
+
+vgsd_holedetail
+vgsd_product
+vgsd_volumecubicft
+
+That keeps the plugin from firing on unrelated edits and is the right setup for your logic, since those are the values that can change the aggregate. The event framework and execution context docs explain that step configuration controls when your extension runs and what data is passed through the pipeline.
+
+6. Add entity images
+
+For Update, add:
+
+PreImage named PreImage
+PostImage named PostImage
+
+Include these columns in both:
+
+vgsd_holedetail
+vgsd_product
+vgsd_volumecubicft
+
+For Delete, add:
+
+PreImage named PreImage
+
+Include the same three columns.
+
+This matters because your plugin needs the old values on Update/Delete to recalculate the prior Work Order or prior Product when a row changes or is removed. Microsoft’s execution-context guidance explains that the pipeline passes contextual data for the operation, including input data and stage-specific values.
+
+7. Set the run-as user correctly
+
+Your code uses:
+
+factory.CreateOrganizationService(context.UserId);
+
+So by default it runs under the calling user’s privileges. If normal users may not have permission to create or update Work Order Product records, register the step to run in the context of an admin/service account instead. Microsoft’s plugin registration guidance supports setting the execution context through step configuration.
+
+8. Add both the assembly and the steps to your unmanaged solution
+
+Registering the assembly puts it into the environment, but Microsoft notes that assembly and steps must both be added to your unmanaged solution if you want to move them cleanly between environments.
+
+
+
+
+
+//////////////////////////////////////////////////////
 Hole Calculation volume field = vgsd_volumecubicft
 hole calculation lookup to hole detail = vgsd_holedetail
 Hole detail lookup to work Order = vgsd_workorderid
