@@ -1,4 +1,20 @@
 
+Hole Calculation volume field = vgsd_volumecubicft
+hole calculation lookup to hole detail = vgsd_holedetail
+Hole detail lookup to work Order = vgsd_workorderid
+Work Order Product table logical name = msdyn_workorder
+Work Order Product total volume field = msdyn_quantity
+Work Order Product lookup to Work Order = msdyn_workorder
+Work Order Product lookup to Product = msdyn_product
+Whether Hole Calculation has direct lookup to Work Order or only through Hole Detail
+
+
+
+
+
+
+
+///////////////////////////////////////////
 CrmServiceClient ctpService;
             EntityReference workOrder = new EntityReference();
             QueryExpression holeCalculationSearch = new QueryExpression()
