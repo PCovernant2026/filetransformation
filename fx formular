@@ -1,24 +1,3 @@
-RecalculateWorkOrderProductTotalsPlugin started. Message=Update, PrimaryEntity=vgsd_holecalculations, Stage=40, Mode=1, Depth=1
-ResolveWorkOrderIdFromHoleCalculation: source row is null.
-Resolved Work Order 4c7df8fc-6f76-f011-b4cb-000d3a1d5335 from Hole Detail a1ff4625-3714-f111-8407-00224826ccfb.
-ResolveProductIdFromHoleCalculation: Product not found.
-Recalculating Work Order Product totals for Work Order 4c7df8fc-6f76-f011-b4cb-000d3a1d5335.
-Found 2 Hole Detail rows for Work Order 4c7df8fc-6f76-f011-b4cb-000d3a1d5335.
-Calculated totals for Work Order 4c7df8fc-6f76-f011-b4cb-000d3a1d5335. ProductCount=0
-RecalculateWorkOrderProductTotalsPlugin completed successfully.
-
-
-
-
-
-
-
-
-
-
-///////////////////////////////////////////////////////////////////
-
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -27,7 +6,7 @@ using Microsoft.Xrm.Sdk.Query;
 
 namespace VGS.Dynamics365.Plugins
 {
-    public sealed class RecalculateWorkOrderProductTotalsPlugin : IPlugin
+    public sealed class RecalculateWorkOrderProductVolumePlugin : IPlugin
     {
         #region Logical Names
 
@@ -39,7 +18,7 @@ namespace VGS.Dynamics365.Plugins
 
         private const string HoleCalculationToHoleDetailField = "vgsd_holedetail";
         private const string HoleCalculationProductField = "vgsd_product";
-        private const string HoleCalculationVolumeField = "vgsd_volumecubicft"; // keep if this is your real logical name
+        private const string HoleCalculationVolumeField = "vgsd_volumecubicft"; // keep only if this is your real schema name
 
         private const string HoleDetailToWorkOrderField = "vgsd_workorderid";
 
@@ -56,14 +35,6 @@ namespace VGS.Dynamics365.Plugins
 
         #endregion
 
-        #region Volume Conversion
-
-        // Your source field is already cubic yards.
-        private const bool SourceVolumeIsCubicFeet = false;
-        private const decimal CubicFeetPerCubicYard = 27m;
-
-        #endregion
-
         public void Execute(IServiceProvider serviceProvider)
         {
             if (serviceProvider == null)
@@ -77,7 +48,7 @@ namespace VGS.Dynamics365.Plugins
             var service = factory.CreateOrganizationService(context.UserId);
 
             tracing.Trace(
-                "RecalculateWorkOrderProductTotalsPlugin started. Message={0}, PrimaryEntity={1}, Stage={2}, Mode={3}, Depth={4}, CorrelationId={5}",
+                "RecalculateWorkOrderProductVolumePlugin started. Message={0}, Entity={1}, Stage={2}, Mode={3}, Depth={4}, CorrelationId={5}",
                 context.MessageName,
                 context.PrimaryEntityName,
                 context.Stage,
@@ -95,13 +66,13 @@ namespace VGS.Dynamics365.Plugins
 
                 if (!string.Equals(context.PrimaryEntityName, HoleCalculationEntityName, StringComparison.OrdinalIgnoreCase))
                 {
-                    tracing.Trace("Exit: primary entity is not {0}.", HoleCalculationEntityName);
+                    tracing.Trace("Exit: unsupported primary entity.");
                     return;
                 }
 
                 if (context.Depth > 2)
                 {
-                    tracing.Trace("Exit: plugin depth exceeded. Depth={0}", context.Depth);
+                    tracing.Trace("Exit: depth > 2.");
                     return;
                 }
 
@@ -117,244 +88,490 @@ namespace VGS.Dynamics365.Plugins
                 Entity preImage = GetPreImage(context, "PreImage");
                 Entity postImage = GetPostImage(context, "PostImage");
 
-                var impactedWorkOrderIds = new HashSet<Guid>();
-                var impactedProductKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var productCache = new Dictionary<Guid, ProductInfo>();
+                var requests = new List<RecalcRequest>();
 
                 switch (context.MessageName)
                 {
                     case "Create":
+                    {
+                        Entity current = postImage ?? targetEntity;
+
+                        if (current == null || current.Id == Guid.Empty || !HasMinimumHoleCalcFields(current))
                         {
-                            Entity current = postImage ?? targetEntity;
-
-                            if ((current == null || !current.Contains(HoleCalculationToHoleDetailField)) &&
-                                targetEntity != null)
+                            Guid createdId = GetCreatedRecordId(context, targetEntity);
+                            if (createdId != Guid.Empty)
                             {
-                                Guid createdId = GetCreatedRecordId(context, targetEntity);
-                                if (createdId != Guid.Empty)
-                                {
-                                    current = service.Retrieve(
-                                        HoleCalculationEntityName,
-                                        createdId,
-                                        new ColumnSet(
-                                            HoleCalculationToHoleDetailField,
-                                            HoleCalculationProductField,
-                                            HoleCalculationVolumeField));
-                                }
+                                current = RetrieveHoleCalculation(service, createdId);
                             }
-
-                            Guid workOrderId = ResolveWorkOrderIdFromHoleCalculation(service, current, tracing);
-                            string productKey = ResolveProductKeyFromHoleCalculation(service, current, productCache, tracing);
-
-                            AddIfValid(impactedWorkOrderIds, workOrderId);
-                            AddIfValid(impactedProductKeys, productKey);
-
-                            break;
                         }
+
+                        AddRecalcRequest(service, current, requests, tracing);
+                        break;
+                    }
 
                     case "Update":
+                    {
+                        Entity oldRow = preImage;
+                        Entity newRow = postImage ?? targetEntity;
+
+                        if (newRow != null && newRow.Id != Guid.Empty && !HasMinimumHoleCalcFields(newRow))
                         {
-                            Entity oldRow = preImage;
-                            Entity newRow = postImage ?? targetEntity;
-
-                            if ((newRow == null || !newRow.Contains(HoleCalculationToHoleDetailField)) &&
-                                targetEntity != null &&
-                                targetEntity.Id != Guid.Empty)
-                            {
-                                newRow = service.Retrieve(
-                                    HoleCalculationEntityName,
-                                    targetEntity.Id,
-                                    new ColumnSet(
-                                        HoleCalculationToHoleDetailField,
-                                        HoleCalculationProductField,
-                                        HoleCalculationVolumeField));
-                            }
-
-                            Guid oldWorkOrderId = ResolveWorkOrderIdFromHoleCalculation(service, oldRow, tracing);
-                            Guid newWorkOrderId = ResolveWorkOrderIdFromHoleCalculation(service, newRow, tracing);
-
-                            string oldProductKey = ResolveProductKeyFromHoleCalculation(service, oldRow, productCache, tracing);
-                            string newProductKey = ResolveProductKeyFromHoleCalculation(service, newRow, productCache, tracing);
-
-                            AddIfValid(impactedWorkOrderIds, oldWorkOrderId);
-                            AddIfValid(impactedWorkOrderIds, newWorkOrderId);
-                            AddIfValid(impactedProductKeys, oldProductKey);
-                            AddIfValid(impactedProductKeys, newProductKey);
-
-                            break;
+                            newRow = RetrieveHoleCalculation(service, newRow.Id);
                         }
+
+                        AddRecalcRequest(service, oldRow, requests, tracing);
+                        AddRecalcRequest(service, newRow, requests, tracing);
+                        break;
+                    }
 
                     case "Delete":
+                    {
+                        if (preImage == null)
                         {
-                            Entity oldRow = preImage;
-
-                            if (oldRow == null && targetReference != null)
-                            {
-                                tracing.Trace("Delete step requires PreImage.");
-                            }
-
-                            Guid oldWorkOrderId = ResolveWorkOrderIdFromHoleCalculation(service, oldRow, tracing);
-                            string oldProductKey = ResolveProductKeyFromHoleCalculation(service, oldRow, productCache, tracing);
-
-                            AddIfValid(impactedWorkOrderIds, oldWorkOrderId);
-                            AddIfValid(impactedProductKeys, oldProductKey);
-
-                            break;
+                            tracing.Trace("Delete requires PreImage. Nothing to process.");
+                            return;
                         }
+
+                        AddRecalcRequest(service, preImage, requests, tracing);
+                        break;
+                    }
                 }
 
-                if (impactedWorkOrderIds.Count == 0)
+                var distinctRequests = requests
+                    .Where(x => x.WorkOrderId != Guid.Empty && !string.IsNullOrWhiteSpace(x.ProductNumber))
+                    .GroupBy(x => $"{x.WorkOrderId:D}|{x.ProductNumber}", StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First())
+                    .ToList();
+
+                if (!distinctRequests.Any())
                 {
-                    tracing.Trace("Exit: no impacted work orders found.");
+                    tracing.Trace("Exit: no recalculation requests found.");
                     return;
                 }
 
-                foreach (Guid workOrderId in impactedWorkOrderIds)
+                foreach (var request in distinctRequests)
                 {
-                    RecalculateWorkOrderProducts(service, workOrderId, impactedProductKeys, productCache, tracing);
+                    RecalculateForWorkOrderAndProductNumber(service, request, tracing);
                 }
 
-                tracing.Trace("RecalculateWorkOrderProductTotalsPlugin completed successfully.");
+                tracing.Trace("RecalculateWorkOrderProductVolumePlugin completed successfully.");
             }
             catch (Exception ex)
             {
-                tracing.Trace("RecalculateWorkOrderProductTotalsPlugin error: {0}", ex);
-                throw new InvalidPluginExecutionException("An error occurred in RecalculateWorkOrderProductTotalsPlugin.", ex);
+                tracing.Trace("RecalculateWorkOrderProductVolumePlugin error: {0}", ex);
+                throw new InvalidPluginExecutionException(
+                    "An error occurred in RecalculateWorkOrderProductVolumePlugin.",
+                    ex);
             }
         }
 
-        #region Recalculation
+        #region Core Logic
 
-        private static void RecalculateWorkOrderProducts(
+        private static void RecalculateForWorkOrderAndProductNumber(
             IOrganizationService service,
-            Guid workOrderId,
-            HashSet<string> impactedProductKeys,
-            Dictionary<Guid, ProductInfo> productCache,
+            RecalcRequest request,
             ITracingService tracing)
         {
-            tracing.Trace("Recalculating Work Order Products for Work Order {0}.", workOrderId);
+            tracing.Trace(
+                "Recalculating. WorkOrder={0}, ProductNumber={1}, ProductId={2}",
+                request.WorkOrderId,
+                request.ProductNumber,
+                request.ProductRef?.Id);
 
-            List<Guid> holeDetailIds = GetHoleDetailIdsForWorkOrder(service, workOrderId, tracing);
-            var allHoleCalculations = new List<Entity>();
+            decimal totalVolume = GetRolledUpVolumeForWorkOrderAndProductNumber(
+                service,
+                request.WorkOrderId,
+                request.ProductNumber,
+                tracing);
 
-            if (holeDetailIds.Count > 0)
+            tracing.Trace(
+                "Rolled-up volume result. WorkOrder={0}, ProductNumber={1}, TotalVolume={2}",
+                request.WorkOrderId,
+                request.ProductNumber,
+                totalVolume);
+
+            Entity existingWorkOrderProduct = FindExistingWorkOrderProduct(
+                service,
+                request.WorkOrderId,
+                request.ProductRef,
+                request.ProductNumber,
+                tracing);
+
+            if (existingWorkOrderProduct != null)
             {
-                foreach (List<Guid> batch in Chunk(holeDetailIds, 200))
+                decimal existingQty = GetDecimalValue(existingWorkOrderProduct, WorkOrderProductQuantityField);
+
+                if (existingQty != totalVolume)
                 {
-                    var query = new QueryExpression(HoleCalculationEntityName)
-                    {
-                        ColumnSet = new ColumnSet(HoleCalculationProductField, HoleCalculationVolumeField)
-                    };
+                    Entity update = new Entity(WorkOrderProductEntityName, existingWorkOrderProduct.Id);
+                    update[WorkOrderProductQuantityField] = totalVolume;
+                    service.Update(update);
 
-                    query.Criteria.AddCondition(HoleCalculationToHoleDetailField, ConditionOperator.In, batch.Cast<object>().ToArray());
-                    query.Criteria.AddCondition(HoleCalculationProductField, ConditionOperator.NotNull);
-                    query.Criteria.AddCondition(HoleCalculationVolumeField, ConditionOperator.NotNull);
-                    query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
+                    tracing.Trace(
+                        "Updated Work Order Product. WorkOrderProductId={0}, OldQty={1}, NewQty={2}",
+                        existingWorkOrderProduct.Id,
+                        existingQty,
+                        totalVolume);
+                }
+                else
+                {
+                    tracing.Trace(
+                        "No update needed. WorkOrderProductId={0}, msdyn_quantity already = {1}",
+                        existingWorkOrderProduct.Id,
+                        totalVolume);
+                }
 
-                    allHoleCalculations.AddRange(RetrieveAll(service, query));
+                return;
+            }
+
+            if (totalVolume <= 0m)
+            {
+                tracing.Trace(
+                    "No Work Order Product exists and total volume is zero. Skipping create. WorkOrder={0}, ProductNumber={1}",
+                    request.WorkOrderId,
+                    request.ProductNumber);
+                return;
+            }
+
+            EntityReference productToCreate = request.ProductRef;
+
+            if (productToCreate == null)
+            {
+                tracing.Trace(
+                    "ProductRef was null on request. Attempting fallback by product number {0}",
+                    request.ProductNumber);
+
+                productToCreate = ResolveProductReferenceByProductNumber(service, request.ProductNumber, tracing);
+            }
+
+            if (productToCreate == null)
+            {
+                tracing.Trace(
+                    "Unable to resolve product reference for create. WorkOrder={0}, ProductNumber={1}",
+                    request.WorkOrderId,
+                    request.ProductNumber);
+                return;
+            }
+
+            Entity create = new Entity(WorkOrderProductEntityName);
+            create[WorkOrderProductToWorkOrderField] = new EntityReference(WorkOrderEntityName, request.WorkOrderId);
+            create[WorkOrderProductToProductField] = productToCreate;
+            create[WorkOrderProductQuantityField] = totalVolume;
+            create[WorkOrderProductNameField] = $"Aggregated total for Work Order {request.WorkOrderId}";
+
+            Guid createdId = service.Create(create);
+
+            tracing.Trace(
+                "Created Work Order Product. Id={0}, WorkOrder={1}, ProductId={2}, ProductNumber={3}, msdyn_quantity={4}",
+                createdId,
+                request.WorkOrderId,
+                productToCreate.Id,
+                request.ProductNumber,
+                totalVolume);
+        }
+
+        private static decimal GetRolledUpVolumeForWorkOrderAndProductNumber(
+            IOrganizationService service,
+            Guid workOrderId,
+            string productNumber,
+            ITracingService tracing)
+        {
+            List<Guid> holeDetailIds = GetHoleDetailIdsForWorkOrder(service, workOrderId, tracing);
+
+            if (!holeDetailIds.Any())
+            {
+                tracing.Trace("No hole details found for WorkOrder={0}", workOrderId);
+                return 0m;
+            }
+
+            decimal total = 0m;
+
+            foreach (List<Guid> batch in Chunk(holeDetailIds, 200))
+            {
+                QueryExpression query = new QueryExpression(HoleCalculationEntityName)
+                {
+                    ColumnSet = new ColumnSet(HoleCalculationVolumeField, HoleCalculationProductField)
+                };
+
+                query.Criteria.AddCondition(
+                    HoleCalculationToHoleDetailField,
+                    ConditionOperator.In,
+                    batch.Cast<object>().ToArray());
+
+                query.Criteria.AddCondition(HoleCalculationProductField, ConditionOperator.NotNull);
+                query.Criteria.AddCondition(HoleCalculationVolumeField, ConditionOperator.NotNull);
+                query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
+
+                LinkEntity productLink = query.AddLink(
+                    ProductEntityName,
+                    HoleCalculationProductField,
+                    "productid",
+                    JoinOperator.Inner);
+
+                productLink.EntityAlias = "prod";
+                productLink.Columns = new ColumnSet(ProductNumberField);
+                productLink.LinkCriteria.AddCondition(ProductNumberField, ConditionOperator.Equal, productNumber);
+
+                List<Entity> rows = RetrieveAll(service, query);
+
+                foreach (Entity row in rows)
+                {
+                    total += GetDecimalValue(row, HoleCalculationVolumeField);
                 }
             }
 
             tracing.Trace(
-                "Retrieved {0} Hole Calculation rows for Work Order {1}.",
-                allHoleCalculations.Count,
-                workOrderId);
+                "GetRolledUpVolumeForWorkOrderAndProductNumber finished. WorkOrder={0}, ProductNumber={1}, Total={2}",
+                workOrderId,
+                productNumber,
+                total);
 
-            // Your requested pattern
-            List<EntityReference> uniqueProducts = allHoleCalculations
-                .Where(x => x.Contains(HoleCalculationProductField) && x[HoleCalculationProductField] is EntityReference)
-                .Select(x => (EntityReference)x[HoleCalculationProductField])
-                .GroupBy(x => x.Id)
-                .Select(g => g.First())
-                .ToList();
+            return total;
+        }
 
-            var quantityByProductId = allHoleCalculations
-                .Where(x => x.GetAttributeValue<EntityReference>(HoleCalculationProductField) != null)
-                .GroupBy(x => x.GetAttributeValue<EntityReference>(HoleCalculationProductField).Id)
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.Sum(x => ConvertToCubicYards(GetDecimalValue(x, HoleCalculationVolumeField))));
-
-            var totalsByProductKey = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
-            var representativeProductRefs = new Dictionary<string, EntityReference>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (EntityReference productRef in uniqueProducts)
+        private static Entity FindExistingWorkOrderProduct(
+            IOrganizationService service,
+            Guid workOrderId,
+            EntityReference targetProductRef,
+            string productNumber,
+            ITracingService tracing)
+        {
+            QueryExpression query = new QueryExpression(WorkOrderProductEntityName)
             {
-                ProductInfo productInfo = GetProductInfo(service, productRef.Id, productCache, tracing);
-                if (productInfo == null)
-                {
-                    tracing.Trace("Skipping product {0} because product info could not be loaded.", productRef.Id);
-                    continue;
-                }
+                ColumnSet = new ColumnSet(
+                    WorkOrderProductQuantityField,
+                    WorkOrderProductNameField,
+                    WorkOrderProductToProductField),
+                TopCount = 50
+            };
 
-                string productKey = GetProductKey(productInfo);
-                if (string.IsNullOrWhiteSpace(productKey))
-                {
-                    productKey = productRef.Id.ToString("D");
-                }
+            query.Criteria.AddCondition(WorkOrderProductToWorkOrderField, ConditionOperator.Equal, workOrderId);
+            query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
 
-                decimal subtotal = quantityByProductId.ContainsKey(productRef.Id)
-                    ? quantityByProductId[productRef.Id]
-                    : 0m;
+            LinkEntity productLink = query.AddLink(
+                ProductEntityName,
+                WorkOrderProductToProductField,
+                "productid",
+                JoinOperator.LeftOuter);
 
-                if (!totalsByProductKey.ContainsKey(productKey))
-                {
-                    totalsByProductKey[productKey] = 0m;
-                }
+            productLink.EntityAlias = "prod";
+            productLink.Columns = new ColumnSet(ProductNumberField);
 
-                totalsByProductKey[productKey] += subtotal;
+            EntityCollection results = service.RetrieveMultiple(query);
 
-                if (!representativeProductRefs.ContainsKey(productKey))
-                {
-                    representativeProductRefs[productKey] = new EntityReference(ProductEntityName, productInfo.ProductId)
-                    {
-                        Name = productInfo.ProductName
-                    };
-                }
-
-                tracing.Trace(
-                    "Subtotal -> WorkOrder={0}, ProductId={1}, ProductNumber={2}, ProductName={3}, Quantity={4}",
-                    workOrderId,
-                    productInfo.ProductId,
-                    productInfo.ProductNumber ?? "(blank)",
-                    productInfo.ProductName ?? "(blank)",
-                    subtotal);
+            if (results.Entities.Count == 0)
+            {
+                tracing.Trace("No Work Order Product rows found for WorkOrder={0}", workOrderId);
+                return null;
             }
 
-            var productKeysToProcess = new HashSet<string>(totalsByProductKey.Keys, StringComparer.OrdinalIgnoreCase);
-
-            if (impactedProductKeys != null)
+            if (targetProductRef != null)
             {
-                foreach (string productKey in impactedProductKeys)
+                Entity exact = results.Entities.FirstOrDefault(r =>
                 {
-                    AddIfValid(productKeysToProcess, productKey);
+                    EntityReference rowProduct = r.GetAttributeValue<EntityReference>(WorkOrderProductToProductField);
+                    return rowProduct != null && rowProduct.Id == targetProductRef.Id;
+                });
+
+                if (exact != null)
+                {
+                    tracing.Trace(
+                        "Matched Work Order Product by exact product. WorkOrder={0}, ProductId={1}, WorkOrderProductId={2}",
+                        workOrderId,
+                        targetProductRef.Id,
+                        exact.Id);
+
+                    return exact;
                 }
             }
 
-            foreach (string productKey in productKeysToProcess)
+            if (!string.IsNullOrWhiteSpace(productNumber))
             {
-                decimal quantity = totalsByProductKey.ContainsKey(productKey)
-                    ? totalsByProductKey[productKey]
-                    : 0m;
+                Entity byProductNumber = results.Entities.FirstOrDefault(r =>
+                {
+                    AliasedValue av = r.GetAttributeValue<AliasedValue>("prod." + ProductNumberField);
+                    string rowProductNumber = av?.Value?.ToString();
+                    return string.Equals(rowProductNumber, productNumber, StringComparison.OrdinalIgnoreCase);
+                });
 
-                EntityReference representativeProductRef = representativeProductRefs.ContainsKey(productKey)
-                    ? representativeProductRefs[productKey]
-                    : null;
+                if (byProductNumber != null)
+                {
+                    tracing.Trace(
+                        "Matched Work Order Product by product number. WorkOrder={0}, ProductNumber={1}, WorkOrderProductId={2}",
+                        workOrderId,
+                        productNumber,
+                        byProductNumber.Id);
 
-                UpsertWorkOrderProduct(
-                    service,
-                    workOrderId,
-                    productKey,
-                    representativeProductRef,
-                    quantity,
-                    productCache,
-                    tracing);
+                    return byProductNumber;
+                }
             }
+
+            tracing.Trace(
+                "No matching Work Order Product found. WorkOrder={0}, ProductNumber={1}, ProductId={2}",
+                workOrderId,
+                productNumber,
+                targetProductRef?.Id);
+
+            return null;
         }
 
         #endregion
 
-        #region Data Access
+        #region Request Resolution
+
+        private static void AddRecalcRequest(
+            IOrganizationService service,
+            Entity holeCalculation,
+            List<RecalcRequest> requests,
+            ITracingService tracing)
+        {
+            if (holeCalculation == null)
+            {
+                return;
+            }
+
+            if (!HasMinimumHoleCalcFields(holeCalculation) && holeCalculation.Id != Guid.Empty)
+            {
+                holeCalculation = RetrieveHoleCalculation(service, holeCalculation.Id);
+            }
+
+            EntityReference productRef = holeCalculation.GetAttributeValue<EntityReference>(HoleCalculationProductField);
+            EntityReference holeDetailRef = holeCalculation.GetAttributeValue<EntityReference>(HoleCalculationToHoleDetailField);
+
+            if (productRef == null || holeDetailRef == null)
+            {
+                tracing.Trace(
+                    "AddRecalcRequest skipped. ProductRef or HoleDetailRef missing. HoleCalculationId={0}",
+                    holeCalculation.Id);
+                return;
+            }
+
+            string productNumber = GetProductNumber(service, productRef.Id, tracing);
+            Guid workOrderId = ResolveWorkOrderIdFromHoleDetail(service, holeDetailRef.Id, tracing);
+
+            if (string.IsNullOrWhiteSpace(productNumber) || workOrderId == Guid.Empty)
+            {
+                tracing.Trace(
+                    "AddRecalcRequest skipped. ProductNumber or WorkOrderId missing. HoleCalculationId={0}",
+                    holeCalculation.Id);
+                return;
+            }
+
+            requests.Add(new RecalcRequest
+            {
+                WorkOrderId = workOrderId,
+                ProductNumber = productNumber,
+                ProductRef = productRef
+            });
+
+            tracing.Trace(
+                "Added recalculation request. WorkOrder={0}, ProductNumber={1}, ProductId={2}",
+                workOrderId,
+                productNumber,
+                productRef.Id);
+        }
+
+        private static Guid ResolveWorkOrderIdFromHoleDetail(
+            IOrganizationService service,
+            Guid holeDetailId,
+            ITracingService tracing)
+        {
+            if (holeDetailId == Guid.Empty)
+            {
+                return Guid.Empty;
+            }
+
+            Entity holeDetail = service.Retrieve(
+                HoleDetailEntityName,
+                holeDetailId,
+                new ColumnSet(HoleDetailToWorkOrderField));
+
+            EntityReference workOrderRef = holeDetail.GetAttributeValue<EntityReference>(HoleDetailToWorkOrderField);
+
+            if (workOrderRef == null)
+            {
+                tracing.Trace("No Work Order found on Hole Detail {0}", holeDetailId);
+                return Guid.Empty;
+            }
+
+            return workOrderRef.Id;
+        }
+
+        private static string GetProductNumber(
+            IOrganizationService service,
+            Guid productId,
+            ITracingService tracing)
+        {
+            if (productId == Guid.Empty)
+            {
+                return null;
+            }
+
+            Entity product = service.Retrieve(
+                ProductEntityName,
+                productId,
+                new ColumnSet(ProductNumberField, ProductNameField));
+
+            string productNumber = product.GetAttributeValue<string>(ProductNumberField);
+
+            tracing.Trace(
+                "Retrieved product number. ProductId={0}, ProductNumber={1}, ProductName={2}",
+                productId,
+                productNumber ?? "(blank)",
+                product.GetAttributeValue<string>(ProductNameField) ?? "(blank)");
+
+            return productNumber;
+        }
+
+        private static EntityReference ResolveProductReferenceByProductNumber(
+            IOrganizationService service,
+            string productNumber,
+            ITracingService tracing)
+        {
+            if (string.IsNullOrWhiteSpace(productNumber))
+            {
+                return null;
+            }
+
+            QueryExpression query = new QueryExpression(ProductEntityName)
+            {
+                ColumnSet = new ColumnSet(ProductNameField, ProductNumberField),
+                TopCount = 1
+            };
+
+            query.Criteria.AddCondition(ProductNumberField, ConditionOperator.Equal, productNumber);
+            query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
+
+            EntityCollection results = service.RetrieveMultiple(query);
+
+            if (results.Entities.Count == 0)
+            {
+                tracing.Trace("No product found by product number {0}", productNumber);
+                return null;
+            }
+
+            Entity product = results.Entities[0];
+
+            return new EntityReference(ProductEntityName, product.Id)
+            {
+                Name = product.GetAttributeValue<string>(ProductNameField)
+            };
+        }
+
+        #endregion
+
+        #region Data Retrieval
+
+        private static Entity RetrieveHoleCalculation(IOrganizationService service, Guid id)
+        {
+            return service.Retrieve(
+                HoleCalculationEntityName,
+                id,
+                new ColumnSet(
+                    HoleCalculationToHoleDetailField,
+                    HoleCalculationProductField,
+                    HoleCalculationVolumeField));
+        }
 
         private static List<Guid> GetHoleDetailIdsForWorkOrder(
             IOrganizationService service,
@@ -363,7 +580,7 @@ namespace VGS.Dynamics365.Plugins
         {
             var ids = new List<Guid>();
 
-            var query = new QueryExpression(HoleDetailEntityName)
+            QueryExpression query = new QueryExpression(HoleDetailEntityName)
             {
                 ColumnSet = new ColumnSet(false)
             };
@@ -376,361 +593,55 @@ namespace VGS.Dynamics365.Plugins
                 ids.Add(row.Id);
             }
 
-            tracing.Trace("Found {0} Hole Detail rows for Work Order {1}.", ids.Count, workOrderId);
+            tracing.Trace("Found {0} Hole Detail rows for WorkOrder={1}", ids.Count, workOrderId);
+
             return ids;
         }
 
-        private static void UpsertWorkOrderProduct(
-            IOrganizationService service,
-            Guid workOrderId,
-            string productKey,
-            EntityReference representativeProductRef,
-            decimal quantity,
-            Dictionary<Guid, ProductInfo> productCache,
-            ITracingService tracing)
+        private static List<Entity> RetrieveAll(IOrganizationService service, QueryExpression query)
         {
-            Entity existingRow = null;
+            var results = new List<Entity>();
 
-            // 1) Try exact product match
-            if (representativeProductRef != null)
+            if (query.PageInfo == null)
             {
-                var exactSearch = new QueryExpression(WorkOrderProductEntityName)
+                query.PageInfo = new PagingInfo
                 {
-                    ColumnSet = new ColumnSet(WorkOrderProductQuantityField, WorkOrderProductNameField),
-                    TopCount = 2
+                    PageNumber = 1,
+                    Count = 5000
                 };
-
-                exactSearch.Criteria.AddCondition(WorkOrderProductToWorkOrderField, ConditionOperator.Equal, workOrderId);
-                exactSearch.Criteria.AddCondition(WorkOrderProductToProductField, ConditionOperator.Equal, representativeProductRef.Id);
-                exactSearch.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
-
-                EntityCollection exactResults = service.RetrieveMultiple(exactSearch);
-
-                if (exactResults.Entities.Count > 0)
-                {
-                    existingRow = exactResults.Entities[0];
-
-                    if (exactResults.Entities.Count > 1)
-                    {
-                        tracing.Trace(
-                            "Warning: multiple exact Work Order Product rows found. WorkOrder={0}, ProductId={1}",
-                            workOrderId,
-                            representativeProductRef.Id);
-                    }
-                }
             }
 
-            // 2) Fallback by productnumber
-            if (existingRow == null && !string.IsNullOrWhiteSpace(productKey))
+            while (true)
             {
-                var numberSearch = new QueryExpression(WorkOrderProductEntityName)
+                EntityCollection page = service.RetrieveMultiple(query);
+                results.AddRange(page.Entities);
+
+                if (!page.MoreRecords)
                 {
-                    ColumnSet = new ColumnSet(WorkOrderProductQuantityField, WorkOrderProductNameField),
-                    TopCount = 2
-                };
-
-                numberSearch.Criteria.AddCondition(WorkOrderProductToWorkOrderField, ConditionOperator.Equal, workOrderId);
-                numberSearch.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
-
-                LinkEntity productLink = numberSearch.AddLink(
-                    ProductEntityName,
-                    WorkOrderProductToProductField,
-                    "productid",
-                    JoinOperator.Inner);
-
-                productLink.LinkCriteria.AddCondition(ProductNumberField, ConditionOperator.Equal, productKey);
-
-                EntityCollection numberResults = service.RetrieveMultiple(numberSearch);
-
-                if (numberResults.Entities.Count > 0)
-                {
-                    existingRow = numberResults.Entities[0];
-
-                    if (numberResults.Entities.Count > 1)
-                    {
-                        tracing.Trace(
-                            "Warning: multiple Work Order Product rows found by productnumber. WorkOrder={0}, ProductNumber={1}",
-                            workOrderId,
-                            productKey);
-                    }
-                }
-            }
-
-            if (existingRow != null)
-            {
-                decimal existingQuantity = GetDecimalValue(existingRow, WorkOrderProductQuantityField);
-
-                if (existingQuantity != quantity)
-                {
-                    var update = new Entity(WorkOrderProductEntityName, existingRow.Id);
-                    update[WorkOrderProductQuantityField] = quantity;
-                    service.Update(update);
-
-                    tracing.Trace(
-                        "Updated Work Order Product. Id={0}, WorkOrder={1}, ProductKey={2}, OldQuantity={3}, NewQuantity={4}",
-                        existingRow.Id,
-                        workOrderId,
-                        productKey,
-                        existingQuantity,
-                        quantity);
-                }
-                else
-                {
-                    tracing.Trace(
-                        "No quantity change needed. WorkOrderProductId={0}, ProductKey={1}, Quantity={2}",
-                        existingRow.Id,
-                        productKey,
-                        quantity);
+                    break;
                 }
 
-                return;
+                query.PageInfo.PageNumber++;
+                query.PageInfo.PagingCookie = page.PagingCookie;
             }
 
-            if (quantity == 0m)
-            {
-                tracing.Trace(
-                    "Skipping create because quantity is zero. WorkOrder={0}, ProductKey={1}",
-                    workOrderId,
-                    productKey);
-                return;
-            }
-
-            EntityReference createProductRef = representativeProductRef;
-
-            if (createProductRef == null && !string.IsNullOrWhiteSpace(productKey))
-            {
-                createProductRef = ResolveProductReferenceByProductNumber(service, productKey, productCache, tracing);
-            }
-
-            if (createProductRef == null)
-            {
-                tracing.Trace(
-                    "Unable to resolve product reference for create. WorkOrder={0}, ProductKey={1}",
-                    workOrderId,
-                    productKey);
-                return;
-            }
-
-            var create = new Entity(WorkOrderProductEntityName);
-            create[WorkOrderProductToWorkOrderField] = new EntityReference(WorkOrderEntityName, workOrderId);
-            create[WorkOrderProductToProductField] = createProductRef;
-            create[WorkOrderProductQuantityField] = quantity;
-            create[WorkOrderProductNameField] = $"Aggregated total for Work Order {workOrderId}";
-
-            Guid createdId = service.Create(create);
-
-            tracing.Trace(
-                "Created Work Order Product. Id={0}, WorkOrder={1}, ProductId={2}, ProductKey={3}, Quantity={4}",
-                createdId,
-                workOrderId,
-                createProductRef.Id,
-                productKey,
-                quantity);
-        }
-
-        #endregion
-
-        #region Product Resolution
-
-        private sealed class ProductInfo
-        {
-            public Guid ProductId { get; set; }
-            public string ProductName { get; set; }
-            public string ProductNumber { get; set; }
-        }
-
-        private static ProductInfo GetProductInfo(
-            IOrganizationService service,
-            Guid productId,
-            Dictionary<Guid, ProductInfo> productCache,
-            ITracingService tracing)
-        {
-            if (productId == Guid.Empty)
-            {
-                return null;
-            }
-
-            if (productCache.ContainsKey(productId))
-            {
-                return productCache[productId];
-            }
-
-            Entity product = service.Retrieve(
-                ProductEntityName,
-                productId,
-                new ColumnSet(ProductNumberField, ProductNameField));
-
-            var info = new ProductInfo
-            {
-                ProductId = product.Id,
-                ProductName = product.GetAttributeValue<string>(ProductNameField),
-                ProductNumber = product.GetAttributeValue<string>(ProductNumberField)
-            };
-
-            productCache[productId] = info;
-
-            tracing.Trace(
-                "Loaded product info. ProductId={0}, ProductNumber={1}, ProductName={2}",
-                info.ProductId,
-                info.ProductNumber ?? "(blank)",
-                info.ProductName ?? "(blank)");
-
-            return info;
-        }
-
-        private static string ResolveProductKeyFromHoleCalculation(
-            IOrganizationService service,
-            Entity holeCalculation,
-            Dictionary<Guid, ProductInfo> productCache,
-            ITracingService tracing)
-        {
-            if (holeCalculation == null)
-            {
-                return null;
-            }
-
-            EntityReference productRef = holeCalculation.GetAttributeValue<EntityReference>(HoleCalculationProductField);
-
-            if (productRef == null &&
-                holeCalculation.Id != Guid.Empty &&
-                string.Equals(holeCalculation.LogicalName, HoleCalculationEntityName, StringComparison.OrdinalIgnoreCase))
-            {
-                Entity calc = service.Retrieve(
-                    HoleCalculationEntityName,
-                    holeCalculation.Id,
-                    new ColumnSet(HoleCalculationProductField));
-
-                productRef = calc.GetAttributeValue<EntityReference>(HoleCalculationProductField);
-            }
-
-            if (productRef == null)
-            {
-                tracing.Trace("ResolveProductKeyFromHoleCalculation: product not found.");
-                return null;
-            }
-
-            ProductInfo info = GetProductInfo(service, productRef.Id, productCache, tracing);
-            return GetProductKey(info);
-        }
-
-        private static string GetProductKey(ProductInfo info)
-        {
-            if (info == null)
-            {
-                return null;
-            }
-
-            if (!string.IsNullOrWhiteSpace(info.ProductNumber))
-            {
-                return info.ProductNumber;
-            }
-
-            return info.ProductId != Guid.Empty
-                ? info.ProductId.ToString("D")
-                : null;
-        }
-
-        private static EntityReference ResolveProductReferenceByProductNumber(
-            IOrganizationService service,
-            string productNumber,
-            Dictionary<Guid, ProductInfo> productCache,
-            ITracingService tracing)
-        {
-            if (string.IsNullOrWhiteSpace(productNumber))
-            {
-                return null;
-            }
-
-            var query = new QueryExpression(ProductEntityName)
-            {
-                ColumnSet = new ColumnSet(ProductNumberField, ProductNameField),
-                TopCount = 1
-            };
-
-            query.Criteria.AddCondition(ProductNumberField, ConditionOperator.Equal, productNumber);
-            query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
-
-            EntityCollection results = service.RetrieveMultiple(query);
-
-            if (results.Entities.Count == 0)
-            {
-                tracing.Trace("ResolveProductReferenceByProductNumber: no product found for productnumber {0}", productNumber);
-                return null;
-            }
-
-            Entity product = results.Entities[0];
-
-            var info = new ProductInfo
-            {
-                ProductId = product.Id,
-                ProductName = product.GetAttributeValue<string>(ProductNameField),
-                ProductNumber = product.GetAttributeValue<string>(ProductNumberField)
-            };
-
-            productCache[product.Id] = info;
-
-            return new EntityReference(ProductEntityName, product.Id)
-            {
-                Name = info.ProductName
-            };
-        }
-
-        #endregion
-
-        #region Resolution Helpers
-
-        private static Guid ResolveWorkOrderIdFromHoleCalculation(
-            IOrganizationService service,
-            Entity holeCalculation,
-            ITracingService tracing)
-        {
-            if (holeCalculation == null)
-            {
-                tracing.Trace("ResolveWorkOrderIdFromHoleCalculation: source row is null.");
-                return Guid.Empty;
-            }
-
-            EntityReference holeDetailRef = holeCalculation.GetAttributeValue<EntityReference>(HoleCalculationToHoleDetailField);
-
-            if (holeDetailRef == null &&
-                holeCalculation.Id != Guid.Empty &&
-                string.Equals(holeCalculation.LogicalName, HoleCalculationEntityName, StringComparison.OrdinalIgnoreCase))
-            {
-                Entity calc = service.Retrieve(
-                    HoleCalculationEntityName,
-                    holeCalculation.Id,
-                    new ColumnSet(HoleCalculationToHoleDetailField));
-
-                holeDetailRef = calc.GetAttributeValue<EntityReference>(HoleCalculationToHoleDetailField);
-            }
-
-            if (holeDetailRef == null)
-            {
-                tracing.Trace("ResolveWorkOrderIdFromHoleCalculation: hole detail not found.");
-                return Guid.Empty;
-            }
-
-            Entity holeDetail = service.Retrieve(
-                HoleDetailEntityName,
-                holeDetailRef.Id,
-                new ColumnSet(HoleDetailToWorkOrderField));
-
-            EntityReference workOrderRef = holeDetail.GetAttributeValue<EntityReference>(HoleDetailToWorkOrderField);
-
-            if (workOrderRef == null)
-            {
-                tracing.Trace(
-                    "ResolveWorkOrderIdFromHoleCalculation: work order not found on hole detail {0}.",
-                    holeDetailRef.Id);
-                return Guid.Empty;
-            }
-
-            return workOrderRef.Id;
+            return results;
         }
 
         #endregion
 
         #region Helpers
+
+        private static bool HasMinimumHoleCalcFields(Entity entity)
+        {
+            if (entity == null)
+            {
+                return false;
+            }
+
+            return entity.Contains(HoleCalculationToHoleDetailField)
+                && entity.Contains(HoleCalculationProductField);
+        }
 
         private static bool IsSupportedMessage(string messageName)
         {
@@ -774,32 +685,6 @@ namespace VGS.Dynamics365.Plugins
             return Guid.Empty;
         }
 
-        private static void AddIfValid(HashSet<Guid> set, Guid value)
-        {
-            if (value != Guid.Empty)
-            {
-                set.Add(value);
-            }
-        }
-
-        private static void AddIfValid(HashSet<string> set, string value)
-        {
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                set.Add(value);
-            }
-        }
-
-        private static decimal ConvertToCubicYards(decimal sourceVolume)
-        {
-            if (!SourceVolumeIsCubicFeet)
-            {
-                return sourceVolume;
-            }
-
-            return sourceVolume / CubicFeetPerCubicYard;
-        }
-
         private static decimal GetDecimalValue(Entity entity, string attributeName)
         {
             if (entity == null || !entity.Contains(attributeName) || entity[attributeName] == null)
@@ -820,42 +705,19 @@ namespace VGS.Dynamics365.Plugins
             return decimal.TryParse(value.ToString(), out parsed) ? parsed : 0m;
         }
 
-        private static List<Entity> RetrieveAll(IOrganizationService service, QueryExpression query)
-        {
-            var results = new List<Entity>();
-
-            if (query.PageInfo == null)
-            {
-                query.PageInfo = new PagingInfo
-                {
-                    PageNumber = 1,
-                    Count = 5000
-                };
-            }
-
-            while (true)
-            {
-                EntityCollection page = service.RetrieveMultiple(query);
-                results.AddRange(page.Entities);
-
-                if (!page.MoreRecords)
-                {
-                    break;
-                }
-
-                query.PageInfo.PageNumber++;
-                query.PageInfo.PagingCookie = page.PagingCookie;
-            }
-
-            return results;
-        }
-
         private static IEnumerable<List<Guid>> Chunk(List<Guid> source, int size)
         {
             for (int i = 0; i < source.Count; i += size)
             {
                 yield return source.GetRange(i, Math.Min(size, source.Count - i));
             }
+        }
+
+        private sealed class RecalcRequest
+        {
+            public Guid WorkOrderId { get; set; }
+            public string ProductNumber { get; set; }
+            public EntityReference ProductRef { get; set; }
         }
 
         #endregion
