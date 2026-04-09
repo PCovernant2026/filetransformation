@@ -8,6 +8,8 @@ Work Order Product lookup to Work Order = msdyn_workorder
 Work Order Product lookup to Product = msdyn_product
 Whether Hole Calculation has direct lookup to Work Order or only through Hole Detail
 
+private const bool SourceVolumeIsCubicFeet = false;
+
 
 
 
