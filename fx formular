@@ -103,83 +103,83 @@ namespace VGS.Dynamics365.Plugins
                 switch (context.MessageName)
                 {
                     case "Create":
-                    {
-                        Entity current = postImage ?? targetEntity;
-
-                        if ((current == null || !current.Contains(HoleCalculationToHoleDetailField)) &&
-                            targetEntity != null)
                         {
-                            Guid createdId = GetCreatedRecordId(context, targetEntity);
-                            if (createdId != Guid.Empty)
+                            Entity current = postImage ?? targetEntity;
+
+                            if ((current == null || !current.Contains(HoleCalculationToHoleDetailField)) &&
+                                targetEntity != null)
                             {
-                                current = service.Retrieve(
+                                Guid createdId = GetCreatedRecordId(context, targetEntity);
+                                if (createdId != Guid.Empty)
+                                {
+                                    current = service.Retrieve(
+                                        HoleCalculationEntityName,
+                                        createdId,
+                                        new ColumnSet(
+                                            HoleCalculationToHoleDetailField,
+                                            HoleCalculationProductField,
+                                            HoleCalculationVolumeField));
+                                }
+                            }
+
+                            Guid workOrderId = ResolveWorkOrderIdFromHoleCalculation(service, current, tracing);
+                            string productKey = ResolveProductKeyFromHoleCalculation(service, current, productCache, tracing);
+
+                            AddIfValid(impactedWorkOrderIds, workOrderId);
+                            AddIfValid(impactedProductKeys, productKey);
+
+                            break;
+                        }
+
+                    case "Update":
+                        {
+                            Entity oldRow = preImage;
+                            Entity newRow = postImage ?? targetEntity;
+
+                            if ((newRow == null || !newRow.Contains(HoleCalculationToHoleDetailField)) &&
+                                targetEntity != null &&
+                                targetEntity.Id != Guid.Empty)
+                            {
+                                newRow = service.Retrieve(
                                     HoleCalculationEntityName,
-                                    createdId,
+                                    targetEntity.Id,
                                     new ColumnSet(
                                         HoleCalculationToHoleDetailField,
                                         HoleCalculationProductField,
                                         HoleCalculationVolumeField));
                             }
+
+                            Guid oldWorkOrderId = ResolveWorkOrderIdFromHoleCalculation(service, oldRow, tracing);
+                            Guid newWorkOrderId = ResolveWorkOrderIdFromHoleCalculation(service, newRow, tracing);
+
+                            string oldProductKey = ResolveProductKeyFromHoleCalculation(service, oldRow, productCache, tracing);
+                            string newProductKey = ResolveProductKeyFromHoleCalculation(service, newRow, productCache, tracing);
+
+                            AddIfValid(impactedWorkOrderIds, oldWorkOrderId);
+                            AddIfValid(impactedWorkOrderIds, newWorkOrderId);
+                            AddIfValid(impactedProductKeys, oldProductKey);
+                            AddIfValid(impactedProductKeys, newProductKey);
+
+                            break;
                         }
-
-                        Guid workOrderId = ResolveWorkOrderIdFromHoleCalculation(service, current, tracing);
-                        string productKey = ResolveProductKeyFromHoleCalculation(service, current, productCache, tracing);
-
-                        AddIfValid(impactedWorkOrderIds, workOrderId);
-                        AddIfValid(impactedProductKeys, productKey);
-
-                        break;
-                    }
-
-                    case "Update":
-                    {
-                        Entity oldRow = preImage;
-                        Entity newRow = postImage ?? targetEntity;
-
-                        if ((newRow == null || !newRow.Contains(HoleCalculationToHoleDetailField)) &&
-                            targetEntity != null &&
-                            targetEntity.Id != Guid.Empty)
-                        {
-                            newRow = service.Retrieve(
-                                HoleCalculationEntityName,
-                                targetEntity.Id,
-                                new ColumnSet(
-                                    HoleCalculationToHoleDetailField,
-                                    HoleCalculationProductField,
-                                    HoleCalculationVolumeField));
-                        }
-
-                        Guid oldWorkOrderId = ResolveWorkOrderIdFromHoleCalculation(service, oldRow, tracing);
-                        Guid newWorkOrderId = ResolveWorkOrderIdFromHoleCalculation(service, newRow, tracing);
-
-                        string oldProductKey = ResolveProductKeyFromHoleCalculation(service, oldRow, productCache, tracing);
-                        string newProductKey = ResolveProductKeyFromHoleCalculation(service, newRow, productCache, tracing);
-
-                        AddIfValid(impactedWorkOrderIds, oldWorkOrderId);
-                        AddIfValid(impactedWorkOrderIds, newWorkOrderId);
-                        AddIfValid(impactedProductKeys, oldProductKey);
-                        AddIfValid(impactedProductKeys, newProductKey);
-
-                        break;
-                    }
 
                     case "Delete":
-                    {
-                        Entity oldRow = preImage;
-
-                        if (oldRow == null && targetReference != null)
                         {
-                            tracing.Trace("Delete step requires PreImage.");
+                            Entity oldRow = preImage;
+
+                            if (oldRow == null && targetReference != null)
+                            {
+                                tracing.Trace("Delete step requires PreImage.");
+                            }
+
+                            Guid oldWorkOrderId = ResolveWorkOrderIdFromHoleCalculation(service, oldRow, tracing);
+                            string oldProductKey = ResolveProductKeyFromHoleCalculation(service, oldRow, productCache, tracing);
+
+                            AddIfValid(impactedWorkOrderIds, oldWorkOrderId);
+                            AddIfValid(impactedProductKeys, oldProductKey);
+
+                            break;
                         }
-
-                        Guid oldWorkOrderId = ResolveWorkOrderIdFromHoleCalculation(service, oldRow, tracing);
-                        string oldProductKey = ResolveProductKeyFromHoleCalculation(service, oldRow, productCache, tracing);
-
-                        AddIfValid(impactedWorkOrderIds, oldWorkOrderId);
-                        AddIfValid(impactedProductKeys, oldProductKey);
-
-                        break;
-                    }
                 }
 
                 if (impactedWorkOrderIds.Count == 0)
