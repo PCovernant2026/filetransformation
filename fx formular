@@ -33,9 +33,6 @@ namespace VGS.Dynamics365.Plugins
         private const string StateCodeField  = "statecode";
         private const int    ActiveStateCode = 0;
 
-        // Unit conversion: 1 cubic yard = 27 cubic feet
-        private const decimal CubicFeetPerCubicYard = 27m;
-
         #endregion
 
         public void Execute(IServiceProvider serviceProvider)
@@ -180,20 +177,17 @@ namespace VGS.Dynamics365.Plugins
                 request.ProductNumber,
                 request.ProductRef?.Id);
 
-            decimal totalVolumeCubicFt = GetRolledUpVolumeForWorkOrderAndProductNumber(
+            // Source values are already stored in cubic yards.
+            decimal totalVolumeCubicYards = GetRolledUpVolumeForWorkOrderAndProductNumber(
                 service,
                 request.WorkOrderId,
                 request.ProductNumber,
                 tracing);
 
-            // Convert cubic feet to cubic yards before writing to the work order product.
-            decimal totalVolumeCubicYards = totalVolumeCubicFt / CubicFeetPerCubicYard;
-
             tracing.Trace(
-                "Volume conversion. WorkOrder={0}, ProductNumber={1}, CubicFt={2}, CubicYards={3}",
+                "Rolled up volume. WorkOrder={0}, ProductNumber={1}, CubicYards={2}",
                 request.WorkOrderId,
                 request.ProductNumber,
-                totalVolumeCubicFt,
                 totalVolumeCubicYards);
 
             Entity existingWorkOrderProduct = FindExistingWorkOrderProduct(
@@ -329,7 +323,7 @@ namespace VGS.Dynamics365.Plugins
             }
 
             tracing.Trace(
-                "GetRolledUpVolumeForWorkOrderAndProductNumber finished. WorkOrder={0}, ProductNumber={1}, TotalCubicFt={2}",
+                "GetRolledUpVolumeForWorkOrderAndProductNumber finished. WorkOrder={0}, ProductNumber={1}, TotalCubicYards={2}",
                 workOrderId,
                 productNumber,
                 total);
