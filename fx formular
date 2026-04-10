@@ -26,12 +26,16 @@ namespace VGS.Dynamics365.Plugins
         private const string WorkOrderProductToProductField   = "msdyn_product";
         private const string WorkOrderProductQuantityField    = "msdyn_quantity";
         private const string WorkOrderProductNameField        = "msdyn_name";
+        private const string WorkOrderProductLineStatusField  = "msdyn_linestatus";
 
         private const string ProductNumberField = "productnumber";
         private const string ProductNameField   = "name";
 
         private const string StateCodeField  = "statecode";
         private const int    ActiveStateCode = 0;
+
+        private const int WorkOrderProductLineStatusEstimated = 690970000;
+        private const int WorkOrderProductLineStatusUsed      = 690970001;
 
         #endregion
 
@@ -40,13 +44,13 @@ namespace VGS.Dynamics365.Plugins
             if (serviceProvider == null)
                 throw new ArgumentNullException(nameof(serviceProvider));
 
-            var context  = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
-            var tracing  = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
-            var factory  = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+            var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            var tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            var factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
 
             // Run as SYSTEM to ensure the aggregation succeeds regardless of the
             // triggering user's privileges on product, holedetails, or workorderproduct.
-            var service  = factory.CreateOrganizationService(null);
+            var service = factory.CreateOrganizationService(null);
 
             tracing.Trace(
                 "RecalculateWorkOrderProductVolumePlugin started. Message={0}, Entity={1}, Stage={2}, Mode={3}, Depth={4}, CorrelationId={5}",
@@ -84,7 +88,7 @@ namespace VGS.Dynamics365.Plugins
                 if (context.InputParameters.Contains("Target"))
                     targetEntity = context.InputParameters["Target"] as Entity;
 
-                Entity preImage  = GetPreImage(context, "PreImage");
+                Entity preImage = GetPreImage(context, "PreImage");
                 Entity postImage = GetPostImage(context, "PostImage");
 
                 if (postImage == null && (context.MessageName == "Create" || context.MessageName == "Update"))
@@ -204,15 +208,23 @@ namespace VGS.Dynamics365.Plugins
                 if (existingQty != totalVolumeCubicYards)
                 {
                     Entity update = new Entity(WorkOrderProductEntityName, existingWorkOrderProduct.Id);
+
                     // msdyn_quantity is a Double field in Dataverse — cast required.
                     update[WorkOrderProductQuantityField] = (double)totalVolumeCubicYards;
+
+                    if (totalVolumeCubicYards > 0m)
+                    {
+                        update[WorkOrderProductLineStatusField] = new OptionSetValue(WorkOrderProductLineStatusUsed);
+                    }
+
                     service.Update(update);
 
                     tracing.Trace(
-                        "Updated Work Order Product. WorkOrderProductId={0}, OldQty={1}, NewQty={2} (cubic yards)",
+                        "Updated Work Order Product. WorkOrderProductId={0}, OldQty={1}, NewQty={2} (cubic yards), LineStatusSetToUsed={3}",
                         existingWorkOrderProduct.Id,
                         existingQty,
-                        totalVolumeCubicYards);
+                        totalVolumeCubicYards,
+                        totalVolumeCubicYards > 0m);
                 }
                 else
                 {
@@ -259,19 +271,25 @@ namespace VGS.Dynamics365.Plugins
             Entity create = new Entity(WorkOrderProductEntityName);
             create[WorkOrderProductToWorkOrderField] = new EntityReference(WorkOrderEntityName, request.WorkOrderId);
             create[WorkOrderProductToProductField]   = productToCreate;
-            // msdyn_quantity is a Double field in Dataverse — cast required.
             create[WorkOrderProductQuantityField]    = (double)totalVolumeCubicYards;
-            create[WorkOrderProductNameField]        = $"Aggregated: {productName}";
+
+            if (totalVolumeCubicYards > 0m)
+            {
+                create[WorkOrderProductLineStatusField] = new OptionSetValue(WorkOrderProductLineStatusUsed);
+            }
+
+            create[WorkOrderProductNameField] = $"Aggregated: {productName}";
 
             Guid createdId = service.Create(create);
 
             tracing.Trace(
-                "Created Work Order Product. Id={0}, WorkOrder={1}, ProductId={2}, ProductNumber={3}, msdyn_quantity={4} (cubic yards)",
+                "Created Work Order Product. Id={0}, WorkOrder={1}, ProductId={2}, ProductNumber={3}, msdyn_quantity={4} (cubic yards), LineStatusSetToUsed={5}",
                 createdId,
                 request.WorkOrderId,
                 productToCreate.Id,
                 request.ProductNumber,
-                totalVolumeCubicYards);
+                totalVolumeCubicYards,
+                totalVolumeCubicYards > 0m);
         }
 
         private static decimal GetRolledUpVolumeForWorkOrderAndProductNumber(
@@ -303,8 +321,8 @@ namespace VGS.Dynamics365.Plugins
                     batch.Cast<object>().ToArray());
 
                 query.Criteria.AddCondition(HoleCalculationProductField, ConditionOperator.NotNull);
-                query.Criteria.AddCondition(HoleCalculationVolumeField,  ConditionOperator.NotNull);
-                query.Criteria.AddCondition(StateCodeField,              ConditionOperator.Equal, ActiveStateCode);
+                query.Criteria.AddCondition(HoleCalculationVolumeField, ConditionOperator.NotNull);
+                query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
 
                 LinkEntity productLink = query.AddLink(
                     ProductEntityName,
@@ -313,7 +331,7 @@ namespace VGS.Dynamics365.Plugins
                     JoinOperator.Inner);
 
                 productLink.EntityAlias = "prod";
-                productLink.Columns     = new ColumnSet(ProductNumberField);
+                productLink.Columns = new ColumnSet(ProductNumberField);
                 productLink.LinkCriteria.AddCondition(ProductNumberField, ConditionOperator.Equal, productNumber);
 
                 List<Entity> rows = RetrieveAll(service, query);
@@ -349,8 +367,8 @@ namespace VGS.Dynamics365.Plugins
                 };
 
                 exactQuery.Criteria.AddCondition(WorkOrderProductToWorkOrderField, ConditionOperator.Equal, workOrderId);
-                exactQuery.Criteria.AddCondition(WorkOrderProductToProductField,   ConditionOperator.Equal, targetProductRef.Id);
-                exactQuery.Criteria.AddCondition(StateCodeField,                   ConditionOperator.Equal, ActiveStateCode);
+                exactQuery.Criteria.AddCondition(WorkOrderProductToProductField, ConditionOperator.Equal, targetProductRef.Id);
+                exactQuery.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
 
                 EntityCollection exactResults = service.RetrieveMultiple(exactQuery);
 
@@ -377,7 +395,7 @@ namespace VGS.Dynamics365.Plugins
                 };
 
                 numberQuery.Criteria.AddCondition(WorkOrderProductToWorkOrderField, ConditionOperator.Equal, workOrderId);
-                numberQuery.Criteria.AddCondition(StateCodeField,                   ConditionOperator.Equal, ActiveStateCode);
+                numberQuery.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
 
                 LinkEntity productLink = numberQuery.AddLink(
                     ProductEntityName,
@@ -386,7 +404,7 @@ namespace VGS.Dynamics365.Plugins
                     JoinOperator.Inner);
 
                 productLink.EntityAlias = "prod";
-                productLink.Columns     = new ColumnSet(ProductNumberField);
+                productLink.Columns = new ColumnSet(ProductNumberField);
                 productLink.LinkCriteria.AddCondition(ProductNumberField, ConditionOperator.Equal, productNumber);
 
                 EntityCollection numberResults = service.RetrieveMultiple(numberQuery);
@@ -428,7 +446,7 @@ namespace VGS.Dynamics365.Plugins
             if (!HasMinimumHoleCalcFields(holeCalculation) && holeCalculation.Id != Guid.Empty)
                 holeCalculation = RetrieveHoleCalculation(service, holeCalculation.Id);
 
-            EntityReference productRef    = holeCalculation.GetAttributeValue<EntityReference>(HoleCalculationProductField);
+            EntityReference productRef = holeCalculation.GetAttributeValue<EntityReference>(HoleCalculationProductField);
             EntityReference holeDetailRef = holeCalculation.GetAttributeValue<EntityReference>(HoleCalculationToHoleDetailField);
 
             if (productRef == null || holeDetailRef == null)
@@ -440,7 +458,7 @@ namespace VGS.Dynamics365.Plugins
             }
 
             string productNumber = GetProductNumber(service, productRef.Id, tracing);
-            Guid   workOrderId   = ResolveWorkOrderIdFromHoleDetail(service, holeDetailRef.Id, tracing);
+            Guid workOrderId = ResolveWorkOrderIdFromHoleDetail(service, holeDetailRef.Id, tracing);
 
             if (string.IsNullOrWhiteSpace(productNumber) || workOrderId == Guid.Empty)
             {
@@ -452,9 +470,9 @@ namespace VGS.Dynamics365.Plugins
 
             requests.Add(new RecalcRequest
             {
-                WorkOrderId   = workOrderId,
+                WorkOrderId = workOrderId,
                 ProductNumber = productNumber,
-                ProductRef    = productRef
+                ProductRef = productRef
             });
 
             tracing.Trace(
@@ -534,11 +552,11 @@ namespace VGS.Dynamics365.Plugins
             QueryExpression query = new QueryExpression(ProductEntityName)
             {
                 ColumnSet = new ColumnSet(ProductNameField, ProductNumberField),
-                TopCount  = 1
+                TopCount = 1
             };
 
             query.Criteria.AddCondition(ProductNumberField, ConditionOperator.Equal, productNumber);
-            query.Criteria.AddCondition(StateCodeField,     ConditionOperator.Equal, ActiveStateCode);
+            query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
 
             EntityCollection results = service.RetrieveMultiple(query);
 
@@ -584,7 +602,7 @@ namespace VGS.Dynamics365.Plugins
             };
 
             query.Criteria.AddCondition(HoleDetailToWorkOrderField, ConditionOperator.Equal, workOrderId);
-            query.Criteria.AddCondition(StateCodeField,             ConditionOperator.Equal, ActiveStateCode);
+            query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
 
             foreach (Entity row in RetrieveAll(service, query))
                 ids.Add(row.Id);
@@ -603,7 +621,7 @@ namespace VGS.Dynamics365.Plugins
                 query.PageInfo = new PagingInfo
                 {
                     PageNumber = 1,
-                    Count      = 5000
+                    Count = 5000
                 };
             }
 
@@ -676,12 +694,12 @@ namespace VGS.Dynamics365.Plugins
 
             object value = entity[attributeName];
 
-            if (value is decimal d)  return d;
-            if (value is double db)  return Convert.ToDecimal(db);
-            if (value is float f)    return Convert.ToDecimal(f);
-            if (value is int i)      return Convert.ToDecimal(i);
-            if (value is long l)     return Convert.ToDecimal(l);
-            if (value is Money m)    return m.Value;
+            if (value is decimal d) return d;
+            if (value is double db) return Convert.ToDecimal(db);
+            if (value is float f) return Convert.ToDecimal(f);
+            if (value is int i) return Convert.ToDecimal(i);
+            if (value is long l) return Convert.ToDecimal(l);
+            if (value is Money m) return m.Value;
 
             decimal parsed;
             return decimal.TryParse(value.ToString(), out parsed) ? parsed : 0m;
@@ -695,9 +713,9 @@ namespace VGS.Dynamics365.Plugins
 
         private sealed class RecalcRequest
         {
-            public Guid            WorkOrderId   { get; set; }
-            public string          ProductNumber { get; set; }
-            public EntityReference ProductRef    { get; set; }
+            public Guid WorkOrderId { get; set; }
+            public string ProductNumber { get; set; }
+            public EntityReference ProductRef { get; set; }
         }
 
         #endregion
