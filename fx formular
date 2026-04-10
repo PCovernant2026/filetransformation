@@ -33,6 +33,9 @@ namespace VGS.Dynamics365.Plugins
         private const string StateCodeField  = "statecode";
         private const int    ActiveStateCode = 0;
 
+        // Unit conversion: 1 cubic yard = 27 cubic feet
+        private const decimal CubicFeetPerCubicYard = 27m;
+
         #endregion
 
         public void Execute(IServiceProvider serviceProvider)
@@ -177,17 +180,21 @@ namespace VGS.Dynamics365.Plugins
                 request.ProductNumber,
                 request.ProductRef?.Id);
 
-            decimal totalVolume = GetRolledUpVolumeForWorkOrderAndProductNumber(
+            decimal totalVolumeCubicFt = GetRolledUpVolumeForWorkOrderAndProductNumber(
                 service,
                 request.WorkOrderId,
                 request.ProductNumber,
                 tracing);
 
+            // Convert cubic feet to cubic yards before writing to the work order product.
+            decimal totalVolumeCubicYards = totalVolumeCubicFt / CubicFeetPerCubicYard;
+
             tracing.Trace(
-                "Rolled-up volume result. WorkOrder={0}, ProductNumber={1}, TotalVolume={2}",
+                "Volume conversion. WorkOrder={0}, ProductNumber={1}, CubicFt={2}, CubicYards={3}",
                 request.WorkOrderId,
                 request.ProductNumber,
-                totalVolume);
+                totalVolumeCubicFt,
+                totalVolumeCubicYards);
 
             Entity existingWorkOrderProduct = FindExistingWorkOrderProduct(
                 service,
@@ -200,31 +207,31 @@ namespace VGS.Dynamics365.Plugins
             {
                 decimal existingQty = GetDecimalValue(existingWorkOrderProduct, WorkOrderProductQuantityField);
 
-                if (existingQty != totalVolume)
+                if (existingQty != totalVolumeCubicYards)
                 {
                     Entity update = new Entity(WorkOrderProductEntityName, existingWorkOrderProduct.Id);
                     // msdyn_quantity is a Double field in Dataverse — cast required.
-                    update[WorkOrderProductQuantityField] = (double)totalVolume;
+                    update[WorkOrderProductQuantityField] = (double)totalVolumeCubicYards;
                     service.Update(update);
 
                     tracing.Trace(
-                        "Updated Work Order Product. WorkOrderProductId={0}, OldQty={1}, NewQty={2}",
+                        "Updated Work Order Product. WorkOrderProductId={0}, OldQty={1}, NewQty={2} (cubic yards)",
                         existingWorkOrderProduct.Id,
                         existingQty,
-                        totalVolume);
+                        totalVolumeCubicYards);
                 }
                 else
                 {
                     tracing.Trace(
-                        "No update needed. WorkOrderProductId={0}, msdyn_quantity already = {1}",
+                        "No update needed. WorkOrderProductId={0}, msdyn_quantity already = {1} (cubic yards)",
                         existingWorkOrderProduct.Id,
-                        totalVolume);
+                        totalVolumeCubicYards);
                 }
 
                 return;
             }
 
-            if (totalVolume <= 0m)
+            if (totalVolumeCubicYards <= 0m)
             {
                 tracing.Trace(
                     "No Work Order Product exists and total volume is zero. Skipping create. WorkOrder={0}, ProductNumber={1}",
@@ -259,18 +266,18 @@ namespace VGS.Dynamics365.Plugins
             create[WorkOrderProductToWorkOrderField] = new EntityReference(WorkOrderEntityName, request.WorkOrderId);
             create[WorkOrderProductToProductField]   = productToCreate;
             // msdyn_quantity is a Double field in Dataverse — cast required.
-            create[WorkOrderProductQuantityField]    = (double)totalVolume;
+            create[WorkOrderProductQuantityField]    = (double)totalVolumeCubicYards;
             create[WorkOrderProductNameField]        = $"Aggregated: {productName}";
 
             Guid createdId = service.Create(create);
 
             tracing.Trace(
-                "Created Work Order Product. Id={0}, WorkOrder={1}, ProductId={2}, ProductNumber={3}, msdyn_quantity={4}",
+                "Created Work Order Product. Id={0}, WorkOrder={1}, ProductId={2}, ProductNumber={3}, msdyn_quantity={4} (cubic yards)",
                 createdId,
                 request.WorkOrderId,
                 productToCreate.Id,
                 request.ProductNumber,
-                totalVolume);
+                totalVolumeCubicYards);
         }
 
         private static decimal GetRolledUpVolumeForWorkOrderAndProductNumber(
@@ -322,7 +329,7 @@ namespace VGS.Dynamics365.Plugins
             }
 
             tracing.Trace(
-                "GetRolledUpVolumeForWorkOrderAndProductNumber finished. WorkOrder={0}, ProductNumber={1}, Total={2}",
+                "GetRolledUpVolumeForWorkOrderAndProductNumber finished. WorkOrder={0}, ProductNumber={1}, TotalCubicFt={2}",
                 workOrderId,
                 productNumber,
                 total);
