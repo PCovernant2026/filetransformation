@@ -43,7 +43,10 @@ namespace VGS.Dynamics365.Plugins
             var context  = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
             var tracing  = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
             var factory  = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
-            var service  = factory.CreateOrganizationService(context.UserId);
+
+            // Run as SYSTEM to ensure the aggregation succeeds regardless of the
+            // triggering user's privileges on product, holedetails, or workorderproduct.
+            var service  = factory.CreateOrganizationService(null);
 
             tracing.Trace(
                 "RecalculateWorkOrderProductVolumePlugin started. Message={0}, Entity={1}, Stage={2}, Mode={3}, Depth={4}, CorrelationId={5}",
