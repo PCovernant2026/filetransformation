@@ -1,62 +1,3 @@
-
-RecalculateWorkOrderProductVolumePlugin started. Message=Update, Entity=vgsd_holecalculations, Stage=40, Mode=1, Depth=1, CorrelationId=b1c162ea-3bca-499d-9f21-bccaf8a07610
-Retrieved product number. ProductId=855ae276-c332-f111-88b4-7c1e5269a426, ProductNumber=000002, ProductName=Concrete - Structural
-Added recalculation request. WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335, ProductNumber=000002, ProductId=855ae276-c332-f111-88b4-7c1e5269a426
-Retrieved product number. ProductId=855ae276-c332-f111-88b4-7c1e5269a426, ProductNumber=000002, ProductName=Concrete - Structural
-Added recalculation request. WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335, ProductNumber=000002, ProductId=855ae276-c332-f111-88b4-7c1e5269a426
-Recalculating. WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335, ProductNumber=000002, ProductId=855ae276-c332-f111-88b4-7c1e5269a426
-Found 1 Hole Detail rows for WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335
-GetRolledUpVolumeForWorkOrderAndProductNumber finished. WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335, ProductNumber=000002, Total=654.2200000000
-Rolled-up volume result. WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335, ProductNumber=000002, TotalVolume=654.2200000000
-No Work Order Product rows found for WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335
-RecalculateWorkOrderProductVolumePlugin error: System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal (Fault Detail is equal to Exception details: 
-ErrorCode: 0x80040203
-Message: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal
-TimeStamp: 2026-04-10T00:22:27.0000000Z
-OriginalException: System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal (Fault Detail is equal to Exception details: 
-ErrorCode: 0x80040203
-Message: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal
-TimeStamp: 2026-04-10T00:22:27.8923850Z
---
-Exception details: 
-ErrorCode: 0x80040203
-Message: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal
-TimeStamp: 2026-04-10T00:22:27.8923850Z
---
-Exception details: 
-ErrorCod...).
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -69,42 +10,40 @@ namespace VGS.Dynamics365.Plugins
     {
         #region Logical Names
 
-        private const string HoleCalculationEntityName = "vgsd_holecalculations";
-        private const string HoleDetailEntityName = "vgsd_holedetails";
-        private const string WorkOrderEntityName = "msdyn_workorder";
+        private const string HoleCalculationEntityName  = "vgsd_holecalculations";
+        private const string HoleDetailEntityName       = "vgsd_holedetails";
+        private const string WorkOrderEntityName        = "msdyn_workorder";
         private const string WorkOrderProductEntityName = "msdyn_workorderproduct";
-        private const string ProductEntityName = "product";
+        private const string ProductEntityName          = "product";
 
         private const string HoleCalculationToHoleDetailField = "vgsd_holedetail";
-        private const string HoleCalculationProductField = "vgsd_product";
-        private const string HoleCalculationVolumeField = "vgsd_volumecubicft"; // keep only if this is your real schema name
+        private const string HoleCalculationProductField      = "vgsd_product";
+        private const string HoleCalculationVolumeField       = "vgsd_volumecubicft";
 
         private const string HoleDetailToWorkOrderField = "vgsd_workorderid";
 
         private const string WorkOrderProductToWorkOrderField = "msdyn_workorder";
-        private const string WorkOrderProductToProductField = "msdyn_product";
-        private const string WorkOrderProductQuantityField = "msdyn_quantity";
-        private const string WorkOrderProductNameField = "msdyn_name";
+        private const string WorkOrderProductToProductField   = "msdyn_product";
+        private const string WorkOrderProductQuantityField    = "msdyn_quantity";
+        private const string WorkOrderProductNameField        = "msdyn_name";
 
         private const string ProductNumberField = "productnumber";
-        private const string ProductNameField = "name";
+        private const string ProductNameField   = "name";
 
-        private const string StateCodeField = "statecode";
-        private const int ActiveStateCode = 0;
+        private const string StateCodeField  = "statecode";
+        private const int    ActiveStateCode = 0;
 
         #endregion
 
         public void Execute(IServiceProvider serviceProvider)
         {
             if (serviceProvider == null)
-            {
                 throw new ArgumentNullException(nameof(serviceProvider));
-            }
 
-            var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
-            var tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
-            var factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
-            var service = factory.CreateOrganizationService(context.UserId);
+            var context  = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            var tracing  = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            var factory  = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+            var service  = factory.CreateOrganizationService(context.UserId);
 
             tracing.Trace(
                 "RecalculateWorkOrderProductVolumePlugin started. Message={0}, Entity={1}, Stage={2}, Mode={3}, Depth={4}, CorrelationId={5}",
@@ -129,23 +68,27 @@ namespace VGS.Dynamics365.Plugins
                     return;
                 }
 
-                if (context.Depth > 2)
+                // Depth > 1 prevents re-entrancy. This plugin writes to msdyn_workorderproduct;
+                // any downstream plugin that touches vgsd_holecalculations could loop otherwise.
+                if (context.Depth > 1)
                 {
-                    tracing.Trace("Exit: depth > 2.");
+                    tracing.Trace("Exit: depth > 1, skipping to prevent re-entrancy.");
                     return;
                 }
 
                 Entity targetEntity = null;
-                EntityReference targetReference = null;
 
                 if (context.InputParameters.Contains("Target"))
-                {
                     targetEntity = context.InputParameters["Target"] as Entity;
-                    targetReference = context.InputParameters["Target"] as EntityReference;
-                }
 
-                Entity preImage = GetPreImage(context, "PreImage");
+                Entity preImage  = GetPreImage(context, "PreImage");
                 Entity postImage = GetPostImage(context, "PostImage");
+
+                if (postImage == null && (context.MessageName == "Create" || context.MessageName == "Update"))
+                    tracing.Trace("WARNING: PostImage not registered. Falling back to live retrieve.");
+
+                if (preImage == null && context.MessageName == "Update")
+                    tracing.Trace("WARNING: PreImage not registered for Update. The previous product/work-order combination will NOT be recalculated if the product or hole detail changed.");
 
                 var requests = new List<RecalcRequest>();
 
@@ -159,9 +102,7 @@ namespace VGS.Dynamics365.Plugins
                         {
                             Guid createdId = GetCreatedRecordId(context, targetEntity);
                             if (createdId != Guid.Empty)
-                            {
                                 current = RetrieveHoleCalculation(service, createdId);
-                            }
                         }
 
                         AddRecalcRequest(service, current, requests, tracing);
@@ -174,9 +115,7 @@ namespace VGS.Dynamics365.Plugins
                         Entity newRow = postImage ?? targetEntity;
 
                         if (newRow != null && newRow.Id != Guid.Empty && !HasMinimumHoleCalcFields(newRow))
-                        {
                             newRow = RetrieveHoleCalculation(service, newRow.Id);
-                        }
 
                         AddRecalcRequest(service, oldRow, requests, tracing);
                         AddRecalcRequest(service, newRow, requests, tracing);
@@ -187,7 +126,7 @@ namespace VGS.Dynamics365.Plugins
                     {
                         if (preImage == null)
                         {
-                            tracing.Trace("Delete requires PreImage. Nothing to process.");
+                            tracing.Trace("Delete requires a PreImage. Nothing to process. Ensure PreImage is registered.");
                             return;
                         }
 
@@ -209,9 +148,7 @@ namespace VGS.Dynamics365.Plugins
                 }
 
                 foreach (var request in distinctRequests)
-                {
                     RecalculateForWorkOrderAndProductNumber(service, request, tracing);
-                }
 
                 tracing.Trace("RecalculateWorkOrderProductVolumePlugin completed successfully.");
             }
@@ -263,7 +200,8 @@ namespace VGS.Dynamics365.Plugins
                 if (existingQty != totalVolume)
                 {
                     Entity update = new Entity(WorkOrderProductEntityName, existingWorkOrderProduct.Id);
-                    update[WorkOrderProductQuantityField] = totalVolume;
+                    // msdyn_quantity is a Double field in Dataverse — cast required.
+                    update[WorkOrderProductQuantityField] = (double)totalVolume;
                     service.Update(update);
 
                     tracing.Trace(
@@ -297,7 +235,7 @@ namespace VGS.Dynamics365.Plugins
             if (productToCreate == null)
             {
                 tracing.Trace(
-                    "ProductRef was null on request. Attempting fallback by product number {0}",
+                    "ProductRef was null on request. Attempting fallback lookup by product number {0}",
                     request.ProductNumber);
 
                 productToCreate = ResolveProductReferenceByProductNumber(service, request.ProductNumber, tracing);
@@ -306,17 +244,20 @@ namespace VGS.Dynamics365.Plugins
             if (productToCreate == null)
             {
                 tracing.Trace(
-                    "Unable to resolve product reference for create. WorkOrder={0}, ProductNumber={1}",
+                    "Unable to resolve product reference. Skipping create. WorkOrder={0}, ProductNumber={1}",
                     request.WorkOrderId,
                     request.ProductNumber);
                 return;
             }
 
+            string productName = productToCreate.Name ?? request.ProductNumber;
+
             Entity create = new Entity(WorkOrderProductEntityName);
             create[WorkOrderProductToWorkOrderField] = new EntityReference(WorkOrderEntityName, request.WorkOrderId);
-            create[WorkOrderProductToProductField] = productToCreate;
-            create[WorkOrderProductQuantityField] = totalVolume;
-            create[WorkOrderProductNameField] = $"Aggregated total for Work Order {request.WorkOrderId}";
+            create[WorkOrderProductToProductField]   = productToCreate;
+            // msdyn_quantity is a Double field in Dataverse — cast required.
+            create[WorkOrderProductQuantityField]    = (double)totalVolume;
+            create[WorkOrderProductNameField]        = $"Aggregated: {productName}";
 
             Guid createdId = service.Create(create);
 
@@ -358,8 +299,8 @@ namespace VGS.Dynamics365.Plugins
                     batch.Cast<object>().ToArray());
 
                 query.Criteria.AddCondition(HoleCalculationProductField, ConditionOperator.NotNull);
-                query.Criteria.AddCondition(HoleCalculationVolumeField, ConditionOperator.NotNull);
-                query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
+                query.Criteria.AddCondition(HoleCalculationVolumeField,  ConditionOperator.NotNull);
+                query.Criteria.AddCondition(StateCodeField,              ConditionOperator.Equal, ActiveStateCode);
 
                 LinkEntity productLink = query.AddLink(
                     ProductEntityName,
@@ -368,15 +309,13 @@ namespace VGS.Dynamics365.Plugins
                     JoinOperator.Inner);
 
                 productLink.EntityAlias = "prod";
-                productLink.Columns = new ColumnSet(ProductNumberField);
+                productLink.Columns     = new ColumnSet(ProductNumberField);
                 productLink.LinkCriteria.AddCondition(ProductNumberField, ConditionOperator.Equal, productNumber);
 
                 List<Entity> rows = RetrieveAll(service, query);
 
                 foreach (Entity row in rows)
-                {
                     total += GetDecimalValue(row, HoleCalculationVolumeField);
-                }
             }
 
             tracing.Trace(
@@ -395,73 +334,68 @@ namespace VGS.Dynamics365.Plugins
             string productNumber,
             ITracingService tracing)
         {
-            QueryExpression query = new QueryExpression(WorkOrderProductEntityName)
-            {
-                ColumnSet = new ColumnSet(
-                    WorkOrderProductQuantityField,
-                    WorkOrderProductNameField,
-                    WorkOrderProductToProductField),
-                TopCount = 50
-            };
-
-            query.Criteria.AddCondition(WorkOrderProductToWorkOrderField, ConditionOperator.Equal, workOrderId);
-            query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
-
-            LinkEntity productLink = query.AddLink(
-                ProductEntityName,
-                WorkOrderProductToProductField,
-                "productid",
-                JoinOperator.LeftOuter);
-
-            productLink.EntityAlias = "prod";
-            productLink.Columns = new ColumnSet(ProductNumberField);
-
-            EntityCollection results = service.RetrieveMultiple(query);
-
-            if (results.Entities.Count == 0)
-            {
-                tracing.Trace("No Work Order Product rows found for WorkOrder={0}", workOrderId);
-                return null;
-            }
-
             if (targetProductRef != null)
             {
-                Entity exact = results.Entities.FirstOrDefault(r =>
+                QueryExpression exactQuery = new QueryExpression(WorkOrderProductEntityName)
                 {
-                    EntityReference rowProduct = r.GetAttributeValue<EntityReference>(WorkOrderProductToProductField);
-                    return rowProduct != null && rowProduct.Id == targetProductRef.Id;
-                });
+                    ColumnSet = new ColumnSet(
+                        WorkOrderProductQuantityField,
+                        WorkOrderProductNameField,
+                        WorkOrderProductToProductField)
+                };
 
-                if (exact != null)
+                exactQuery.Criteria.AddCondition(WorkOrderProductToWorkOrderField, ConditionOperator.Equal, workOrderId);
+                exactQuery.Criteria.AddCondition(WorkOrderProductToProductField,   ConditionOperator.Equal, targetProductRef.Id);
+                exactQuery.Criteria.AddCondition(StateCodeField,                   ConditionOperator.Equal, ActiveStateCode);
+
+                EntityCollection exactResults = service.RetrieveMultiple(exactQuery);
+
+                if (exactResults.Entities.Count > 0)
                 {
+                    Entity match = exactResults.Entities[0];
                     tracing.Trace(
-                        "Matched Work Order Product by exact product. WorkOrder={0}, ProductId={1}, WorkOrderProductId={2}",
+                        "Matched Work Order Product by exact product ID. WorkOrder={0}, ProductId={1}, WorkOrderProductId={2}",
                         workOrderId,
                         targetProductRef.Id,
-                        exact.Id);
-
-                    return exact;
+                        match.Id);
+                    return match;
                 }
             }
 
             if (!string.IsNullOrWhiteSpace(productNumber))
             {
-                Entity byProductNumber = results.Entities.FirstOrDefault(r =>
+                QueryExpression numberQuery = new QueryExpression(WorkOrderProductEntityName)
                 {
-                    AliasedValue av = r.GetAttributeValue<AliasedValue>("prod." + ProductNumberField);
-                    string rowProductNumber = av?.Value?.ToString();
-                    return string.Equals(rowProductNumber, productNumber, StringComparison.OrdinalIgnoreCase);
-                });
+                    ColumnSet = new ColumnSet(
+                        WorkOrderProductQuantityField,
+                        WorkOrderProductNameField,
+                        WorkOrderProductToProductField)
+                };
 
-                if (byProductNumber != null)
+                numberQuery.Criteria.AddCondition(WorkOrderProductToWorkOrderField, ConditionOperator.Equal, workOrderId);
+                numberQuery.Criteria.AddCondition(StateCodeField,                   ConditionOperator.Equal, ActiveStateCode);
+
+                LinkEntity productLink = numberQuery.AddLink(
+                    ProductEntityName,
+                    WorkOrderProductToProductField,
+                    "productid",
+                    JoinOperator.Inner);
+
+                productLink.EntityAlias = "prod";
+                productLink.Columns     = new ColumnSet(ProductNumberField);
+                productLink.LinkCriteria.AddCondition(ProductNumberField, ConditionOperator.Equal, productNumber);
+
+                EntityCollection numberResults = service.RetrieveMultiple(numberQuery);
+
+                if (numberResults.Entities.Count > 0)
                 {
+                    Entity match = numberResults.Entities[0];
                     tracing.Trace(
                         "Matched Work Order Product by product number. WorkOrder={0}, ProductNumber={1}, WorkOrderProductId={2}",
                         workOrderId,
                         productNumber,
-                        byProductNumber.Id);
-
-                    return byProductNumber;
+                        match.Id);
+                    return match;
                 }
             }
 
@@ -485,16 +419,12 @@ namespace VGS.Dynamics365.Plugins
             ITracingService tracing)
         {
             if (holeCalculation == null)
-            {
                 return;
-            }
 
             if (!HasMinimumHoleCalcFields(holeCalculation) && holeCalculation.Id != Guid.Empty)
-            {
                 holeCalculation = RetrieveHoleCalculation(service, holeCalculation.Id);
-            }
 
-            EntityReference productRef = holeCalculation.GetAttributeValue<EntityReference>(HoleCalculationProductField);
+            EntityReference productRef    = holeCalculation.GetAttributeValue<EntityReference>(HoleCalculationProductField);
             EntityReference holeDetailRef = holeCalculation.GetAttributeValue<EntityReference>(HoleCalculationToHoleDetailField);
 
             if (productRef == null || holeDetailRef == null)
@@ -506,7 +436,7 @@ namespace VGS.Dynamics365.Plugins
             }
 
             string productNumber = GetProductNumber(service, productRef.Id, tracing);
-            Guid workOrderId = ResolveWorkOrderIdFromHoleDetail(service, holeDetailRef.Id, tracing);
+            Guid   workOrderId   = ResolveWorkOrderIdFromHoleDetail(service, holeDetailRef.Id, tracing);
 
             if (string.IsNullOrWhiteSpace(productNumber) || workOrderId == Guid.Empty)
             {
@@ -518,9 +448,9 @@ namespace VGS.Dynamics365.Plugins
 
             requests.Add(new RecalcRequest
             {
-                WorkOrderId = workOrderId,
+                WorkOrderId   = workOrderId,
                 ProductNumber = productNumber,
-                ProductRef = productRef
+                ProductRef    = productRef
             });
 
             tracing.Trace(
@@ -536,24 +466,33 @@ namespace VGS.Dynamics365.Plugins
             ITracingService tracing)
         {
             if (holeDetailId == Guid.Empty)
+                return Guid.Empty;
+
+            try
             {
+                Entity holeDetail = service.Retrieve(
+                    HoleDetailEntityName,
+                    holeDetailId,
+                    new ColumnSet(HoleDetailToWorkOrderField));
+
+                EntityReference workOrderRef = holeDetail.GetAttributeValue<EntityReference>(HoleDetailToWorkOrderField);
+
+                if (workOrderRef == null)
+                {
+                    tracing.Trace("No Work Order found on Hole Detail {0}", holeDetailId);
+                    return Guid.Empty;
+                }
+
+                return workOrderRef.Id;
+            }
+            catch (Exception ex)
+            {
+                tracing.Trace(
+                    "WARNING: Could not retrieve Hole Detail {0}. It may have been deleted. Exception: {1}",
+                    holeDetailId,
+                    ex.Message);
                 return Guid.Empty;
             }
-
-            Entity holeDetail = service.Retrieve(
-                HoleDetailEntityName,
-                holeDetailId,
-                new ColumnSet(HoleDetailToWorkOrderField));
-
-            EntityReference workOrderRef = holeDetail.GetAttributeValue<EntityReference>(HoleDetailToWorkOrderField);
-
-            if (workOrderRef == null)
-            {
-                tracing.Trace("No Work Order found on Hole Detail {0}", holeDetailId);
-                return Guid.Empty;
-            }
-
-            return workOrderRef.Id;
         }
 
         private static string GetProductNumber(
@@ -562,9 +501,7 @@ namespace VGS.Dynamics365.Plugins
             ITracingService tracing)
         {
             if (productId == Guid.Empty)
-            {
                 return null;
-            }
 
             Entity product = service.Retrieve(
                 ProductEntityName,
@@ -588,18 +525,16 @@ namespace VGS.Dynamics365.Plugins
             ITracingService tracing)
         {
             if (string.IsNullOrWhiteSpace(productNumber))
-            {
                 return null;
-            }
 
             QueryExpression query = new QueryExpression(ProductEntityName)
             {
                 ColumnSet = new ColumnSet(ProductNameField, ProductNumberField),
-                TopCount = 1
+                TopCount  = 1
             };
 
             query.Criteria.AddCondition(ProductNumberField, ConditionOperator.Equal, productNumber);
-            query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
+            query.Criteria.AddCondition(StateCodeField,     ConditionOperator.Equal, ActiveStateCode);
 
             EntityCollection results = service.RetrieveMultiple(query);
 
@@ -645,12 +580,10 @@ namespace VGS.Dynamics365.Plugins
             };
 
             query.Criteria.AddCondition(HoleDetailToWorkOrderField, ConditionOperator.Equal, workOrderId);
-            query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
+            query.Criteria.AddCondition(StateCodeField,             ConditionOperator.Equal, ActiveStateCode);
 
             foreach (Entity row in RetrieveAll(service, query))
-            {
                 ids.Add(row.Id);
-            }
 
             tracing.Trace("Found {0} Hole Detail rows for WorkOrder={1}", ids.Count, workOrderId);
 
@@ -666,7 +599,7 @@ namespace VGS.Dynamics365.Plugins
                 query.PageInfo = new PagingInfo
                 {
                     PageNumber = 1,
-                    Count = 5000
+                    Count      = 5000
                 };
             }
 
@@ -676,9 +609,7 @@ namespace VGS.Dynamics365.Plugins
                 results.AddRange(page.Entities);
 
                 if (!page.MoreRecords)
-                {
                     break;
-                }
 
                 query.PageInfo.PageNumber++;
                 query.PageInfo.PagingCookie = page.PagingCookie;
@@ -694,9 +625,7 @@ namespace VGS.Dynamics365.Plugins
         private static bool HasMinimumHoleCalcFields(Entity entity)
         {
             if (entity == null)
-            {
                 return false;
-            }
 
             return entity.Contains(HoleCalculationToHoleDetailField)
                 && entity.Contains(HoleCalculationProductField);
@@ -712,9 +641,7 @@ namespace VGS.Dynamics365.Plugins
         private static Entity GetPreImage(IPluginExecutionContext context, string imageName)
         {
             if (context.PreEntityImages != null && context.PreEntityImages.Contains(imageName))
-            {
                 return context.PreEntityImages[imageName];
-            }
 
             return null;
         }
@@ -722,9 +649,7 @@ namespace VGS.Dynamics365.Plugins
         private static Entity GetPostImage(IPluginExecutionContext context, string imageName)
         {
             if (context.PostEntityImages != null && context.PostEntityImages.Contains(imageName))
-            {
                 return context.PostEntityImages[imageName];
-            }
 
             return null;
         }
@@ -732,14 +657,10 @@ namespace VGS.Dynamics365.Plugins
         private static Guid GetCreatedRecordId(IPluginExecutionContext context, Entity targetEntity)
         {
             if (context.OutputParameters != null && context.OutputParameters.Contains("id"))
-            {
                 return (Guid)context.OutputParameters["id"];
-            }
 
             if (targetEntity != null && targetEntity.Id != Guid.Empty)
-            {
                 return targetEntity.Id;
-            }
 
             return Guid.Empty;
         }
@@ -747,18 +668,16 @@ namespace VGS.Dynamics365.Plugins
         private static decimal GetDecimalValue(Entity entity, string attributeName)
         {
             if (entity == null || !entity.Contains(attributeName) || entity[attributeName] == null)
-            {
                 return 0m;
-            }
 
             object value = entity[attributeName];
 
-            if (value is decimal d) return d;
-            if (value is double db) return Convert.ToDecimal(db);
-            if (value is float f) return Convert.ToDecimal(f);
-            if (value is int i) return Convert.ToDecimal(i);
-            if (value is long l) return Convert.ToDecimal(l);
-            if (value is Money m) return m.Value;
+            if (value is decimal d)  return d;
+            if (value is double db)  return Convert.ToDecimal(db);
+            if (value is float f)    return Convert.ToDecimal(f);
+            if (value is int i)      return Convert.ToDecimal(i);
+            if (value is long l)     return Convert.ToDecimal(l);
+            if (value is Money m)    return m.Value;
 
             decimal parsed;
             return decimal.TryParse(value.ToString(), out parsed) ? parsed : 0m;
@@ -767,16 +686,14 @@ namespace VGS.Dynamics365.Plugins
         private static IEnumerable<List<Guid>> Chunk(List<Guid> source, int size)
         {
             for (int i = 0; i < source.Count; i += size)
-            {
                 yield return source.GetRange(i, Math.Min(size, source.Count - i));
-            }
         }
 
         private sealed class RecalcRequest
         {
-            public Guid WorkOrderId { get; set; }
-            public string ProductNumber { get; set; }
-            public EntityReference ProductRef { get; set; }
+            public Guid            WorkOrderId   { get; set; }
+            public string          ProductNumber { get; set; }
+            public EntityReference ProductRef    { get; set; }
         }
 
         #endregion
