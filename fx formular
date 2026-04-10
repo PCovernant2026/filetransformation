@@ -1,3 +1,62 @@
+
+RecalculateWorkOrderProductVolumePlugin started. Message=Update, Entity=vgsd_holecalculations, Stage=40, Mode=1, Depth=1, CorrelationId=b1c162ea-3bca-499d-9f21-bccaf8a07610
+Retrieved product number. ProductId=855ae276-c332-f111-88b4-7c1e5269a426, ProductNumber=000002, ProductName=Concrete - Structural
+Added recalculation request. WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335, ProductNumber=000002, ProductId=855ae276-c332-f111-88b4-7c1e5269a426
+Retrieved product number. ProductId=855ae276-c332-f111-88b4-7c1e5269a426, ProductNumber=000002, ProductName=Concrete - Structural
+Added recalculation request. WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335, ProductNumber=000002, ProductId=855ae276-c332-f111-88b4-7c1e5269a426
+Recalculating. WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335, ProductNumber=000002, ProductId=855ae276-c332-f111-88b4-7c1e5269a426
+Found 1 Hole Detail rows for WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335
+GetRolledUpVolumeForWorkOrderAndProductNumber finished. WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335, ProductNumber=000002, Total=654.2200000000
+Rolled-up volume result. WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335, ProductNumber=000002, TotalVolume=654.2200000000
+No Work Order Product rows found for WorkOrder=467df8fc-6f76-f011-b4cb-000d3a1d5335
+RecalculateWorkOrderProductVolumePlugin error: System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal (Fault Detail is equal to Exception details: 
+ErrorCode: 0x80040203
+Message: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal
+TimeStamp: 2026-04-10T00:22:27.0000000Z
+OriginalException: System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal (Fault Detail is equal to Exception details: 
+ErrorCode: 0x80040203
+Message: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal
+TimeStamp: 2026-04-10T00:22:27.8923850Z
+--
+Exception details: 
+ErrorCode: 0x80040203
+Message: Type Mismatch: Type of Attribute: msdyn_workorderproduct.msdyn_quantity is: System.Double. However, Type of passed-in value is: System.Decimal
+TimeStamp: 2026-04-10T00:22:27.8923850Z
+--
+Exception details: 
+ErrorCod...).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
