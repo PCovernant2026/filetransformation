@@ -1,70 +1,334 @@
-You are a senior Microsoft Dynamics 365 / Dataverse developer.
+using System;
+using System.Collections.Generic;
+using Microsoft.Xrm.Sdk;
 
-Write a PRODUCTION‑READY C# Dataverse plugin for the Opportunity table that synchronizes two fields whose option set VALUES DO NOT MATCH numerically:
+namespace Winco.Dynamics365.Plugins
+{
+    /// <summary>
+    /// Synchronizes Opportunity.statuscode and Opportunity.new_lostreason using explicit
+    /// numeric option-value mappings in both directions.
+    ///
+    /// Registration assumptions:
+    /// - Entity: opportunity
+    /// - Message: Update
+    /// - Stage: Pre-Operation
+    /// - Mode: Synchronous
+    /// - Pre-Image name: PreImage
+    /// - Pre-Image attributes: statuscode, new_lostreason
+    ///
+    /// Behavior:
+    /// - When new_lostreason changes, maps it to the corresponding statuscode.
+    /// - When statuscode changes, maps it to the corresponding new_lostreason.
+    /// - If both fields change in the same request and they conflict, statuscode is treated
+    ///   as authoritative when it has a valid mapping. This supports native close scenarios.
+    /// - If an unmapped value is encountered, the plugin traces and exits safely without throwing.
+    /// </summary>
+    public sealed class OpportunityLostReasonSyncPlugin : IPlugin
+    {
+        private const string EntityLogicalName = "opportunity";
+        private const string StatusCodeField = "statuscode";
+        private const string CustomLostReasonField = "new_lostreason";
+        private const string PreImageName = "PreImage";
 
-• Custom Lost Reason (logical name: new_lostreason)
-• OOB Status Reason (logical name: statuscode)
+        private static readonly IReadOnlyDictionary<int, int> CustomToStatusMap =
+            new Dictionary<int, int>
+            {
+                { 118290002, 118290005 }, // Lost - Competitor
+                { 118290005, 118290002 }, // Lost - Late to bid
+                { 118290006, 118290001 }, // Lost - Not Pursuing
+                { 118290001, 118290006 }, // Lost - Other
+                { 118290004, 118290003 }, // Lost - Pricing
+                { 118290003, 118290004 }  // Lost - Specifiable differences unable to meet
+            };
 
-IMPORTANT:
-- The option labels are the same, but the numeric option values are DIFFERENT.
-- You MUST translate values using an explicit mapping.
-- A direct value copy is NOT valid.
+        private static readonly IReadOnlyDictionary<int, int> StatusToCustomMap =
+            new Dictionary<int, int>
+            {
+                { 118290005, 118290002 },
+                { 118290002, 118290005 },
+                { 118290001, 118290006 },
+                { 118290006, 118290001 },
+                { 118290003, 118290004 },
+                { 118290004, 118290003 }
+            };
 
-REQUIREMENTS:
-1. The plugin must run on Opportunity UPDATE
-2. Execution must be SYNCHRONOUS and PRE‑OPERATION
-3. The plugin must:
-   - When new_lostreason changes, map its option value to the correct statuscode value
-   - When statuscode changes, map its option value to the correct new_lostreason value
-4. Implement TWO mapping dictionaries:
-   - new_lostreason → statuscode
-   - statuscode → new_lostreason
-5. Prevent infinite loops using a Depth check
-6. Use a Pre‑Image to confirm that a value actually changed
-7. Do NOT overwrite fields unnecessarily
-8. Do NOT rely on labels
-9. Fail safely if an unmapped value is encountered (do not throw unless instructed)
-10. Include:
-    - Full plugin C# code
-    - Clear comments explaining logic
-    - Clean Dataverse‑idiomatic structure
+        public void Execute(IServiceProvider serviceProvider)
+        {
+            if (serviceProvider == null)
+            {
+                throw new InvalidPluginExecutionException("Service provider is null.");
+            }
 
-ASSUME:
-• Entity logical name: opportunity
-• Custom field logical name: new_lostreason
-• OOB Status Reason logical name: statuscode
-• Message: Update
-• Stage: Pre‑Operation
-• Mode: Synchronous
-• Pre‑Image name: PreImage
-• Pre‑Image attributes: statuscode, new_lostreason
-• .NET Framework 4.6.2
-• Sandbox‑safe
+            var tracingService = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
 
-OPTION SET MAPPINGS (EXACT):
+            if (context == null)
+            {
+                throw new InvalidPluginExecutionException("Plugin execution context is null.");
+            }
 
-new_lostreason → statuscode
-118290002 → 118290005  // Lost - Competitor
-118290005 → 118290002  // Lost - Late to bid
-118290006 → 118290001  // Lost - Not Pursuing
-118290001 → 118290006  // Lost - Other
-118290004 → 118290003  // Lost - Pricing
-118290003 → 118290004  // Lost - Specifiable differences unable to meet
+            tracingService?.Trace(
+                "OpportunityLostReasonSyncPlugin started. Message={0}, Stage={1}, Mode={2}, Depth={3}",
+                context.MessageName, context.Stage, context.Mode, context.Depth);
 
-statuscode → new_lostreason
-118290005 → 118290002
-118290002 → 118290005
-118290001 → 118290006
-118290006 → 118290001
-118290003 → 118290004
-118290004 → 118290003
+            if (!string.Equals(context.MessageName, "Update", StringComparison.OrdinalIgnoreCase))
+            {
+                tracingService?.Trace("Exiting because message is not Update.");
+                return;
+            }
 
-DO NOT include:
-• JavaScript
-• Power Automate or workflows
-• Pseudo‑code
-• Assumptions about aligned option values
+            if (context.Depth > 1)
+            {
+                tracingService?.Trace("Exiting because Depth > 1 to prevent recursive re-entry.");
+                return;
+            }
 
-Return ONLY:
-• The complete C# plugin code
-• Brief plugin registration instructions
+            if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity target))
+            {
+                tracingService?.Trace("Exiting because Target is missing or invalid.");
+                return;
+            }
+
+            if (!string.Equals(target.LogicalName, EntityLogicalName, StringComparison.OrdinalIgnoreCase))
+            {
+                tracingService?.Trace("Exiting because target entity is not opportunity.");
+                return;
+            }
+
+            bool targetContainsStatus = target.Attributes.Contains(StatusCodeField);
+            bool targetContainsCustom = target.Attributes.Contains(CustomLostReasonField);
+
+            if (!targetContainsStatus && !targetContainsCustom)
+            {
+                tracingService?.Trace("Exiting because neither statuscode nor new_lostreason is present in Target.");
+                return;
+            }
+
+            Entity preImage = null;
+            if (context.PreEntityImages != null && context.PreEntityImages.Contains(PreImageName))
+            {
+                preImage = context.PreEntityImages[PreImageName];
+            }
+
+            if (preImage == null)
+            {
+                throw new InvalidPluginExecutionException(
+                    $"Pre-image '{PreImageName}' is required and must include '{StatusCodeField}' and '{CustomLostReasonField}'.");
+            }
+
+            int? preStatusValue = GetOptionValue(preImage, StatusCodeField);
+            int? preCustomValue = GetOptionValue(preImage, CustomLostReasonField);
+
+            int? targetStatusValue = GetOptionValue(target, StatusCodeField);
+            int? targetCustomValue = GetOptionValue(target, CustomLostReasonField);
+
+            bool statusActuallyChanged = targetContainsStatus && !AreEqual(targetStatusValue, preStatusValue);
+            bool customActuallyChanged = targetContainsCustom && !AreEqual(targetCustomValue, preCustomValue);
+
+            tracingService?.Trace(
+                "Pre values => statuscode: {0}, new_lostreason: {1}. Target values => statuscode: {2}, new_lostreason: {3}. Changed => statuscode: {4}, new_lostreason: {5}",
+                ToTraceValue(preStatusValue),
+                ToTraceValue(preCustomValue),
+                ToTraceValue(targetStatusValue),
+                ToTraceValue(targetCustomValue),
+                statusActuallyChanged,
+                customActuallyChanged);
+
+            if (!statusActuallyChanged && !customActuallyChanged)
+            {
+                tracingService?.Trace("Exiting because neither field actually changed.");
+                return;
+            }
+
+            int? effectiveStatusValue = targetContainsStatus ? targetStatusValue : preStatusValue;
+            int? effectiveCustomValue = targetContainsCustom ? targetCustomValue : preCustomValue;
+
+            if (statusActuallyChanged && customActuallyChanged)
+            {
+                if (IsMappedPair(effectiveStatusValue, effectiveCustomValue))
+                {
+                    tracingService?.Trace("Both fields changed but are already correctly mapped. No update required.");
+                    return;
+                }
+
+                int mappedCustomFromStatus;
+                if (TryMapStatusToCustom(effectiveStatusValue, out mappedCustomFromStatus))
+                {
+                    if (!AreEqual(effectiveCustomValue, mappedCustomFromStatus))
+                    {
+                        tracingService?.Trace(
+                            "Both fields changed and conflict. statuscode is authoritative. Setting new_lostreason to {0}.",
+                            mappedCustomFromStatus);
+
+                        SetOptionValue(target, CustomLostReasonField, mappedCustomFromStatus);
+                    }
+                    else
+                    {
+                        tracingService?.Trace("Both fields changed. new_lostreason already matches mapped statuscode.");
+                    }
+
+                    return;
+                }
+
+                int mappedStatusFromCustom;
+                if (TryMapCustomToStatus(effectiveCustomValue, out mappedStatusFromCustom))
+                {
+                    if (!AreEqual(effectiveStatusValue, mappedStatusFromCustom))
+                    {
+                        tracingService?.Trace(
+                            "Both fields changed and statuscode is unmapped. Falling back to custom field. Setting statuscode to {0}.",
+                            mappedStatusFromCustom);
+
+                        SetOptionValue(target, StatusCodeField, mappedStatusFromCustom);
+                    }
+                    else
+                    {
+                        tracingService?.Trace("Both fields changed. statuscode already matches mapped custom value.");
+                    }
+
+                    return;
+                }
+
+                tracingService?.Trace(
+                    "Both fields changed, but neither value could be mapped safely. No action taken. statuscode={0}, new_lostreason={1}",
+                    ToTraceValue(effectiveStatusValue),
+                    ToTraceValue(effectiveCustomValue));
+
+                return;
+            }
+
+            if (statusActuallyChanged)
+            {
+                int mappedCustomValue;
+                if (!TryMapStatusToCustom(effectiveStatusValue, out mappedCustomValue))
+                {
+                    tracingService?.Trace(
+                        "Unmapped statuscode value encountered: {0}. No action taken.",
+                        ToTraceValue(effectiveStatusValue));
+
+                    return;
+                }
+
+                if (!AreEqual(effectiveCustomValue, mappedCustomValue))
+                {
+                    tracingService?.Trace(
+                        "statuscode changed. Setting new_lostreason to mapped value {0}.",
+                        mappedCustomValue);
+
+                    SetOptionValue(target, CustomLostReasonField, mappedCustomValue);
+                }
+                else
+                {
+                    tracingService?.Trace("statuscode changed, but new_lostreason already has the mapped value.");
+                }
+
+                return;
+            }
+
+            if (customActuallyChanged)
+            {
+                int mappedStatusValue;
+                if (!TryMapCustomToStatus(effectiveCustomValue, out mappedStatusValue))
+                {
+                    tracingService?.Trace(
+                        "Unmapped new_lostreason value encountered: {0}. No action taken.",
+                        ToTraceValue(effectiveCustomValue));
+
+                    return;
+                }
+
+                if (!AreEqual(effectiveStatusValue, mappedStatusValue))
+                {
+                    tracingService?.Trace(
+                        "new_lostreason changed. Setting statuscode to mapped value {0}.",
+                        mappedStatusValue);
+
+                    SetOptionValue(target, StatusCodeField, mappedStatusValue);
+                }
+                else
+                {
+                    tracingService?.Trace("new_lostreason changed, but statuscode already has the mapped value.");
+                }
+            }
+        }
+
+        private static int? GetOptionValue(Entity entity, string attributeName)
+        {
+            if (entity == null || string.IsNullOrWhiteSpace(attributeName))
+            {
+                return null;
+            }
+
+            if (!entity.Attributes.Contains(attributeName) || entity[attributeName] == null)
+            {
+                return null;
+            }
+
+            var option = entity[attributeName] as OptionSetValue;
+            return option?.Value;
+        }
+
+        private static void SetOptionValue(Entity target, string attributeName, int value)
+        {
+            if (target == null)
+            {
+                throw new InvalidPluginExecutionException("Target entity is null.");
+            }
+
+            if (string.IsNullOrWhiteSpace(attributeName))
+            {
+                throw new InvalidPluginExecutionException("Attribute name is null or empty.");
+            }
+
+            target[attributeName] = new OptionSetValue(value);
+        }
+
+        private static bool TryMapCustomToStatus(int? customValue, out int mappedStatusValue)
+        {
+            mappedStatusValue = default(int);
+
+            if (!customValue.HasValue)
+            {
+                return false;
+            }
+
+            return CustomToStatusMap.TryGetValue(customValue.Value, out mappedStatusValue);
+        }
+
+        private static bool TryMapStatusToCustom(int? statusValue, out int mappedCustomValue)
+        {
+            mappedCustomValue = default(int);
+
+            if (!statusValue.HasValue)
+            {
+                return false;
+            }
+
+            return StatusToCustomMap.TryGetValue(statusValue.Value, out mappedCustomValue);
+        }
+
+        private static bool IsMappedPair(int? statusValue, int? customValue)
+        {
+            int mappedCustomValue;
+            return statusValue.HasValue
+                   && customValue.HasValue
+                   && StatusToCustomMap.TryGetValue(statusValue.Value, out mappedCustomValue)
+                   && mappedCustomValue == customValue.Value;
+        }
+
+        private static bool AreEqual(int? left, int? right)
+        {
+            return left.GetValueOrDefault() == right.GetValueOrDefault() && left.HasValue == right.HasValue;
+        }
+
+        private static bool AreEqual(int? left, int right)
+        {
+            return left.HasValue && left.Value == right;
+        }
+
+        private static string ToTraceValue(int? value)
+        {
+            return value.HasValue ? value.Value.ToString() : "null";
+        }
+    }
+}
