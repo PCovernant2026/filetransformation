@@ -60,7 +60,7 @@
       },
       "runAfter": {
         "Condition_3": [
-          "SUCCEEDED"
+          "Succeeded"
         ]
       },
       "metadata": {
@@ -313,9 +313,6 @@
           "inputs": {
             "host": {
               "workflowReferenceName": "c3bd69d2-281c-f011-998a-6045bd08b326"
-            },
-            "body": {
-              "text": "@items('Apply_to_each')?['accountid']"
             }
           },
           "metadata": {
@@ -359,9 +356,6 @@
           "inputs": {
             "host": {
               "workflowReferenceName": "e507c166-e01b-f011-998a-6045bd08b326"
-            },
-            "body": {
-              "text": "@items('Apply_to_each')?['accountid']"
             }
           },
           "runAfter": {
@@ -411,7 +405,7 @@
       },
       "runAfter": {
         "Condition_2": [
-          "SUCCEEDED"
+          "Succeeded"
         ]
       },
       "metadata": {
