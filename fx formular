@@ -1,65 +1,7 @@
-''
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 {
   "type": "Foreach",
   "foreach": "@outputs('List_rows')?['body/value']",
   "actions": {
-    "runDraftRfq": {
-      "type": "Workflow",
-      "inputs": {
-        "host": {
-          "workflowReferenceName": "1ecc9e47-e21b-f011-998a-6045bd08b326"
-        },
-        "body": {
-          "text": "@items('Apply_to_each')?['accountid']"
-        }
-      },
-      "metadata": {
-        "operationMetadataId": "31e75e25-113b-4e7d-a573-30433c621f07"
-      }
-    },
-    "runReadyForQuote": {
-      "type": "Workflow",
-      "inputs": {
-        "host": {
-          "workflowReferenceName": "bbe78a99-221c-f011-998a-6045bd08157f"
-        },
-        "body": {
-          "text": "@items('Apply_to_each')?['accountid']"
-        }
-      },
-      "runAfter": {
-        "Condition_9": [
-          "Succeeded"
-        ]
-      },
-      "metadata": {
-        "operationMetadataId": "77bd7e84-29fb-4094-8af2-5e9c92a0f4f2"
-      }
-    },
     "Condition": {
       "type": "If",
       "expression": {
@@ -84,8 +26,8 @@
         "actions": {}
       },
       "runAfter": {
-        "Condition_3": [
-          "Succeeded"
+        "runDraftRfq": [
+          "SUCCEEDED"
         ]
       },
       "metadata": {
@@ -238,7 +180,7 @@
         "actions": {}
       },
       "runAfter": {
-        "runReadyForQuote": [
+        "Condition_9": [
           "Succeeded"
         ]
       },
@@ -302,8 +244,8 @@
         "actions": {}
       },
       "runAfter": {
-        "runDraftRfq": [
-          "Succeeded"
+        "runReadyForQuote": [
+          "SUCCEEDED"
         ]
       },
       "metadata": {
@@ -338,6 +280,9 @@
           "inputs": {
             "host": {
               "workflowReferenceName": "c3bd69d2-281c-f011-998a-6045bd08b326"
+            },
+            "body": {
+              "text": "@items('Apply_to_each')?['accountid']"
             }
           },
           "metadata": {
@@ -381,6 +326,9 @@
           "inputs": {
             "host": {
               "workflowReferenceName": "e507c166-e01b-f011-998a-6045bd08b326"
+            },
+            "body": {
+              "text": "@items('Apply_to_each')?['accountid']"
             }
           },
           "runAfter": {
@@ -435,6 +383,39 @@
       },
       "metadata": {
         "operationMetadataId": "8b4326f0-a097-470e-ab7f-6d83435616ca"
+      }
+    },
+    "runReadyForQuote": {
+      "type": "Workflow",
+      "inputs": {
+        "host": {
+          "workflowReferenceName": "bbe78a99-221c-f011-998a-6045bd08157f"
+        },
+        "body": {
+          "text": "@items('Apply_to_each')?['accountid']"
+        }
+      },
+      "metadata": {
+        "operationMetadataId": "77bd7e84-29fb-4094-8af2-5e9c92a0f4f2"
+      }
+    },
+    "runDraftRfq": {
+      "type": "Workflow",
+      "inputs": {
+        "host": {
+          "workflowReferenceName": "1ecc9e47-e21b-f011-998a-6045bd08b326"
+        },
+        "body": {
+          "text": "@items('Apply_to_each')?['accountid']"
+        }
+      },
+      "runAfter": {
+        "Condition_3": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "31e75e25-113b-4e7d-a573-30433c621f07"
       }
     }
   },
