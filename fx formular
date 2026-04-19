@@ -1,11 +1,4 @@
-Change the order of the opportunities displayed in the daily email as below:
-
-Email to rep alerting of Opportunity that has been in Status "Ready for Quote" for 2 or more business days (#8763)
-Email to rep alerting of Opportunity that has been in Status "Quoted" for 10 days (#8763)
-Notification 5 days before expiration/25 days after quote proposal date a quote expires - new_quoteproposaldate (Opportunity)
-Daily email of Opportunities you own in the Status "Draft RFQ" (#8262)
-
-
+''
 
 
 
