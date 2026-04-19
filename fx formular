@@ -3,25 +3,6 @@ using Microsoft.Xrm.Sdk;
 
 namespace Winco.Dynamics365.Plugins
 {
-    /// <summary>
-    /// Keeps Opportunity.statuscode and Opportunity.new_lostreason synchronized by option value.
-    /// 
-    /// Registration assumptions:
-    /// - Entity: opportunity
-    /// - Message: Update
-    /// - Stage: Pre-Operation
-    /// - Mode: Synchronous
-    /// - Pre-Image name: PreImage
-    /// - Pre-Image attributes: statuscode, new_lostreason
-    /// 
-    /// Notes:
-    /// - Uses option values only; no label logic.
-    /// - Uses pre-image comparison to detect actual changes.
-    /// - Includes depth check to prevent recursive re-entry.
-    /// - Avoids unnecessary overwrites.
-    /// - If both fields are changed in the same request and values differ, statuscode wins
-    ///   because it is the OOB system field commonly driven by Close as Lost / integrations.
-    /// </summary>
     public sealed class OpportunityLostReasonSyncPlugin : IPlugin
     {
         private const string EntityLogicalName = "opportunity";
@@ -47,7 +28,6 @@ namespace Winco.Dynamics365.Plugins
             tracingService?.Trace("OpportunityLostReasonSyncPlugin: Start. Message={0}, Stage={1}, Mode={2}, Depth={3}",
                 context.MessageName, context.Stage, context.Mode, context.Depth);
 
-            // Defensive guards to ensure plugin only runs in the expected pipeline.
             if (!string.Equals(context.MessageName, "Update", StringComparison.OrdinalIgnoreCase))
             {
                 tracingService?.Trace("Exiting because message is not Update.");
@@ -72,7 +52,6 @@ namespace Winco.Dynamics365.Plugins
                 return;
             }
 
-            // Only continue if at least one of the two fields is part of the incoming update.
             bool targetContainsStatus = target.Attributes.Contains(StatusCodeField);
             bool targetContainsCustom = target.Attributes.Contains(CustomLostReasonField);
 
@@ -112,19 +91,15 @@ namespace Winco.Dynamics365.Plugins
                 statusActuallyChanged,
                 customActuallyChanged);
 
-            // If neither field actually changed, do nothing.
             if (!statusActuallyChanged && !customActuallyChanged)
             {
                 tracingService?.Trace("Exiting because neither field actually changed compared to PreImage.");
                 return;
             }
 
-            // Current effective values (Target wins; otherwise PreImage).
             int? effectiveStatusValue = targetContainsStatus ? targetStatusValue : preStatusValue;
             int? effectiveCustomValue = targetContainsCustom ? targetCustomValue : preCustomValue;
 
-            // Case 1: Both fields changed in the same transaction.
-            // If they differ, make them consistent by letting statuscode win.
             if (statusActuallyChanged && customActuallyChanged)
             {
                 if (!AreEqual(effectiveStatusValue, effectiveCustomValue))
@@ -144,7 +119,6 @@ namespace Winco.Dynamics365.Plugins
                 return;
             }
 
-            // Case 2: statuscode changed -> copy to new_lostreason if needed.
             if (statusActuallyChanged)
             {
                 if (!AreEqual(effectiveStatusValue, effectiveCustomValue))
@@ -164,11 +138,8 @@ namespace Winco.Dynamics365.Plugins
                 return;
             }
 
-            // Case 3: new_lostreason changed -> copy to statuscode if needed.
             if (customActuallyChanged)
             {
-                // Avoid setting statuscode to null. statuscode is a system status reason column and should
-                // only be assigned a valid option value.
                 if (!effectiveCustomValue.HasValue)
                 {
                     tracingService?.Trace("new_lostreason changed to null. Skipping statuscode sync to avoid invalid status assignment.");
@@ -193,10 +164,6 @@ namespace Winco.Dynamics365.Plugins
             tracingService?.Trace("OpportunityLostReasonSyncPlugin: End.");
         }
 
-        /// <summary>
-        /// Returns the integer option value for a Choice/Status Reason column, or null if not present.
-        /// Handles missing attributes and explicit null values safely.
-        /// </summary>
         private static int? GetOptionValue(Entity entity, string attributeName)
         {
             if (entity == null || string.IsNullOrWhiteSpace(attributeName))
@@ -213,10 +180,6 @@ namespace Winco.Dynamics365.Plugins
             return option?.Value;
         }
 
-        /// <summary>
-        /// Sets an option value on the target entity.
-        /// Uses null assignment only for nullable custom option columns.
-        /// </summary>
         private static void SetOptionValue(Entity target, string attributeName, int? value)
         {
             if (target == null)
@@ -232,9 +195,6 @@ namespace Winco.Dynamics365.Plugins
             target[attributeName] = value.HasValue ? new OptionSetValue(value.Value) : null;
         }
 
-        /// <summary>
-        /// Compares nullable option values by integer value.
-        /// </summary>
         private static bool AreEqual(int? left, int? right)
         {
             return left.GetValueOrDefault() == right.GetValueOrDefault() && left.HasValue == right.HasValue;
