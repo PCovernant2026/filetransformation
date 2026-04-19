@@ -1,46 +1,243 @@
-Write a PRODUCTION‑READY C# Dataverse plugin that keeps two fields on the Opportunity table perfectly in sync:
+using System;
+using Microsoft.Xrm.Sdk;
 
-• OOB Status Reason (logical name: statuscode)
-• Custom Lost Reason (logical name: new_lostreason, Choice column)
+namespace Contoso.Plugins.Opportunity
+{
+    /// <summary>
+    /// Keeps Opportunity.statuscode and Opportunity.new_lostreason synchronized by option value.
+    /// 
+    /// Registration assumptions:
+    /// - Entity: opportunity
+    /// - Message: Update
+    /// - Stage: Pre-Operation
+    /// - Mode: Synchronous
+    /// - Pre-Image name: PreImage
+    /// - Pre-Image attributes: statuscode, new_lostreason
+    /// 
+    /// Notes:
+    /// - Uses option values only; no label logic.
+    /// - Uses pre-image comparison to detect actual changes.
+    /// - Includes depth check to prevent recursive re-entry.
+    /// - Avoids unnecessary overwrites.
+    /// - If both fields are changed in the same request and values differ, statuscode wins
+    ///   because it is the OOB system field commonly driven by Close as Lost / integrations.
+    /// </summary>
+    public sealed class OpportunityLostReasonSyncPlugin : IPlugin
+    {
+        private const string EntityLogicalName = "opportunity";
+        private const string StatusCodeField = "statuscode";
+        private const string CustomLostReasonField = "new_lostreason";
+        private const string PreImageName = "PreImage";
 
-REQUIREMENTS:
-1. The plugin must run on Opportunity UPDATE
-2. Execution must be SYNCHRONOUS and PRE‑OPERATION
-3. The plugin must:
-   - When new_lostreason changes, copy the SAME option value to statuscode
-   - When statuscode changes, copy the SAME option value to new_lostreason
-4. Both option sets already contain IDENTICAL values (1:1 mapping by option value)
-5. The plugin must work for:
-   - D365 UI
-   - Native "Close as Lost" button
-   - Power Pages / Portal closes
-   - API, integrations, and imports
-6. Prevent infinite loops using a Depth check
-7. Use a Pre‑Image to ensure the value actually changed
-8. Do NOT overwrite fields unnecessarily
-9. Do NOT rely on labels — use option values only
-10. Include:
-    - Full C# plugin code
-    - Proper null checks
-    - Clear comments explaining the logic
+        public void Execute(IServiceProvider serviceProvider)
+        {
+            if (serviceProvider == null)
+            {
+                throw new InvalidPluginExecutionException("Service provider is null.");
+            }
 
-ASSUME:
-• Entity logical name: opportunity
-• Custom field logical name: new_lostreason
-• OOB field logical name: statuscode
-• Message: Update
-• Stage: Pre‑Operation
-• Execution Mode: Synchronous
-• Pre‑Image name: PreImage
-• Pre‑Image attributes: statuscode, new_lostreason
-• .NET Framework 4.6.2
-• Sandbox‑safe plugin
+            var tracingService = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
 
-DO NOT include:
-• JavaScript
-• Workflows or Power Automate
-• Placeholder or pseudo‑code
+            if (context == null)
+            {
+                throw new InvalidPluginExecutionException("Plugin execution context is null.");
+            }
 
-Return ONLY:
-• The plugin C# code
-• Brief plugin registration instructions
+            tracingService?.Trace("OpportunityLostReasonSyncPlugin: Start. Message={0}, Stage={1}, Mode={2}, Depth={3}",
+                context.MessageName, context.Stage, context.Mode, context.Depth);
+
+            // Defensive guards to ensure plugin only runs in the expected pipeline.
+            if (!string.Equals(context.MessageName, "Update", StringComparison.OrdinalIgnoreCase))
+            {
+                tracingService?.Trace("Exiting because message is not Update.");
+                return;
+            }
+
+            if (context.Depth > 1)
+            {
+                tracingService?.Trace("Exiting because Depth > 1 to prevent recursion.");
+                return;
+            }
+
+            if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity target))
+            {
+                tracingService?.Trace("Exiting because Target is missing or invalid.");
+                return;
+            }
+
+            if (!string.Equals(target.LogicalName, EntityLogicalName, StringComparison.OrdinalIgnoreCase))
+            {
+                tracingService?.Trace("Exiting because target entity is not opportunity.");
+                return;
+            }
+
+            // Only continue if at least one of the two fields is part of the incoming update.
+            bool targetContainsStatus = target.Attributes.Contains(StatusCodeField);
+            bool targetContainsCustom = target.Attributes.Contains(CustomLostReasonField);
+
+            if (!targetContainsStatus && !targetContainsCustom)
+            {
+                tracingService?.Trace("Exiting because neither statuscode nor new_lostreason is present in Target.");
+                return;
+            }
+
+            Entity preImage = null;
+            if (context.PreEntityImages != null && context.PreEntityImages.Contains(PreImageName))
+            {
+                preImage = context.PreEntityImages[PreImageName];
+            }
+
+            if (preImage == null)
+            {
+                throw new InvalidPluginExecutionException(
+                    $"Pre-image '{PreImageName}' is required and must include '{StatusCodeField}' and '{CustomLostReasonField}'.");
+            }
+
+            int? preStatusValue = GetOptionValue(preImage, StatusCodeField);
+            int? preCustomValue = GetOptionValue(preImage, CustomLostReasonField);
+
+            int? targetStatusValue = GetOptionValue(target, StatusCodeField);
+            int? targetCustomValue = GetOptionValue(target, CustomLostReasonField);
+
+            bool statusActuallyChanged = targetContainsStatus && !AreEqual(targetStatusValue, preStatusValue);
+            bool customActuallyChanged = targetContainsCustom && !AreEqual(targetCustomValue, preCustomValue);
+
+            tracingService?.Trace(
+                "Pre values => statuscode: {0}, new_lostreason: {1}. Target values => statuscode: {2}, new_lostreason: {3}. Changed => statuscode: {4}, new_lostreason: {5}",
+                preStatusValue.HasValue ? preStatusValue.Value.ToString() : "null",
+                preCustomValue.HasValue ? preCustomValue.Value.ToString() : "null",
+                targetStatusValue.HasValue ? targetStatusValue.Value.ToString() : "null",
+                targetCustomValue.HasValue ? targetCustomValue.Value.ToString() : "null",
+                statusActuallyChanged,
+                customActuallyChanged);
+
+            // If neither field actually changed, do nothing.
+            if (!statusActuallyChanged && !customActuallyChanged)
+            {
+                tracingService?.Trace("Exiting because neither field actually changed compared to PreImage.");
+                return;
+            }
+
+            // Current effective values (Target wins; otherwise PreImage).
+            int? effectiveStatusValue = targetContainsStatus ? targetStatusValue : preStatusValue;
+            int? effectiveCustomValue = targetContainsCustom ? targetCustomValue : preCustomValue;
+
+            // Case 1: Both fields changed in the same transaction.
+            // If they differ, make them consistent by letting statuscode win.
+            if (statusActuallyChanged && customActuallyChanged)
+            {
+                if (!AreEqual(effectiveStatusValue, effectiveCustomValue))
+                {
+                    tracingService?.Trace(
+                        "Both fields changed and values differ. statuscode wins. Setting new_lostreason from statuscode value {0}.",
+                        effectiveStatusValue.HasValue ? effectiveStatusValue.Value.ToString() : "null");
+
+                    SetOptionValue(target, CustomLostReasonField, effectiveStatusValue);
+                }
+                else
+                {
+                    tracingService?.Trace("Both fields changed but already have the same value. No action needed.");
+                }
+
+                tracingService?.Trace("OpportunityLostReasonSyncPlugin: End.");
+                return;
+            }
+
+            // Case 2: statuscode changed -> copy to new_lostreason if needed.
+            if (statusActuallyChanged)
+            {
+                if (!AreEqual(effectiveStatusValue, effectiveCustomValue))
+                {
+                    tracingService?.Trace(
+                        "statuscode changed. Syncing new_lostreason to value {0}.",
+                        effectiveStatusValue.HasValue ? effectiveStatusValue.Value.ToString() : "null");
+
+                    SetOptionValue(target, CustomLostReasonField, effectiveStatusValue);
+                }
+                else
+                {
+                    tracingService?.Trace("statuscode changed, but new_lostreason already matches. No update required.");
+                }
+
+                tracingService?.Trace("OpportunityLostReasonSyncPlugin: End.");
+                return;
+            }
+
+            // Case 3: new_lostreason changed -> copy to statuscode if needed.
+            if (customActuallyChanged)
+            {
+                // Avoid setting statuscode to null. statuscode is a system status reason column and should
+                // only be assigned a valid option value.
+                if (!effectiveCustomValue.HasValue)
+                {
+                    tracingService?.Trace("new_lostreason changed to null. Skipping statuscode sync to avoid invalid status assignment.");
+                    tracingService?.Trace("OpportunityLostReasonSyncPlugin: End.");
+                    return;
+                }
+
+                if (!AreEqual(effectiveCustomValue, effectiveStatusValue))
+                {
+                    tracingService?.Trace(
+                        "new_lostreason changed. Syncing statuscode to value {0}.",
+                        effectiveCustomValue.Value);
+
+                    SetOptionValue(target, StatusCodeField, effectiveCustomValue);
+                }
+                else
+                {
+                    tracingService?.Trace("new_lostreason changed, but statuscode already matches. No update required.");
+                }
+            }
+
+            tracingService?.Trace("OpportunityLostReasonSyncPlugin: End.");
+        }
+
+        /// <summary>
+        /// Returns the integer option value for a Choice/Status Reason column, or null if not present.
+        /// Handles missing attributes and explicit null values safely.
+        /// </summary>
+        private static int? GetOptionValue(Entity entity, string attributeName)
+        {
+            if (entity == null || string.IsNullOrWhiteSpace(attributeName))
+            {
+                return null;
+            }
+
+            if (!entity.Attributes.Contains(attributeName) || entity[attributeName] == null)
+            {
+                return null;
+            }
+
+            var option = entity[attributeName] as OptionSetValue;
+            return option?.Value;
+        }
+
+        /// <summary>
+        /// Sets an option value on the target entity.
+        /// Uses null assignment only for nullable custom option columns.
+        /// </summary>
+        private static void SetOptionValue(Entity target, string attributeName, int? value)
+        {
+            if (target == null)
+            {
+                throw new InvalidPluginExecutionException("Target entity is null.");
+            }
+
+            if (string.IsNullOrWhiteSpace(attributeName))
+            {
+                throw new InvalidPluginExecutionException("Attribute name is null or empty.");
+            }
+
+            target[attributeName] = value.HasValue ? new OptionSetValue(value.Value) : null;
+        }
+
+        /// <summary>
+        /// Compares nullable option values by integer value.
+        /// </summary>
+        private static bool AreEqual(int? left, int? right)
+        {
+            return left.GetValueOrDefault() == right.GetValueOrDefault() && left.HasValue == right.HasValue;
+        }
+    }
+}
