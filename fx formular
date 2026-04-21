@@ -1,29 +1,5 @@
 
-
-ReferenceError: Web resource method does not exist: OpportunityChoiceFilter
-    at b._handleMethodNotExistError (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:14:1287734)
-    at b.execute (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:14:1286322)
-    at https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:4:106656
-    at a (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:14:104225)
-    at ie._executeIndividualEvent (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:4:106630)
-    at ie._executeEventHandler (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:4:103509)
-    at Object.execute (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:4:100562)
-    at w._executeSyncAction (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:14:642370)
-    at w._executeSync (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:14:642097)
-    at w.executeAction (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:14:641879)
-    at t.dispatch (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:14:647264)
-    at Object.dispatch (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:14:908344)
-    at Object.dispatch (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:14:646705)
-    at dispatch (https://content.powerapps.com/resource/uci-infra-web/scripts/app.08ae51c63535a89346b6b2539689e55c.js:14:642913)
-    at Ne (https://content.powerapps.com/resource/uci-infra-web/scripts/editformpage.dc2d90c995d2f349dac1307000ec676f.js:4:489565)
-    at https://content.powerapps.com/resource/uci-infra-web/scripts/editformpage.dc2d90c995d2f349dac1307000ec676f.js:4:422748
-
-Error Details:
-Event Name: onload
-Function Name: OpportunityChoiceFilter
-Web Resource Name: crb5d_OpportunityChoiceFilter
-Solution Name: Active
-Publisher Name: DefaultPublisherwincowindow
+OpportunityChoiceFilter.onLoad
 
 
 
