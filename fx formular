@@ -1,35 +1,108 @@
-Prompt:
-You are a Dynamics 365 (Dataverse) client-side JavaScript expert.
-Write a JavaScript function suitable for use on a Dynamics 365 form that hides all options in a Choice (Option Set) field except a predefined allowed list.
-Requirements:
+var OpportunityChoiceFilter = (function () {
+    "use strict";
 
-Use the Xrm formContext API (not direct DOM access)
-Hide options using control.removeOption() or control.clearOptions() + re-add logic (best practice for Dynamics)
-Match options by label text, not value
-Keep only the following labels visible:
-Assigned to Rep
-Lead
-Draft RFQ
-Pre-Quote Review
-Sq. Ft. $ Budget
-Ready for Quote
-Plans & Spec Review
-Engineering Review
-Processing Proposal
-Returned to Rep
-Questions - Issues
-Quoted
-Revisions
-On Hold
+    // Keep labels exactly as they appear in Dynamics
+    var ALLOWED_LABELS = [
+        "Assigned to Rep",
+        "Lead",
+        "Draft RFQ",
+        "Pre-Quote Review",
+        "Sq. Ft. $ Budget",
+        "Ready for Quote",
+        "Plans & Spec Review",
+        "Engineering Review",
+        "Processing Proposal",
+        "Returned to Rep",
+        "Questions - Issues",
+        "Quoted",
+        "Revisions",
+        "On Hold"
+    ];
 
+    // Cache original options so the function can be called more than once safely
+    var originalOptionsCache = {};
 
-Handle the case where the currently selected value is not allowed (clear it safely)
-Include an example of calling the function from Form OnLoad
-Use clean, readable, production-quality JavaScript
+    function normalizeLabel(label) {
+        return (label || "").trim().toLowerCase();
+    }
 
-Assume the Choice field logical name will be provided as a variable.
+    function buildAllowedLookup(labels) {
+        var lookup = {};
+        labels.forEach(function (label) {
+            lookup[normalizeLabel(label)] = true;
+        });
+        return lookup;
+    }
 
+    function cacheOriginalOptions(fieldLogicalName, attribute) {
+        if (!originalOptionsCache[fieldLogicalName]) {
+            originalOptionsCache[fieldLogicalName] = (attribute.getOptions() || []).map(function (option) {
+                return {
+                    text: option.text,
+                    value: option.value
+                };
+            });
+        }
 
+        return originalOptionsCache[fieldLogicalName];
+    }
+
+    function filterChoiceField(executionContext, fieldLogicalName) {
+        var formContext = executionContext.getFormContext();
+
+        if (!formContext || !fieldLogicalName) {
+            return;
+        }
+
+        var attribute = formContext.getAttribute(fieldLogicalName);
+        var control = formContext.getControl(fieldLogicalName);
+
+        if (!attribute || !control) {
+            return;
+        }
+
+        var allowedLookup = buildAllowedLookup(ALLOWED_LABELS);
+        var originalOptions = cacheOriginalOptions(fieldLogicalName, attribute);
+
+        var allowedOptions = originalOptions.filter(function (option) {
+            return allowedLookup[normalizeLabel(option.text)] === true;
+        });
+
+        var currentValue = attribute.getValue();
+        var currentOption = currentValue !== null ? attribute.getOption(currentValue) : null;
+        var currentLabelIsAllowed = true;
+
+        if (currentOption) {
+            currentLabelIsAllowed = allowedLookup[normalizeLabel(currentOption.text)] === true;
+        }
+
+        // Rebuild the option list cleanly from the cached original set
+        control.clearOptions();
+
+        allowedOptions.forEach(function (option) {
+            control.addOption({
+                text: option.text,
+                value: option.value
+            });
+        });
+
+        // Clear current value if it is no longer allowed
+        if (!currentLabelIsAllowed) {
+            attribute.setValue(null);
+            attribute.fireOnChange();
+        }
+    }
+
+    function onLoad(executionContext) {
+        var fieldLogicalName = "new_stagechoice"; // replace with your actual field logical name
+        filterChoiceField(executionContext, fieldLogicalName);
+    }
+
+    return {
+        filterChoiceField: filterChoiceField,
+        onLoad: onLoad
+    };
+})();
 
 
 
