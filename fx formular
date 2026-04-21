@@ -1,7 +1,8 @@
 var OpportunityChoiceFilter = (function () {
     "use strict";
 
-    // Keep labels exactly as they appear in Dynamics
+    var FIELD_LOGICAL_NAME = "new_status";
+
     var ALLOWED_LABELS = [
         "Assigned to Rep",
         "Lead",
@@ -19,7 +20,6 @@ var OpportunityChoiceFilter = (function () {
         "On Hold"
     ];
 
-    // Cache original options so the function can be called more than once safely
     var originalOptionsCache = {};
 
     function normalizeLabel(label) {
@@ -28,15 +28,16 @@ var OpportunityChoiceFilter = (function () {
 
     function buildAllowedLookup(labels) {
         var lookup = {};
-        labels.forEach(function (label) {
-            lookup[normalizeLabel(label)] = true;
-        });
+        for (var i = 0; i < labels.length; i++) {
+            lookup[normalizeLabel(labels[i])] = true;
+        }
         return lookup;
     }
 
-    function cacheOriginalOptions(fieldLogicalName, attribute) {
-        if (!originalOptionsCache[fieldLogicalName]) {
-            originalOptionsCache[fieldLogicalName] = (attribute.getOptions() || []).map(function (option) {
+    function cacheOriginalOptions(attributeName, attribute) {
+        if (!originalOptionsCache[attributeName]) {
+            var options = attribute.getOptions() || [];
+            originalOptionsCache[attributeName] = options.map(function (option) {
                 return {
                     text: option.text,
                     value: option.value
@@ -44,25 +45,20 @@ var OpportunityChoiceFilter = (function () {
             });
         }
 
-        return originalOptionsCache[fieldLogicalName];
+        return originalOptionsCache[attributeName];
     }
 
-    function filterChoiceField(executionContext, fieldLogicalName) {
+    function filterChoiceField(executionContext) {
         var formContext = executionContext.getFormContext();
+        if (!formContext) return;
 
-        if (!formContext || !fieldLogicalName) {
-            return;
-        }
+        var attribute = formContext.getAttribute(FIELD_LOGICAL_NAME);
+        var control = formContext.getControl(FIELD_LOGICAL_NAME);
 
-        var attribute = formContext.getAttribute(fieldLogicalName);
-        var control = formContext.getControl(fieldLogicalName);
-
-        if (!attribute || !control) {
-            return;
-        }
+        if (!attribute || !control) return;
 
         var allowedLookup = buildAllowedLookup(ALLOWED_LABELS);
-        var originalOptions = cacheOriginalOptions(fieldLogicalName, attribute);
+        var originalOptions = cacheOriginalOptions(FIELD_LOGICAL_NAME, attribute);
 
         var allowedOptions = originalOptions.filter(function (option) {
             return allowedLookup[normalizeLabel(option.text)] === true;
@@ -76,7 +72,6 @@ var OpportunityChoiceFilter = (function () {
             currentLabelIsAllowed = allowedLookup[normalizeLabel(currentOption.text)] === true;
         }
 
-        // Rebuild the option list cleanly from the cached original set
         control.clearOptions();
 
         allowedOptions.forEach(function (option) {
@@ -86,7 +81,6 @@ var OpportunityChoiceFilter = (function () {
             });
         });
 
-        // Clear current value if it is no longer allowed
         if (!currentLabelIsAllowed) {
             attribute.setValue(null);
             attribute.fireOnChange();
@@ -94,16 +88,14 @@ var OpportunityChoiceFilter = (function () {
     }
 
     function onLoad(executionContext) {
-        var fieldLogicalName = "new_stagechoice"; // replace with your actual field logical name
-        filterChoiceField(executionContext, fieldLogicalName);
+        filterChoiceField(executionContext);
     }
 
     return {
-        filterChoiceField: filterChoiceField,
-        onLoad: onLoad
+        onLoad: onLoad,
+        filterChoiceField: filterChoiceField
     };
 })();
-
 
 
 
