@@ -1,3 +1,74 @@
+Prompt:
+You are a Dynamics 365 (Dataverse) client-side JavaScript expert.
+Write a JavaScript function suitable for use on a Dynamics 365 form that hides all options in a Choice (Option Set) field except a predefined allowed list.
+Requirements:
+
+Use the Xrm formContext API (not direct DOM access)
+Hide options using control.removeOption() or control.clearOptions() + re-add logic (best practice for Dynamics)
+Match options by label text, not value
+Keep only the following labels visible:
+Assigned to Rep
+Lead
+Draft RFQ
+Pre-Quote Review
+Sq. Ft. $ Budget
+Ready for Quote
+Plans & Spec Review
+Engineering Review
+Processing Proposal
+Returned to Rep
+Questions - Issues
+Quoted
+Revisions
+On Hold
+
+
+Handle the case where the currently selected value is not allowed (clear it safely)
+Include an example of calling the function from Form OnLoad
+Use clean, readable, production-quality JavaScript
+
+Assume the Choice field logical name will be provided as a variable.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 using System;
 using System.Collections.Generic;
 using Microsoft.Xrm.Sdk;
