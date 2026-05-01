@@ -1,641 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Microsoft.Xrm.Sdk;
-using Microsoft.Xrm.Sdk.Query;
-
-namespace VGS.Dynamics365.Plugins
-{
-    /// <summary>
-    /// Creates vgsd_holecalculations records when a vgsd_holedetails record is created.
-    ///
-    /// Registration:
-    /// - Message: Create
-    /// - Primary Entity: vgsd_holedetails
-    /// - Stage: PostOperation
-    /// - Mode: Synchronous recommended
-    ///
-    /// Logic:
-    /// - If the related Work Order Primary Incident Type is Concrete:
-    ///     Create 2 Hole Calculation records:
-    ///       1. Structural product: productnumber 000002
-    ///       2. Finish product: productnumber 000001
-    ///
-    /// - If the related Work Order Primary Incident Type is not Concrete:
-    ///     Create 1 Hole Calculation record with no product.
-    ///
-    /// - Prevents duplicate Hole Calculation creation for the same Hole Detail.
-    /// - Runs as SYSTEM.
-    ///
-    /// Recommended Unsecure Configuration:
-    /// ConcreteIncidentTypeId=PUT-CONCRETE-INCIDENT-TYPE-GUID-HERE
-    /// </summary>
-    public class CreateHoleCalculationsOnHoleDetailCreate : IPlugin
-    {
-        private const string HoleDetailsEntityName = "vgsd_holedetails";
-        private const string HoleCalculationsEntityName = "vgsd_holecalculations";
-        private const string ProductEntityName = "product";
-        private const string WorkOrderEntityName = "msdyn_workorder";
-
-        private const string HoleDetailLookupField = "vgsd_holedetail";
-        private const string WorkOrderField = "vgsd_workorderid";
-        private const string ProductLookupField = "vgsd_product";
-        private const string NameField = "vgsd_name";
-
-        private const string IncidentTypeField = "msdyn_primaryincidenttype";
-
-        private const string ProductNumberField = "productnumber";
-        private const string ProductNameField = "name";
-
-        private const string StructuralProductNumber = "000002";
-        private const string FinishProductNumber = "000001";
-
-        private const string StateCodeField = "statecode";
-        private const int ActiveStateCode = 0;
-
-        private const int PostOperationStage = 40;
-
-        private readonly Guid _concreteIncidentTypeId;
-        private readonly string _concreteIncidentTypeName;
-
-        public CreateHoleCalculationsOnHoleDetailCreate(string unsecureConfig, string secureConfig)
-        {
-            _concreteIncidentTypeName = "Concrete";
-
-            var cfg = ParseConfig(unsecureConfig);
-
-            if (cfg.TryGetValue("ConcreteIncidentTypeId", out string concreteIdStr) &&
-                Guid.TryParse(concreteIdStr, out Guid concreteGuid))
-            {
-                _concreteIncidentTypeId = concreteGuid;
-            }
-
-            if (cfg.TryGetValue("ConcreteIncidentTypeName", out string incidentTypeName) &&
-                !string.IsNullOrWhiteSpace(incidentTypeName))
-            {
-                _concreteIncidentTypeName = incidentTypeName.Trim();
-            }
-        }
-
-        public CreateHoleCalculationsOnHoleDetailCreate() : this(null, null)
-        {
-        }
-
-        public void Execute(IServiceProvider serviceProvider)
-        {
-            if (serviceProvider == null)
-            {
-                throw new ArgumentNullException(nameof(serviceProvider));
-            }
-
-            var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
-            var tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
-            var factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
-
-            if (context == null)
-            {
-                throw new InvalidPluginExecutionException("Plugin execution context is null.");
-            }
-
-            if (factory == null)
-            {
-                throw new InvalidPluginExecutionException("Organization service factory is null.");
-            }
-
-            IOrganizationService service = factory.CreateOrganizationService(null);
-
-            Trace(
-                tracing,
-                "CreateHoleCalculationsOnHoleDetailCreate started. Message={0}, PrimaryEntity={1}, Depth={2}, Mode={3}, Stage={4}",
-                context.MessageName,
-                context.PrimaryEntityName,
-                context.Depth,
-                context.Mode,
-                context.Stage);
-
-            try
-            {
-                if (!string.Equals(context.MessageName, "Create", StringComparison.OrdinalIgnoreCase))
-                {
-                    Trace(tracing, "Exiting: Message is not Create.");
-                    return;
-                }
-
-                if (!string.Equals(context.PrimaryEntityName, HoleDetailsEntityName, StringComparison.OrdinalIgnoreCase))
-                {
-                    Trace(tracing, "Exiting: Primary entity is not {0}.", HoleDetailsEntityName);
-                    return;
-                }
-
-                if (context.Stage != PostOperationStage)
-                {
-                    Trace(tracing, "Exiting: Plugin is not running in PostOperation. Current Stage={0}.", context.Stage);
-                    return;
-                }
-
-                if (context.Depth > 1)
-                {
-                    Trace(tracing, "Exiting: Depth > 1 to prevent recursion. Depth={0}.", context.Depth);
-                    return;
-                }
-
-                if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity))
-                {
-                    Trace(tracing, "Exiting: Target not found or invalid.");
-                    return;
-                }
-
-                Entity target = (Entity)context.InputParameters["Target"];
-
-                if (!string.Equals(target.LogicalName, HoleDetailsEntityName, StringComparison.OrdinalIgnoreCase))
-                {
-                    Trace(
-                        tracing,
-                        "Exiting: Target logical name {0} does not match expected {1}.",
-                        target.LogicalName,
-                        HoleDetailsEntityName);
-                    return;
-                }
-
-                Guid holeDetailId = GetCreatedRecordId(context, target, tracing);
-
-                if (holeDetailId == Guid.Empty)
-                {
-                    Trace(tracing, "Exiting: Could not determine created Hole Detail ID.");
-                    return;
-                }
-
-                Trace(tracing, "Hole Detail ID resolved: {0}", holeDetailId);
-
-                if (HoleCalculationsAlreadyExist(service, holeDetailId, tracing))
-                {
-                    Trace(
-                        tracing,
-                        "Exiting: Hole Calculation records already exist for Hole Detail {0}.",
-                        holeDetailId);
-                    return;
-                }
-
-                Entity holeDetail = RetrieveHoleDetailData(service, holeDetailId, target, tracing);
-
-                EntityReference workOrderRef = holeDetail.GetAttributeValue<EntityReference>(WorkOrderField);
-
-                if (workOrderRef != null)
-                {
-                    Trace(
-                        tracing,
-                        "Work Order found on Hole Detail. WorkOrderId={0}, WorkOrderName={1}",
-                        workOrderRef.Id,
-                        workOrderRef.Name ?? "null");
-                }
-                else
-                {
-                    Trace(tracing, "No Work Order found on Hole Detail.");
-                }
-
-                bool isConcrete = IsConcreteIncidentType(service, holeDetail, tracing);
-
-                Trace(tracing, "Concrete evaluation result: isConcrete={0}", isConcrete);
-
-                if (isConcrete)
-                {
-                    EntityReference structuralProductRef = GetProductReferenceByNumber(
-                        service,
-                        StructuralProductNumber,
-                        tracing);
-
-                    EntityReference finishProductRef = GetProductReferenceByNumber(
-                        service,
-                        FinishProductNumber,
-                        tracing);
-
-                    if (structuralProductRef == null)
-                    {
-                        throw new InvalidPluginExecutionException(
-                            "Required active product was not found. Product Number = 000002 for Concrete - Structural.");
-                    }
-
-                    if (finishProductRef == null)
-                    {
-                        throw new InvalidPluginExecutionException(
-                            "Required active product was not found. Product Number = 000001 for Concrete - Finish.");
-                    }
-
-                    CreateHoleCalculation(
-                        service,
-                        holeDetailId,
-                        workOrderRef,
-                        structuralProductRef,
-                        "Hole Calculation - Structural",
-                        tracing);
-
-                    CreateHoleCalculation(
-                        service,
-                        holeDetailId,
-                        workOrderRef,
-                        finishProductRef,
-                        "Hole Calculation - Finish",
-                        tracing);
-                }
-                else
-                {
-                    CreateHoleCalculation(
-                        service,
-                        holeDetailId,
-                        workOrderRef,
-                        null,
-                        "Hole Calculation",
-                        tracing);
-                }
-
-                Trace(
-                    tracing,
-                    "CreateHoleCalculationsOnHoleDetailCreate completed successfully for Hole Detail {0}.",
-                    holeDetailId);
-            }
-            catch (InvalidPluginExecutionException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Trace(tracing, "CreateHoleCalculationsOnHoleDetailCreate error: {0}", ex.ToString());
-
-                throw new InvalidPluginExecutionException(
-                    "An error occurred while creating Hole Calculation records from the Hole Detail record. See plugin trace log for details.",
-                    ex);
-            }
-        }
-
-        private Entity RetrieveHoleDetailData(
-            IOrganizationService service,
-            Guid holeDetailId,
-            Entity target,
-            ITracingService tracing)
-        {
-            if (target.Attributes.Contains(WorkOrderField))
-            {
-                Trace(tracing, "Target already contains Work Order field. No retrieve needed.");
-                return target;
-            }
-
-            Trace(
-                tracing,
-                "Target does not contain Work Order field. Retrieving Hole Detail {0} from Dataverse.",
-                holeDetailId);
-
-            Entity retrieved = service.Retrieve(
-                HoleDetailsEntityName,
-                holeDetailId,
-                new ColumnSet(WorkOrderField));
-
-            Entity merged = new Entity(HoleDetailsEntityName)
-            {
-                Id = holeDetailId
-            };
-
-            foreach (KeyValuePair<string, object> attribute in target.Attributes)
-            {
-                merged[attribute.Key] = attribute.Value;
-            }
-
-            foreach (KeyValuePair<string, object> attribute in retrieved.Attributes)
-            {
-                merged[attribute.Key] = attribute.Value;
-            }
-
-            return merged;
-        }
-
-        private bool IsConcreteIncidentType(
-            IOrganizationService service,
-            Entity holeDetail,
-            ITracingService tracing)
-        {
-            EntityReference workOrderRef = holeDetail.GetAttributeValue<EntityReference>(WorkOrderField);
-
-            if (workOrderRef == null)
-            {
-                Trace(tracing, "No Work Order found. Cannot evaluate Primary Incident Type.");
-                return false;
-            }
-
-            Trace(
-                tracing,
-                "Retrieving Work Order {0} to read Primary Incident Type.",
-                workOrderRef.Id);
-
-            Entity workOrder = service.Retrieve(
-                WorkOrderEntityName,
-                workOrderRef.Id,
-                new ColumnSet(IncidentTypeField));
-
-            EntityReference incidentTypeRef = null;
-
-            if (workOrder != null && workOrder.Attributes.Contains(IncidentTypeField))
-            {
-                incidentTypeRef = workOrder.GetAttributeValue<EntityReference>(IncidentTypeField);
-            }
-
-            if (incidentTypeRef == null)
-            {
-                Trace(
-                    tracing,
-                    "Work Order {0} does not have Primary Incident Type populated.",
-                    workOrderRef.Id);
-                return false;
-            }
-
-            Trace(
-                tracing,
-                "Primary Incident Type found. IncidentTypeId={0}, IncidentTypeName={1}, EntityName={2}",
-                incidentTypeRef.Id,
-                incidentTypeRef.Name ?? "null",
-                incidentTypeRef.LogicalName ?? "null");
-
-            if (_concreteIncidentTypeId != Guid.Empty)
-            {
-                bool matchById = incidentTypeRef.Id == _concreteIncidentTypeId;
-
-                Trace(
-                    tracing,
-                    "Concrete Incident Type check by GUID. IncidentTypeId={0}, ConfigConcreteIncidentTypeId={1}, Match={2}",
-                    incidentTypeRef.Id,
-                    _concreteIncidentTypeId,
-                    matchById);
-
-                return matchById;
-            }
-
-            string incidentTypeName = incidentTypeRef.Name;
-
-            if (string.IsNullOrWhiteSpace(incidentTypeName))
-            {
-                incidentTypeName = TryRetrieveIncidentTypeName(service, incidentTypeRef, tracing);
-            }
-
-            bool matchByName =
-                !string.IsNullOrWhiteSpace(incidentTypeName) &&
-                string.Equals(incidentTypeName, _concreteIncidentTypeName, StringComparison.OrdinalIgnoreCase);
-
-            Trace(
-                tracing,
-                "Concrete Incident Type check by name. IncidentTypeName={0}, ExpectedName={1}, Match={2}",
-                incidentTypeName ?? "null",
-                _concreteIncidentTypeName,
-                matchByName);
-
-            return matchByName;
-        }
-
-        private string TryRetrieveIncidentTypeName(
-            IOrganizationService service,
-            EntityReference incidentTypeRef,
-            ITracingService tracing)
-        {
-            if (incidentTypeRef == null || incidentTypeRef.Id == Guid.Empty)
-            {
-                return null;
-            }
-
-            if (string.IsNullOrWhiteSpace(incidentTypeRef.LogicalName))
-            {
-                Trace(tracing, "Cannot retrieve Incident Type name because LogicalName is empty.");
-                return null;
-            }
-
-            try
-            {
-                Entity incidentType = service.Retrieve(
-                    incidentTypeRef.LogicalName,
-                    incidentTypeRef.Id,
-                    new ColumnSet("msdyn_name"));
-
-                string name = incidentType.GetAttributeValue<string>("msdyn_name");
-
-                Trace(
-                    tracing,
-                    "Retrieved Incident Type name from msdyn_name. IncidentTypeId={0}, Name={1}",
-                    incidentTypeRef.Id,
-                    name ?? "null");
-
-                return name;
-            }
-            catch (Exception ex)
-            {
-                Trace(
-                    tracing,
-                    "Unable to retrieve Incident Type name using msdyn_name. IncidentTypeId={0}, Error={1}",
-                    incidentTypeRef.Id,
-                    ex.Message);
-
-                return null;
-            }
-        }
-
-        private static Guid GetCreatedRecordId(
-            IPluginExecutionContext context,
-            Entity target,
-            ITracingService tracing)
-        {
-            if (context.OutputParameters != null &&
-                context.OutputParameters.Contains("id") &&
-                context.OutputParameters["id"] is Guid)
-            {
-                Guid id = (Guid)context.OutputParameters["id"];
-
-                Trace(tracing, "Record ID obtained from OutputParameters: {0}", id);
-
-                return id;
-            }
-
-            if (target != null && target.Id != Guid.Empty)
-            {
-                Trace(tracing, "Record ID obtained from Target.Id: {0}", target.Id);
-
-                return target.Id;
-            }
-
-            Trace(tracing, "Unable to determine created record ID.");
-
-            return Guid.Empty;
-        }
-
-        private static bool HoleCalculationsAlreadyExist(
-            IOrganizationService service,
-            Guid holeDetailId,
-            ITracingService tracing)
-        {
-            var query = new QueryExpression(HoleCalculationsEntityName)
-            {
-                ColumnSet = new ColumnSet(false),
-                TopCount = 1
-            };
-
-            query.Criteria.AddCondition(
-                HoleDetailLookupField,
-                ConditionOperator.Equal,
-                holeDetailId);
-
-            EntityCollection results = service.RetrieveMultiple(query);
-
-            bool exists = results != null && results.Entities.Count > 0;
-
-            Trace(
-                tracing,
-                "Duplicate check for Hole Detail {0}: Existing Hole Calculations Found={1}",
-                holeDetailId,
-                exists);
-
-            return exists;
-        }
-
-        private static EntityReference GetProductReferenceByNumber(
-            IOrganizationService service,
-            string productNumber,
-            ITracingService tracing)
-        {
-            var query = new QueryExpression(ProductEntityName)
-            {
-                ColumnSet = new ColumnSet(ProductNameField, ProductNumberField),
-                TopCount = 1
-            };
-
-            query.Criteria.AddCondition(
-                ProductNumberField,
-                ConditionOperator.Equal,
-                productNumber);
-
-            query.Criteria.AddCondition(
-                StateCodeField,
-                ConditionOperator.Equal,
-                ActiveStateCode);
-
-            EntityCollection results = service.RetrieveMultiple(query);
-
-            if (results == null || results.Entities.Count == 0)
-            {
-                Trace(
-                    tracing,
-                    "No active product found with Product Number {0}.",
-                    productNumber);
-
-                return null;
-            }
-
-            Entity product = results.Entities[0];
-
-            string productName = product.GetAttributeValue<string>(ProductNameField);
-
-            Trace(
-                tracing,
-                "Product found. ProductNumber={0}, ProductName={1}, ProductId={2}",
-                productNumber,
-                productName ?? "null",
-                product.Id);
-
-            return new EntityReference(ProductEntityName, product.Id)
-            {
-                Name = productName
-            };
-        }
-
-        private void CreateHoleCalculation(
-            IOrganizationService service,
-            Guid holeDetailId,
-            EntityReference workOrderRef,
-            EntityReference productRef,
-            string recordName,
-            ITracingService tracing)
-        {
-            var holeCalculation = new Entity(HoleCalculationsEntityName);
-
-            holeCalculation[HoleDetailLookupField] = new EntityReference(
-                HoleDetailsEntityName,
-                holeDetailId);
-
-            if (workOrderRef != null)
-            {
-                holeCalculation[WorkOrderField] = workOrderRef;
-            }
-
-            if (productRef != null)
-            {
-                holeCalculation[ProductLookupField] = productRef;
-            }
-
-            holeCalculation[NameField] = string.Format(
-                "{0} - {1:D}",
-                recordName,
-                holeDetailId);
-
-            Guid createdId = service.Create(holeCalculation);
-
-            Trace(
-                tracing,
-                "Created Hole Calculation. Id={0}, HoleDetailId={1}, WorkOrderId={2}, ProductId={3}, ProductName={4}, Name={5}",
-                createdId,
-                holeDetailId,
-                workOrderRef != null ? workOrderRef.Id.ToString() : "null",
-                productRef != null ? productRef.Id.ToString() : "null",
-                productRef != null ? productRef.Name ?? "null" : "null",
-                holeCalculation.GetAttributeValue<string>(NameField));
-        }
-
-        private static Dictionary<string, string> ParseConfig(string config)
-        {
-            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            if (string.IsNullOrWhiteSpace(config))
-            {
-                return dict;
-            }
-
-            string[] parts = config.Split(
-                new[] { ';' },
-                StringSplitOptions.RemoveEmptyEntries);
-
-            foreach (string part in parts)
-            {
-                string[] kv = part.Split(
-                    new[] { '=' },
-                    2,
-                    StringSplitOptions.RemoveEmptyEntries);
-
-                if (kv.Length == 2)
-                {
-                    dict[kv[0].Trim()] = kv[1].Trim();
-                }
-            }
-
-            return dict;
-        }
-
-        private static void Trace(
-            ITracingService tracing,
-            string message,
-            params object[] args)
-        {
-            if (tracing == null || string.IsNullOrWhiteSpace(message))
-            {
-                return;
-            }
-
-            if (args == null || args.Length == 0)
-            {
-                tracing.Trace(message);
-            }
-            else
-            {
-                tracing.Trace(message, args);
-            }
-        }
-    }
-}
-
-
-
-using System;
-using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
@@ -817,18 +181,18 @@ namespace VGS.Dynamics365.Plugins
                 request.ProductNumber,
                 request.ProductRef?.Id);
 
-            // Source values are already stored in cubic yards.
-            decimal totalVolumeCubicYards = GetRolledUpVolumeForWorkOrderAndProductNumber(
+            // Source values are stored in cubic feet.
+            decimal totalVolumeCubicFt = GetRolledUpVolumeForWorkOrderAndProductNumber(
                 service,
                 request.WorkOrderId,
                 request.ProductNumber,
                 tracing);
 
             tracing.Trace(
-                "Rolled up volume. WorkOrder={0}, ProductNumber={1}, CubicYards={2}",
+                "Rolled up volume. WorkOrder={0}, ProductNumber={1}, CubicFt={2}",
                 request.WorkOrderId,
                 request.ProductNumber,
-                totalVolumeCubicYards);
+                totalVolumeCubicFt);
 
             Entity existingWorkOrderProduct = FindExistingWorkOrderProduct(
                 service,
@@ -841,14 +205,14 @@ namespace VGS.Dynamics365.Plugins
             {
                 decimal existingQty = GetDecimalValue(existingWorkOrderProduct, WorkOrderProductQuantityField);
 
-                if (existingQty != totalVolumeCubicYards)
+                if (existingQty != totalVolumeCubicFt)
                 {
                     Entity update = new Entity(WorkOrderProductEntityName, existingWorkOrderProduct.Id);
 
                     // msdyn_quantity is a Double field in Dataverse — cast required.
-                    update[WorkOrderProductQuantityField] = (double)totalVolumeCubicYards;
+                    update[WorkOrderProductQuantityField] = (double)totalVolumeCubicFt;
 
-                    if (totalVolumeCubicYards > 0m)
+                    if (totalVolumeCubicFt > 0m)
                     {
                         update[WorkOrderProductLineStatusField] = new OptionSetValue(WorkOrderProductLineStatusUsed);
                     }
@@ -856,24 +220,24 @@ namespace VGS.Dynamics365.Plugins
                     service.Update(update);
 
                     tracing.Trace(
-                        "Updated Work Order Product. WorkOrderProductId={0}, OldQty={1}, NewQty={2} (cubic yards), LineStatusSetToUsed={3}",
+                        "Updated Work Order Product. WorkOrderProductId={0}, OldQty={1}, NewQty={2} (cubic feet), LineStatusSetToUsed={3}",
                         existingWorkOrderProduct.Id,
                         existingQty,
-                        totalVolumeCubicYards,
-                        totalVolumeCubicYards > 0m);
+                        totalVolumeCubicFt,
+                        totalVolumeCubicFt > 0m);
                 }
                 else
                 {
                     tracing.Trace(
-                        "No update needed. WorkOrderProductId={0}, msdyn_quantity already = {1} (cubic yards)",
+                        "No update needed. WorkOrderProductId={0}, msdyn_quantity already = {1} (cubic feet)",
                         existingWorkOrderProduct.Id,
-                        totalVolumeCubicYards);
+                        totalVolumeCubicFt);
                 }
 
                 return;
             }
 
-            if (totalVolumeCubicYards <= 0m)
+            if (totalVolumeCubicFt <= 0m)
             {
                 tracing.Trace(
                     "No Work Order Product exists and total volume is zero. Skipping create. WorkOrder={0}, ProductNumber={1}",
@@ -907,9 +271,9 @@ namespace VGS.Dynamics365.Plugins
             Entity create = new Entity(WorkOrderProductEntityName);
             create[WorkOrderProductToWorkOrderField] = new EntityReference(WorkOrderEntityName, request.WorkOrderId);
             create[WorkOrderProductToProductField] = productToCreate;
-            create[WorkOrderProductQuantityField] = (double)totalVolumeCubicYards;
+            create[WorkOrderProductQuantityField] = (double)totalVolumeCubicFt;
 
-            if (totalVolumeCubicYards > 0m)
+            if (totalVolumeCubicFt > 0m)
             {
                 create[WorkOrderProductLineStatusField] = new OptionSetValue(WorkOrderProductLineStatusUsed);
             }
@@ -919,13 +283,13 @@ namespace VGS.Dynamics365.Plugins
             Guid createdId = service.Create(create);
 
             tracing.Trace(
-                "Created Work Order Product. Id={0}, WorkOrder={1}, ProductId={2}, ProductNumber={3}, msdyn_quantity={4} (cubic yards), LineStatusSetToUsed={5}",
+                "Created Work Order Product. Id={0}, WorkOrder={1}, ProductId={2}, ProductNumber={3}, msdyn_quantity={4} (cubic feet), LineStatusSetToUsed={5}",
                 createdId,
                 request.WorkOrderId,
                 productToCreate.Id,
                 request.ProductNumber,
-                totalVolumeCubicYards,
-                totalVolumeCubicYards > 0m);
+                totalVolumeCubicFt,
+                totalVolumeCubicFt > 0m);
         }
 
         private static decimal GetRolledUpVolumeForWorkOrderAndProductNumber(
@@ -977,7 +341,7 @@ namespace VGS.Dynamics365.Plugins
             }
 
             tracing.Trace(
-                "GetRolledUpVolumeForWorkOrderAndProductNumber finished. WorkOrder={0}, ProductNumber={1}, TotalCubicYards={2}",
+                "GetRolledUpVolumeForWorkOrderAndProductNumber finished. WorkOrder={0}, ProductNumber={1}, TotalCubicFt={2}",
                 workOrderId,
                 productNumber,
                 total);
@@ -1357,4 +721,3 @@ namespace VGS.Dynamics365.Plugins
         #endregion
     }
 }
-
