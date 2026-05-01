@@ -1,490 +1,440 @@
-
-OpportunityChoiceFilter.onLoad
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-var OpportunityChoiceFilter = (function () {
-    "use strict";
-
-    var FIELD_LOGICAL_NAME = "new_status";
-
-    var ALLOWED_LABELS = [
-        "Assigned to Rep",
-        "Lead",
-        "Draft RFQ",
-        "Pre-Quote Review",
-        "Sq. Ft. $ Budget",
-        "Ready for Quote",
-        "Plans & Spec Review",
-        "Engineering Review",
-        "Processing Proposal",
-        "Returned to Rep",
-        "Questions - Issues",
-        "Quoted",
-        "Revisions",
-        "On Hold"
-    ];
-
-    var originalOptionsCache = {};
-
-    function normalizeLabel(label) {
-        return (label || "").trim().toLowerCase();
-    }
-
-    function buildAllowedLookup(labels) {
-        var lookup = {};
-        for (var i = 0; i < labels.length; i++) {
-            lookup[normalizeLabel(labels[i])] = true;
-        }
-        return lookup;
-    }
-
-    function cacheOriginalOptions(attributeName, attribute) {
-        if (!originalOptionsCache[attributeName]) {
-            var options = attribute.getOptions() || [];
-            originalOptionsCache[attributeName] = options.map(function (option) {
-                return {
-                    text: option.text,
-                    value: option.value
-                };
-            });
-        }
-
-        return originalOptionsCache[attributeName];
-    }
-
-    function filterChoiceField(executionContext) {
-        var formContext = executionContext.getFormContext();
-        if (!formContext) return;
-
-        var attribute = formContext.getAttribute(FIELD_LOGICAL_NAME);
-        var control = formContext.getControl(FIELD_LOGICAL_NAME);
-
-        if (!attribute || !control) return;
-
-        var allowedLookup = buildAllowedLookup(ALLOWED_LABELS);
-        var originalOptions = cacheOriginalOptions(FIELD_LOGICAL_NAME, attribute);
-
-        var allowedOptions = originalOptions.filter(function (option) {
-            return allowedLookup[normalizeLabel(option.text)] === true;
-        });
-
-        var currentValue = attribute.getValue();
-        var currentOption = currentValue !== null ? attribute.getOption(currentValue) : null;
-        var currentLabelIsAllowed = true;
-
-        if (currentOption) {
-            currentLabelIsAllowed = allowedLookup[normalizeLabel(currentOption.text)] === true;
-        }
-
-        control.clearOptions();
-
-        allowedOptions.forEach(function (option) {
-            control.addOption({
-                text: option.text,
-                value: option.value
-            });
-        });
-
-        if (!currentLabelIsAllowed) {
-            attribute.setValue(null);
-            attribute.fireOnChange();
-        }
-    }
-
-    function onLoad(executionContext) {
-        filterChoiceField(executionContext);
-    }
-
-    return {
-        onLoad: onLoad,
-        filterChoiceField: filterChoiceField
-    };
-})();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 using System;
 using System.Collections.Generic;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
 
-namespace Winco.Dynamics365.Plugins
+namespace VGS.Dynamics365.Plugins
 {
     /// <summary>
-    /// Synchronizes Opportunity.statuscode and Opportunity.new_lostreason using explicit
-    /// numeric option-value mappings in both directions.
+    /// Creates vgsd_holecalculations records when a vgsd_holedetails record is created.
     ///
-    /// Registration assumptions:
-    /// - Entity: opportunity
-    /// - Message: Update
-    /// - Stage: Pre-Operation
-    /// - Mode: Synchronous
-    /// - Pre-Image name: PreImage
-    /// - Pre-Image attributes: statuscode, new_lostreason
+    /// Registration:
+    /// - Message: Create
+    /// - Primary Entity: vgsd_holedetails
+    /// - Stage: PostOperation
     ///
-    /// Behavior:
-    /// - When new_lostreason changes, maps it to the corresponding statuscode.
-    /// - When statuscode changes, maps it to the corresponding new_lostreason.
-    /// - If both fields change in the same request and they conflict, statuscode is treated
-    ///   as authoritative when it has a valid mapping. This supports native close scenarios.
-    /// - If an unmapped value is encountered, the plugin traces and exits safely without throwing.
+    /// Logic (per PBI 9875):
+    /// - If Incident Type is Concrete: create 2 hole calculations (Structural + Finish) with products.
+    /// - For all other incident types and null: create 1 hole calculation and leave product blank.
+    ///
+    /// Additional hardening:
+    /// - Runs as SYSTEM
+    /// - Retrieves missing attributes (incident type / hole type / work order) from DB if not present on Target
+    /// - Copies hole type from hole detail to hole calculations (if configured/available)
+    /// - Safe tracing (no null deref, placeholder count correct)
     /// </summary>
-    public sealed class OpportunityLostReasonSyncPlugin : IPlugin
+    public class CreateHoleCalculationsOnHoleDetailCreate : IPlugin
     {
-        private const string EntityLogicalName = "opportunity";
-        private const string StatusCodeField = "statuscode";
-        private const string CustomLostReasonField = "new_lostreason";
-        private const string PreImageName = "PreImage";
+        private const string HoleDetailsEntityName = "vgsd_holedetails";
+        private const string HoleCalculationsEntityName = "vgsd_holecalculations";
+        private const string ProductEntityName = "product";
 
-        private static readonly IReadOnlyDictionary<int, int> CustomToStatusMap =
-            new Dictionary<int, int>
-            {
-                { 118290002, 118290005 }, // Lost - Competitor
-                { 118290005, 118290002 }, // Lost - Late to bid
-                { 118290006, 118290001 }, // Lost - Not Pursuing
-                { 118290001, 118290006 }, // Lost - Other
-                { 118290004, 118290003 }, // Lost - Pricing
-                { 118290003, 118290004 }  // Lost - Specifiable differences unable to meet
-            };
+        private const string HoleDetailLookupField = "vgsd_holedetail";
+        private const string WorkOrderField = "vgsd_workorderid";
+        private const string ProductLookupField = "vgsd_product";
+        private const string NameField = "vgsd_name";
 
-        private static readonly IReadOnlyDictionary<int, int> StatusToCustomMap =
-            new Dictionary<int, int>
+        // You set this already (lookup in FS is typically an EntityReference)
+        // msdyn_primaryincidenttype lives on the work order (msdyn_workorder) and is an EntityReference
+        private const string IncidentTypeField = "msdyn_primaryincidenttype";
+
+        private const string StructuralProductNumber = "000002";
+        private const string FinishProductNumber = "000001";
+
+        private const string StateCodeField = "statecode";
+        private const int ActiveStateCode = 0;
+
+        // Configurable via plugin step Unsecure Configuration
+        private readonly Guid _concreteIncidentTypeId;
+        private readonly string _holeTypeFieldOnHoleDetail;
+        private readonly string _holeTypeFieldOnHoleCalc;
+
+        public CreateHoleCalculationsOnHoleDetailCreate(string unsecureConfig, string secureConfig)
+        {
+            // Defaults (override with unsecure config if needed)
+            _holeTypeFieldOnHoleDetail = "vgsd_holetype";
+            _holeTypeFieldOnHoleCalc = "vgsd_holetype";
+
+            // Parse unsecure config (simple key=value;key=value)
+            var cfg = ParseConfig(unsecureConfig);
+
+            if (cfg.TryGetValue("ConcreteIncidentTypeId", out var concreteIdStr) &&
+                Guid.TryParse(concreteIdStr, out var concreteGuid))
             {
-                { 118290005, 118290002 },
-                { 118290002, 118290005 },
-                { 118290001, 118290006 },
-                { 118290006, 118290001 },
-                { 118290003, 118290004 },
-                { 118290004, 118290003 }
-            };
+                _concreteIncidentTypeId = concreteGuid;
+            }
+
+            if (cfg.TryGetValue("HoleTypeFieldOnHoleDetail", out var hdField) && !string.IsNullOrWhiteSpace(hdField))
+                _holeTypeFieldOnHoleDetail = hdField.Trim();
+
+            if (cfg.TryGetValue("HoleTypeFieldOnHoleCalc", out var hcField) && !string.IsNullOrWhiteSpace(hcField))
+                _holeTypeFieldOnHoleCalc = hcField.Trim();
+        }
+
+        // Parameterless constructor for tooling/registration patterns that don't pass config
+        public CreateHoleCalculationsOnHoleDetailCreate() : this(null, null) { }
 
         public void Execute(IServiceProvider serviceProvider)
         {
             if (serviceProvider == null)
-            {
-                throw new InvalidPluginExecutionException("Service provider is null.");
-            }
+                throw new ArgumentNullException(nameof(serviceProvider));
 
-            var tracingService = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
             var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            var tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            var factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
 
-            if (context == null)
+            // FIX: Run as SYSTEM to avoid permission-based failures
+            var service = factory.CreateOrganizationService(null);
+
+            tracing.Trace(
+                "CreateHoleCalculationsOnHoleDetailCreate started. Message={0}, PrimaryEntity={1}, Depth={2}, Mode={3}, Stage={4}",
+                context.MessageName, context.PrimaryEntityName, context.Depth, context.Mode, context.Stage);
+
+            try
             {
-                throw new InvalidPluginExecutionException("Plugin execution context is null.");
-            }
-
-            tracingService?.Trace(
-                "OpportunityLostReasonSyncPlugin started. Message={0}, Stage={1}, Mode={2}, Depth={3}",
-                context.MessageName, context.Stage, context.Mode, context.Depth);
-
-            if (!string.Equals(context.MessageName, "Update", StringComparison.OrdinalIgnoreCase))
-            {
-                tracingService?.Trace("Exiting because message is not Update.");
-                return;
-            }
-
-            if (context.Depth > 1)
-            {
-                tracingService?.Trace("Exiting because Depth > 1 to prevent recursive re-entry.");
-                return;
-            }
-
-            if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity target))
-            {
-                tracingService?.Trace("Exiting because Target is missing or invalid.");
-                return;
-            }
-
-            if (!string.Equals(target.LogicalName, EntityLogicalName, StringComparison.OrdinalIgnoreCase))
-            {
-                tracingService?.Trace("Exiting because target entity is not opportunity.");
-                return;
-            }
-
-            bool targetContainsStatus = target.Attributes.Contains(StatusCodeField);
-            bool targetContainsCustom = target.Attributes.Contains(CustomLostReasonField);
-
-            if (!targetContainsStatus && !targetContainsCustom)
-            {
-                tracingService?.Trace("Exiting because neither statuscode nor new_lostreason is present in Target.");
-                return;
-            }
-
-            Entity preImage = null;
-            if (context.PreEntityImages != null && context.PreEntityImages.Contains(PreImageName))
-            {
-                preImage = context.PreEntityImages[PreImageName];
-            }
-
-            if (preImage == null)
-            {
-                throw new InvalidPluginExecutionException(
-                    $"Pre-image '{PreImageName}' is required and must include '{StatusCodeField}' and '{CustomLostReasonField}'.");
-            }
-
-            int? preStatusValue = GetOptionValue(preImage, StatusCodeField);
-            int? preCustomValue = GetOptionValue(preImage, CustomLostReasonField);
-
-            int? targetStatusValue = GetOptionValue(target, StatusCodeField);
-            int? targetCustomValue = GetOptionValue(target, CustomLostReasonField);
-
-            bool statusActuallyChanged = targetContainsStatus && !AreEqual(targetStatusValue, preStatusValue);
-            bool customActuallyChanged = targetContainsCustom && !AreEqual(targetCustomValue, preCustomValue);
-
-            tracingService?.Trace(
-                "Pre values => statuscode: {0}, new_lostreason: {1}. Target values => statuscode: {2}, new_lostreason: {3}. Changed => statuscode: {4}, new_lostreason: {5}",
-                ToTraceValue(preStatusValue),
-                ToTraceValue(preCustomValue),
-                ToTraceValue(targetStatusValue),
-                ToTraceValue(targetCustomValue),
-                statusActuallyChanged,
-                customActuallyChanged);
-
-            if (!statusActuallyChanged && !customActuallyChanged)
-            {
-                tracingService?.Trace("Exiting because neither field actually changed.");
-                return;
-            }
-
-            int? effectiveStatusValue = targetContainsStatus ? targetStatusValue : preStatusValue;
-            int? effectiveCustomValue = targetContainsCustom ? targetCustomValue : preCustomValue;
-
-            if (statusActuallyChanged && customActuallyChanged)
-            {
-                if (IsMappedPair(effectiveStatusValue, effectiveCustomValue))
+                // Run only for Create of vgsd_holedetails
+                if (!string.Equals(context.MessageName, "Create", StringComparison.OrdinalIgnoreCase))
                 {
-                    tracingService?.Trace("Both fields changed but are already correctly mapped. No update required.");
+                    tracing.Trace("Exiting: Message is not Create.");
                     return;
                 }
 
-                int mappedCustomFromStatus;
-                if (TryMapStatusToCustom(effectiveStatusValue, out mappedCustomFromStatus))
+                if (!string.Equals(context.PrimaryEntityName, HoleDetailsEntityName, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (!AreEqual(effectiveCustomValue, mappedCustomFromStatus))
-                    {
-                        tracingService?.Trace(
-                            "Both fields changed and conflict. statuscode is authoritative. Setting new_lostreason to {0}.",
-                            mappedCustomFromStatus);
-
-                        SetOptionValue(target, CustomLostReasonField, mappedCustomFromStatus);
-                    }
-                    else
-                    {
-                        tracingService?.Trace("Both fields changed. new_lostreason already matches mapped statuscode.");
-                    }
-
+                    tracing.Trace("Exiting: Primary entity is not {0}.", HoleDetailsEntityName);
                     return;
                 }
 
-                int mappedStatusFromCustom;
-                if (TryMapCustomToStatus(effectiveCustomValue, out mappedStatusFromCustom))
+                // Prevent unintended recursion
+                if (context.Depth > 1)
                 {
-                    if (!AreEqual(effectiveStatusValue, mappedStatusFromCustom))
-                    {
-                        tracingService?.Trace(
-                            "Both fields changed and statuscode is unmapped. Falling back to custom field. Setting statuscode to {0}.",
-                            mappedStatusFromCustom);
-
-                        SetOptionValue(target, StatusCodeField, mappedStatusFromCustom);
-                    }
-                    else
-                    {
-                        tracingService?.Trace("Both fields changed. statuscode already matches mapped custom value.");
-                    }
-
+                    tracing.Trace("Exiting: Depth > 1.");
                     return;
                 }
 
-                tracingService?.Trace(
-                    "Both fields changed, but neither value could be mapped safely. No action taken. statuscode={0}, new_lostreason={1}",
-                    ToTraceValue(effectiveStatusValue),
-                    ToTraceValue(effectiveCustomValue));
-
-                return;
-            }
-
-            if (statusActuallyChanged)
-            {
-                int mappedCustomValue;
-                if (!TryMapStatusToCustom(effectiveStatusValue, out mappedCustomValue))
+                // Validate target
+                if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity))
                 {
-                    tracingService?.Trace(
-                        "Unmapped statuscode value encountered: {0}. No action taken.",
-                        ToTraceValue(effectiveStatusValue));
-
+                    tracing.Trace("Exiting: Target not found or invalid.");
                     return;
                 }
 
-                if (!AreEqual(effectiveCustomValue, mappedCustomValue))
-                {
-                    tracingService?.Trace(
-                        "statuscode changed. Setting new_lostreason to mapped value {0}.",
-                        mappedCustomValue);
+                var target = (Entity)context.InputParameters["Target"];
 
-                    SetOptionValue(target, CustomLostReasonField, mappedCustomValue);
+                if (!string.Equals(target.LogicalName, HoleDetailsEntityName, StringComparison.OrdinalIgnoreCase))
+                {
+                    tracing.Trace("Exiting: Target logical name {0} does not match expected {1}.",
+                        target.LogicalName, HoleDetailsEntityName);
+                    return;
+                }
+
+                Guid holeDetailId = GetCreatedRecordId(context, target, tracing);
+                if (holeDetailId == Guid.Empty)
+                {
+                    tracing.Trace("Exiting: Could not determine created hole detail ID.");
+                    return;
+                }
+
+                tracing.Trace("Hole detail ID resolved: {0}", holeDetailId);
+
+                // Duplicate protection
+                if (HoleCalculationsAlreadyExist(service, holeDetailId, tracing))
+                {
+                    tracing.Trace("Exiting: Hole calculation records already exist for hole detail {0}.", holeDetailId);
+                    return;
+                }
+
+                // FIX: Ensure required fields exist; retrieve if Target doesn’t have them
+                Entity holeDetail = EnsureHoleDetailData(service, holeDetailId, target, tracing);
+
+                // Work order (optional)
+                EntityReference workOrderRef = holeDetail.GetAttributeValue<EntityReference>(WorkOrderField);
+                tracing.Trace(workOrderRef != null
+                    ? $"Work order found: Id={workOrderRef.Id}, Name={(workOrderRef.Name ?? "(null)")}"
+                    : "No work order found on source hole detail.");
+
+                // Hole Type copy (optional but required by your task intent)
+                object holeTypeValue = null;
+                if (!string.IsNullOrWhiteSpace(_holeTypeFieldOnHoleDetail) && holeDetail.Attributes.Contains(_holeTypeFieldOnHoleDetail))
+                {
+                    holeTypeValue = holeDetail[_holeTypeFieldOnHoleDetail];
+                    tracing.Trace("Hole Type found on hole detail field {0}.", _holeTypeFieldOnHoleDetail);
                 }
                 else
                 {
-                    tracingService?.Trace("statuscode changed, but new_lostreason already has the mapped value.");
+                    tracing.Trace("Hole Type field {0} not present on hole detail (or not configured).", _holeTypeFieldOnHoleDetail);
                 }
 
-                return;
-            }
+                // FIX: Determine incident type robustly
+                bool isConcrete = IsConcreteIncidentType(holeDetail, tracing);
+                // FIX: Determine incident type robustly (read from work order)
+                bool isConcrete = IsConcreteIncidentType(service, holeDetail, tracing);
 
-            if (customActuallyChanged)
-            {
-                int mappedStatusValue;
-                if (!TryMapCustomToStatus(effectiveCustomValue, out mappedStatusValue))
+                tracing.Trace("Concrete evaluation result: isConcrete={0}", isConcrete);
+
+                if (isConcrete)
                 {
-                    tracingService?.Trace(
-                        "Unmapped new_lostreason value encountered: {0}. No action taken.",
-                        ToTraceValue(effectiveCustomValue));
+                    // Concrete path: create 2 calcs with products
+                    var structuralProductRef = GetProductReferenceByNumber(service, StructuralProductNumber, tracing);
+                    var finishProductRef = GetProductReferenceByNumber(service, FinishProductNumber, tracing);
 
-                    return;
-                }
+                    if (structuralProductRef == null)
+                        throw new InvalidPluginExecutionException("Required product not found. productnumber = 000002 (Concrete - Structural).");
 
-                if (!AreEqual(effectiveStatusValue, mappedStatusValue))
-                {
-                    tracingService?.Trace(
-                        "new_lostreason changed. Setting statuscode to mapped value {0}.",
-                        mappedStatusValue);
+                    if (finishProductRef == null)
+                        throw new InvalidPluginExecutionException("Required product not found. productnumber = 000001 (Concrete - Finish).");
 
-                    SetOptionValue(target, StatusCodeField, mappedStatusValue);
+                    CreateHoleCalculation(
+                        service,
+                        holeDetailId,
+                        workOrderRef,
+                        structuralProductRef,
+                        "Hole Calculation - Structural",
+                        holeTypeValue,
+                        tracing);
+
+                    CreateHoleCalculation(
+                        service,
+                        holeDetailId,
+                        workOrderRef,
+                        finishProductRef,
+                        "Hole Calculation - Finish",
+                        holeTypeValue,
+                        tracing);
                 }
                 else
                 {
-                    tracingService?.Trace("new_lostreason changed, but statuscode already has the mapped value.");
+                    // Non-concrete path: create 1 calc with product blank
+                    CreateHoleCalculation(
+                        service,
+                        holeDetailId,
+                        workOrderRef,
+                        null,
+                        "Hole Calculation",
+                        holeTypeValue,
+                        tracing);
+                }
+
+                tracing.Trace("CreateHoleCalculationsOnHoleDetailCreate completed successfully for hole detail {0}.", holeDetailId);
+            }
+            catch (Exception ex)
+            {
+                tracing.Trace("CreateHoleCalculationsOnHoleDetailCreate error: {0}", ex);
+                throw;
+            }
+        }
+
+        private bool IsConcreteIncidentType(Entity holeDetail, ITracingService tracing)
+        private bool IsConcreteIncidentType(IOrganizationService service, Entity holeDetail, ITracingService tracing)
+        {
+            // Incident type is stored on the work order (msdyn_workorder.msdyn_primaryincidenttype)
+            EntityReference incidentRef = null;
+
+            var workOrderRef = holeDetail.GetAttributeValue<EntityReference>(WorkOrderField);
+
+            if (workOrderRef != null)
+            {
+                tracing.Trace("Work order reference present on hole detail. Retrieving work order {0} to read incident type.", workOrderRef.Id);
+                try
+                {
+                    var workOrder = service.Retrieve("msdyn_workorder", workOrderRef.Id, new ColumnSet(IncidentTypeField));
+                    if (workOrder != null && workOrder.Attributes.Contains(IncidentTypeField))
+                    {
+                        incidentRef = workOrder.GetAttributeValue<EntityReference>(IncidentTypeField);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    tracing.Trace("Failed to retrieve work order {0}: {1}", workOrderRef.Id, ex.Message);
                 }
             }
+            else
+            {
+                // As a fallback, check if incident type is present directly on the hole detail (unexpected)
+                if (holeDetail.Attributes.Contains(IncidentTypeField))
+                {
+                    incidentRef = holeDetail.GetAttributeValue<EntityReference>(IncidentTypeField);
+                    tracing.Trace("Incident type found on hole detail unexpectedly. IncidentId={0}", incidentRef?.Id.ToString() ?? "null");
+                }
+                else
+                {
+            var incidentRef = holeDetail.GetAttributeValue<EntityReference>(IncidentTypeField);
+                    tracing.Trace("No work order on hole detail and no incident type found on hole detail.");
+                }
+            }
+
+            // If GUID configured, compare by GUID (recommended + reliable)
+            if (_concreteIncidentTypeId != Guid.Empty)
+            {
+                bool match = incidentRef != null && incidentRef.Id == _concreteIncidentTypeId;
+                tracing.Trace(
+                    "Incident type by GUID. IncidentId={0}, ConfigConcreteId={1}, match={2}",
+                    incidentRef?.Id.ToString() ?? "null",
+                    _concreteIncidentTypeId.ToString(),
+                    match);
+                return match;
+            }
+
+            // Fallback: compare by name when GUID not configured (less reliable)
+            // Note: incidentRef.Name may be null in plugins depending on how record is created
+            bool byName = incidentRef != null &&
+                          !string.IsNullOrWhiteSpace(incidentRef.Name) &&
+                          string.Equals(incidentRef.Name, "Concrete", StringComparison.OrdinalIgnoreCase);
+
+            tracing.Trace(
+                "Incident type by NAME fallback (ConcreteIncidentTypeId not configured). IncidentName={0}, match={1}",
+                incidentRef?.Name ?? "null",
+                byName);
+
+            return byName;
         }
 
-        private static int? GetOptionValue(Entity entity, string attributeName)
+        private static Entity EnsureHoleDetailData(IOrganizationService service, Guid holeDetailId, Entity target, ITracingService tracing)
+        private Entity EnsureHoleDetailData(IOrganizationService service, Guid holeDetailId, Entity target, ITracingService tracing)
         {
-            if (entity == null || string.IsNullOrWhiteSpace(attributeName))
+            bool hasWorkOrder = target.Attributes.Contains(WorkOrderField);
+            bool hasIncidentType = target.Attributes.Contains(IncidentTypeField);
+
+            // Hole type field is configurable; retrieve all likely fields via ColumnSet when needed
+            // We don’t know the configured field name here, so retrieve “all columns”? Not recommended.
+            // Instead: retrieve a focused set we know + let caller retrieve hole type via configured name if present.
+            if (hasWorkOrder && hasIncidentType)
+            // If target already contains work order and (optionally) hole type, return it
+            if (hasWorkOrder && target.Attributes.Contains(_holeTypeFieldOnHoleDetail))
+                return target;
+
+            tracing.Trace("Target missing required fields. Retrieving vgsd_holedetails {0} from DB.", holeDetailId);
+
+            return service.Retrieve(
+                HoleDetailsEntityName,
+                holeDetailId,
+                new ColumnSet(WorkOrderField, IncidentTypeField, "vgsd_holetype"));
+            // Retrieve the work order lookup and configured hole type field (if configured)
+            var cols = new List<string> { WorkOrderField };
+            if (!string.IsNullOrWhiteSpace(_holeTypeFieldOnHoleDetail))
+                cols.Add(_holeTypeFieldOnHoleDetail);
+
+            return service.Retrieve(HoleDetailsEntityName, holeDetailId, new ColumnSet(cols.ToArray()));
+        }
+
+        private static Guid GetCreatedRecordId(IPluginExecutionContext context, Entity target, ITracingService tracing)
+        {
+            if (context.OutputParameters != null && context.OutputParameters.Contains("id"))
             {
+                Guid id = (Guid)context.OutputParameters["id"];
+                tracing.Trace("Record ID obtained from OutputParameters: {0}", id);
+                return id;
+            }
+
+            if (target.Id != Guid.Empty)
+            {
+                tracing.Trace("Record ID obtained from Target.Id: {0}", target.Id);
+                return target.Id;
+            }
+
+            tracing.Trace("Unable to determine record ID from context.");
+            return Guid.Empty;
+        }
+
+        private static bool HoleCalculationsAlreadyExist(IOrganizationService service, Guid holeDetailId, ITracingService tracing)
+        {
+            var query = new QueryExpression(HoleCalculationsEntityName)
+            {
+                ColumnSet = new ColumnSet(false),
+                TopCount = 1
+            };
+
+            query.Criteria.AddCondition(HoleDetailLookupField, ConditionOperator.Equal, holeDetailId);
+
+            EntityCollection results = service.RetrieveMultiple(query);
+            bool exists = results.Entities.Count > 0;
+
+            tracing.Trace("Duplicate check for hole detail {0}: Existing hole calculations found = {1}", holeDetailId, exists);
+            return exists;
+        }
+
+        private static EntityReference GetProductReferenceByNumber(IOrganizationService service, string productNumber, ITracingService tracing)
+        {
+            var query = new QueryExpression(ProductEntityName)
+            {
+                ColumnSet = new ColumnSet("productid", "name", "productnumber"),
+                TopCount = 1
+            };
+
+            query.Criteria.AddCondition("productnumber", ConditionOperator.Equal, productNumber);
+            query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
+
+            EntityCollection results = service.RetrieveMultiple(query);
+
+            if (results.Entities.Count == 0)
+            {
+                tracing.Trace("No ACTIVE product found with productnumber = {0}", productNumber);
                 return null;
             }
 
-            if (!entity.Attributes.Contains(attributeName) || entity[attributeName] == null)
+            Entity product = results.Entities[0];
+            string productName = product.GetAttributeValue<string>("name");
+
+            tracing.Trace("Product found: Name={0}, ProductNumber={1}, Id={2}", productName, productNumber, product.Id);
+
+            return new EntityReference(ProductEntityName, product.Id) { Name = productName };
+        }
+
+        private void CreateHoleCalculation(
+            IOrganizationService service,
+            Guid holeDetailId,
+            EntityReference workOrderRef,
+            EntityReference productRef,
+            string recordName,
+            object holeTypeValue,
+            ITracingService tracing)
+        {
+            var holeCalculation = new Entity(HoleCalculationsEntityName);
+
+            holeCalculation[HoleDetailLookupField] = new EntityReference(HoleDetailsEntityName, holeDetailId);
+
+            if (workOrderRef != null)
+                holeCalculation[WorkOrderField] = workOrderRef;
+
+            // Product optional (non-concrete path leaves it blank)
+            if (productRef != null)
+                holeCalculation[ProductLookupField] = productRef;
+
+            // Hole type copy (optional but requested)
+            if (holeTypeValue != null && !string.IsNullOrWhiteSpace(_holeTypeFieldOnHoleCalc))
+                holeCalculation[_holeTypeFieldOnHoleCalc] = holeTypeValue;
+
+            holeCalculation[NameField] = $"{recordName} - {holeDetailId:D}";
+
+            Guid createdId = service.Create(holeCalculation);
+
+            // FIX: Safe tracing (no null deref; correct placeholders)
+            tracing.Trace(
+                "Created hole calculation. Id={0}, HoleDetailId={1}, ProductId={2}, ProductName={3}, Name={4}",
+                createdId,
+                holeDetailId,
+                productRef != null ? productRef.Id.ToString() : "null",
+                productRef != null ? (productRef.Name ?? "null") : "null",
+                holeCalculation.GetAttributeValue<string>(NameField));
+        }
+
+        private static Dictionary<string, string> ParseConfig(string config)
+        {
+            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            if (string.IsNullOrWhiteSpace(config))
+                return dict;
+
+            // supports: key=value;key=value
+            var parts = config.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var p in parts)
             {
-                return null;
+                var kv = p.Split(new[] { '=' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                if (kv.Length == 2)
+                    dict[kv[0].Trim()] = kv[1].Trim();
             }
 
-            var option = entity[attributeName] as OptionSetValue;
-            return option?.Value;
-        }
-
-        private static void SetOptionValue(Entity target, string attributeName, int value)
-        {
-            if (target == null)
-            {
-                throw new InvalidPluginExecutionException("Target entity is null.");
-            }
-
-            if (string.IsNullOrWhiteSpace(attributeName))
-            {
-                throw new InvalidPluginExecutionException("Attribute name is null or empty.");
-            }
-
-            target[attributeName] = new OptionSetValue(value);
-        }
-
-        private static bool TryMapCustomToStatus(int? customValue, out int mappedStatusValue)
-        {
-            mappedStatusValue = default(int);
-
-            if (!customValue.HasValue)
-            {
-                return false;
-            }
-
-            return CustomToStatusMap.TryGetValue(customValue.Value, out mappedStatusValue);
-        }
-
-        private static bool TryMapStatusToCustom(int? statusValue, out int mappedCustomValue)
-        {
-            mappedCustomValue = default(int);
-
-            if (!statusValue.HasValue)
-            {
-                return false;
-            }
-
-            return StatusToCustomMap.TryGetValue(statusValue.Value, out mappedCustomValue);
-        }
-
-        private static bool IsMappedPair(int? statusValue, int? customValue)
-        {
-            int mappedCustomValue;
-            return statusValue.HasValue
-                   && customValue.HasValue
-                   && StatusToCustomMap.TryGetValue(statusValue.Value, out mappedCustomValue)
-                   && mappedCustomValue == customValue.Value;
-        }
-
-        private static bool AreEqual(int? left, int? right)
-        {
-            return left.GetValueOrDefault() == right.GetValueOrDefault() && left.HasValue == right.HasValue;
-        }
-
-        private static bool AreEqual(int? left, int right)
-        {
-            return left.HasValue && left.Value == right;
-        }
-
-        private static string ToTraceValue(int? value)
-        {
-            return value.HasValue ? value.Value.ToString() : "null";
+            return dict;
         }
     }
 }
