@@ -12,31 +12,39 @@ namespace VGS.Dynamics365.Plugins
     /// - Message: Create
     /// - Primary Entity: vgsd_holedetails
     /// - Stage: PostOperation
+    /// - Mode: Synchronous recommended
     ///
-    /// Logic (per PBI 9875):
-    /// - If Incident Type is Concrete: create 2 hole calculations (Structural + Finish) with products.
-    /// - For all other incident types and null: create 1 hole calculation and leave product blank.
+    /// Logic:
+    /// - If the related Work Order Primary Incident Type is Concrete:
+    ///     Create 2 Hole Calculation records:
+    ///       1. Structural product: productnumber 000002
+    ///       2. Finish product: productnumber 000001
     ///
-    /// Additional hardening:
-    /// - Runs as SYSTEM
-    /// - Retrieves missing attributes (incident type / hole type / work order) from DB if not present on Target
-    /// - Copies hole type from hole detail to hole calculations (if configured/available)
-    /// - Safe tracing (no null deref, placeholder count correct)
+    /// - If the related Work Order Primary Incident Type is not Concrete:
+    ///     Create 1 Hole Calculation record with no product.
+    ///
+    /// - Prevents duplicate Hole Calculation creation for the same Hole Detail.
+    /// - Runs as SYSTEM.
+    ///
+    /// Recommended Unsecure Configuration:
+    /// ConcreteIncidentTypeId=PUT-CONCRETE-INCIDENT-TYPE-GUID-HERE
     /// </summary>
     public class CreateHoleCalculationsOnHoleDetailCreate : IPlugin
     {
         private const string HoleDetailsEntityName = "vgsd_holedetails";
         private const string HoleCalculationsEntityName = "vgsd_holecalculations";
         private const string ProductEntityName = "product";
+        private const string WorkOrderEntityName = "msdyn_workorder";
 
         private const string HoleDetailLookupField = "vgsd_holedetail";
         private const string WorkOrderField = "vgsd_workorderid";
         private const string ProductLookupField = "vgsd_product";
         private const string NameField = "vgsd_name";
 
-        // You set this already (lookup in FS is typically an EntityReference)
-        // msdyn_primaryincidenttype lives on the work order (msdyn_workorder) and is an EntityReference
         private const string IncidentTypeField = "msdyn_primaryincidenttype";
+
+        private const string ProductNumberField = "productnumber";
+        private const string ProductNameField = "name";
 
         private const string StructuralProductNumber = "000002";
         private const string FinishProductNumber = "000001";
@@ -44,145 +52,173 @@ namespace VGS.Dynamics365.Plugins
         private const string StateCodeField = "statecode";
         private const int ActiveStateCode = 0;
 
-        // Configurable via plugin step Unsecure Configuration
+        private const int PostOperationStage = 40;
+
         private readonly Guid _concreteIncidentTypeId;
-        private readonly string _holeTypeFieldOnHoleDetail;
-        private readonly string _holeTypeFieldOnHoleCalc;
+        private readonly string _concreteIncidentTypeName;
 
         public CreateHoleCalculationsOnHoleDetailCreate(string unsecureConfig, string secureConfig)
         {
-            // Defaults (override with unsecure config if needed)
-            _holeTypeFieldOnHoleDetail = "vgsd_holetype";
-            _holeTypeFieldOnHoleCalc = "vgsd_holetype";
+            _concreteIncidentTypeName = "Concrete";
 
-            // Parse unsecure config (simple key=value;key=value)
             var cfg = ParseConfig(unsecureConfig);
 
-            if (cfg.TryGetValue("ConcreteIncidentTypeId", out var concreteIdStr) &&
-                Guid.TryParse(concreteIdStr, out var concreteGuid))
+            if (cfg.TryGetValue("ConcreteIncidentTypeId", out string concreteIdStr) &&
+                Guid.TryParse(concreteIdStr, out Guid concreteGuid))
             {
                 _concreteIncidentTypeId = concreteGuid;
             }
 
-            if (cfg.TryGetValue("HoleTypeFieldOnHoleDetail", out var hdField) && !string.IsNullOrWhiteSpace(hdField))
-                _holeTypeFieldOnHoleDetail = hdField.Trim();
-
-            if (cfg.TryGetValue("HoleTypeFieldOnHoleCalc", out var hcField) && !string.IsNullOrWhiteSpace(hcField))
-                _holeTypeFieldOnHoleCalc = hcField.Trim();
+            if (cfg.TryGetValue("ConcreteIncidentTypeName", out string incidentTypeName) &&
+                !string.IsNullOrWhiteSpace(incidentTypeName))
+            {
+                _concreteIncidentTypeName = incidentTypeName.Trim();
+            }
         }
 
-        // Parameterless constructor for tooling/registration patterns that don't pass config
-        public CreateHoleCalculationsOnHoleDetailCreate() : this(null, null) { }
+        public CreateHoleCalculationsOnHoleDetailCreate() : this(null, null)
+        {
+        }
 
         public void Execute(IServiceProvider serviceProvider)
         {
             if (serviceProvider == null)
+            {
                 throw new ArgumentNullException(nameof(serviceProvider));
+            }
 
             var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
             var tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
             var factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
 
-            // FIX: Run as SYSTEM to avoid permission-based failures
-            var service = factory.CreateOrganizationService(null);
+            if (context == null)
+            {
+                throw new InvalidPluginExecutionException("Plugin execution context is null.");
+            }
 
-            tracing.Trace(
+            if (factory == null)
+            {
+                throw new InvalidPluginExecutionException("Organization service factory is null.");
+            }
+
+            IOrganizationService service = factory.CreateOrganizationService(null);
+
+            Trace(
+                tracing,
                 "CreateHoleCalculationsOnHoleDetailCreate started. Message={0}, PrimaryEntity={1}, Depth={2}, Mode={3}, Stage={4}",
-                context.MessageName, context.PrimaryEntityName, context.Depth, context.Mode, context.Stage);
+                context.MessageName,
+                context.PrimaryEntityName,
+                context.Depth,
+                context.Mode,
+                context.Stage);
 
             try
             {
-                // Run only for Create of vgsd_holedetails
                 if (!string.Equals(context.MessageName, "Create", StringComparison.OrdinalIgnoreCase))
                 {
-                    tracing.Trace("Exiting: Message is not Create.");
+                    Trace(tracing, "Exiting: Message is not Create.");
                     return;
                 }
 
                 if (!string.Equals(context.PrimaryEntityName, HoleDetailsEntityName, StringComparison.OrdinalIgnoreCase))
                 {
-                    tracing.Trace("Exiting: Primary entity is not {0}.", HoleDetailsEntityName);
+                    Trace(tracing, "Exiting: Primary entity is not {0}.", HoleDetailsEntityName);
                     return;
                 }
 
-                // Prevent unintended recursion
+                if (context.Stage != PostOperationStage)
+                {
+                    Trace(tracing, "Exiting: Plugin is not running in PostOperation. Current Stage={0}.", context.Stage);
+                    return;
+                }
+
                 if (context.Depth > 1)
                 {
-                    tracing.Trace("Exiting: Depth > 1.");
+                    Trace(tracing, "Exiting: Depth > 1 to prevent recursion. Depth={0}.", context.Depth);
                     return;
                 }
 
-                // Validate target
                 if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity))
                 {
-                    tracing.Trace("Exiting: Target not found or invalid.");
+                    Trace(tracing, "Exiting: Target not found or invalid.");
                     return;
                 }
 
-                var target = (Entity)context.InputParameters["Target"];
+                Entity target = (Entity)context.InputParameters["Target"];
 
                 if (!string.Equals(target.LogicalName, HoleDetailsEntityName, StringComparison.OrdinalIgnoreCase))
                 {
-                    tracing.Trace("Exiting: Target logical name {0} does not match expected {1}.",
-                        target.LogicalName, HoleDetailsEntityName);
+                    Trace(
+                        tracing,
+                        "Exiting: Target logical name {0} does not match expected {1}.",
+                        target.LogicalName,
+                        HoleDetailsEntityName);
                     return;
                 }
 
                 Guid holeDetailId = GetCreatedRecordId(context, target, tracing);
+
                 if (holeDetailId == Guid.Empty)
                 {
-                    tracing.Trace("Exiting: Could not determine created hole detail ID.");
+                    Trace(tracing, "Exiting: Could not determine created Hole Detail ID.");
                     return;
                 }
 
-                tracing.Trace("Hole detail ID resolved: {0}", holeDetailId);
+                Trace(tracing, "Hole Detail ID resolved: {0}", holeDetailId);
 
-                // Duplicate protection
                 if (HoleCalculationsAlreadyExist(service, holeDetailId, tracing))
                 {
-                    tracing.Trace("Exiting: Hole calculation records already exist for hole detail {0}.", holeDetailId);
+                    Trace(
+                        tracing,
+                        "Exiting: Hole Calculation records already exist for Hole Detail {0}.",
+                        holeDetailId);
                     return;
                 }
 
-                // FIX: Ensure required fields exist; retrieve if Target doesn’t have them
-                Entity holeDetail = EnsureHoleDetailData(service, holeDetailId, target, tracing);
+                Entity holeDetail = RetrieveHoleDetailData(service, holeDetailId, target, tracing);
 
-                // Work order (optional)
                 EntityReference workOrderRef = holeDetail.GetAttributeValue<EntityReference>(WorkOrderField);
-                tracing.Trace(workOrderRef != null
-                    ? $"Work order found: Id={workOrderRef.Id}, Name={(workOrderRef.Name ?? "(null)")}"
-                    : "No work order found on source hole detail.");
 
-                // Hole Type copy (optional but required by your task intent)
-                object holeTypeValue = null;
-                if (!string.IsNullOrWhiteSpace(_holeTypeFieldOnHoleDetail) && holeDetail.Attributes.Contains(_holeTypeFieldOnHoleDetail))
+                if (workOrderRef != null)
                 {
-                    holeTypeValue = holeDetail[_holeTypeFieldOnHoleDetail];
-                    tracing.Trace("Hole Type found on hole detail field {0}.", _holeTypeFieldOnHoleDetail);
+                    Trace(
+                        tracing,
+                        "Work Order found on Hole Detail. WorkOrderId={0}, WorkOrderName={1}",
+                        workOrderRef.Id,
+                        workOrderRef.Name ?? "null");
                 }
                 else
                 {
-                    tracing.Trace("Hole Type field {0} not present on hole detail (or not configured).", _holeTypeFieldOnHoleDetail);
+                    Trace(tracing, "No Work Order found on Hole Detail.");
                 }
 
-                // FIX: Determine incident type robustly
-                bool isConcrete = IsConcreteIncidentType(holeDetail, tracing);
-                // FIX: Determine incident type robustly (read from work order)
                 bool isConcrete = IsConcreteIncidentType(service, holeDetail, tracing);
 
-                tracing.Trace("Concrete evaluation result: isConcrete={0}", isConcrete);
+                Trace(tracing, "Concrete evaluation result: isConcrete={0}", isConcrete);
 
                 if (isConcrete)
                 {
-                    // Concrete path: create 2 calcs with products
-                    var structuralProductRef = GetProductReferenceByNumber(service, StructuralProductNumber, tracing);
-                    var finishProductRef = GetProductReferenceByNumber(service, FinishProductNumber, tracing);
+                    EntityReference structuralProductRef = GetProductReferenceByNumber(
+                        service,
+                        StructuralProductNumber,
+                        tracing);
+
+                    EntityReference finishProductRef = GetProductReferenceByNumber(
+                        service,
+                        FinishProductNumber,
+                        tracing);
 
                     if (structuralProductRef == null)
-                        throw new InvalidPluginExecutionException("Required product not found. productnumber = 000002 (Concrete - Structural).");
+                    {
+                        throw new InvalidPluginExecutionException(
+                            "Required active product was not found. Product Number = 000002 for Concrete - Structural.");
+                    }
 
                     if (finishProductRef == null)
-                        throw new InvalidPluginExecutionException("Required product not found. productnumber = 000001 (Concrete - Finish).");
+                    {
+                        throw new InvalidPluginExecutionException(
+                            "Required active product was not found. Product Number = 000001 for Concrete - Finish.");
+                    }
 
                     CreateHoleCalculation(
                         service,
@@ -190,7 +226,6 @@ namespace VGS.Dynamics365.Plugins
                         workOrderRef,
                         structuralProductRef,
                         "Hole Calculation - Structural",
-                        holeTypeValue,
                         tracing);
 
                     CreateHoleCalculation(
@@ -199,144 +234,236 @@ namespace VGS.Dynamics365.Plugins
                         workOrderRef,
                         finishProductRef,
                         "Hole Calculation - Finish",
-                        holeTypeValue,
                         tracing);
                 }
                 else
                 {
-                    // Non-concrete path: create 1 calc with product blank
                     CreateHoleCalculation(
                         service,
                         holeDetailId,
                         workOrderRef,
                         null,
                         "Hole Calculation",
-                        holeTypeValue,
                         tracing);
                 }
 
-                tracing.Trace("CreateHoleCalculationsOnHoleDetailCreate completed successfully for hole detail {0}.", holeDetailId);
+                Trace(
+                    tracing,
+                    "CreateHoleCalculationsOnHoleDetailCreate completed successfully for Hole Detail {0}.",
+                    holeDetailId);
+            }
+            catch (InvalidPluginExecutionException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                tracing.Trace("CreateHoleCalculationsOnHoleDetailCreate error: {0}", ex);
-                throw;
+                Trace(tracing, "CreateHoleCalculationsOnHoleDetailCreate error: {0}", ex.ToString());
+
+                throw new InvalidPluginExecutionException(
+                    "An error occurred while creating Hole Calculation records from the Hole Detail record. See plugin trace log for details.",
+                    ex);
             }
         }
 
-        private bool IsConcreteIncidentType(Entity holeDetail, ITracingService tracing)
-        private bool IsConcreteIncidentType(IOrganizationService service, Entity holeDetail, ITracingService tracing)
+        private Entity RetrieveHoleDetailData(
+            IOrganizationService service,
+            Guid holeDetailId,
+            Entity target,
+            ITracingService tracing)
         {
-            // Incident type is stored on the work order (msdyn_workorder.msdyn_primaryincidenttype)
-            EntityReference incidentRef = null;
-
-            var workOrderRef = holeDetail.GetAttributeValue<EntityReference>(WorkOrderField);
-
-            if (workOrderRef != null)
+            if (target.Attributes.Contains(WorkOrderField))
             {
-                tracing.Trace("Work order reference present on hole detail. Retrieving work order {0} to read incident type.", workOrderRef.Id);
-                try
-                {
-                    var workOrder = service.Retrieve("msdyn_workorder", workOrderRef.Id, new ColumnSet(IncidentTypeField));
-                    if (workOrder != null && workOrder.Attributes.Contains(IncidentTypeField))
-                    {
-                        incidentRef = workOrder.GetAttributeValue<EntityReference>(IncidentTypeField);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    tracing.Trace("Failed to retrieve work order {0}: {1}", workOrderRef.Id, ex.Message);
-                }
-            }
-            else
-            {
-                // As a fallback, check if incident type is present directly on the hole detail (unexpected)
-                if (holeDetail.Attributes.Contains(IncidentTypeField))
-                {
-                    incidentRef = holeDetail.GetAttributeValue<EntityReference>(IncidentTypeField);
-                    tracing.Trace("Incident type found on hole detail unexpectedly. IncidentId={0}", incidentRef?.Id.ToString() ?? "null");
-                }
-                else
-                {
-            var incidentRef = holeDetail.GetAttributeValue<EntityReference>(IncidentTypeField);
-                    tracing.Trace("No work order on hole detail and no incident type found on hole detail.");
-                }
-            }
-
-            // If GUID configured, compare by GUID (recommended + reliable)
-            if (_concreteIncidentTypeId != Guid.Empty)
-            {
-                bool match = incidentRef != null && incidentRef.Id == _concreteIncidentTypeId;
-                tracing.Trace(
-                    "Incident type by GUID. IncidentId={0}, ConfigConcreteId={1}, match={2}",
-                    incidentRef?.Id.ToString() ?? "null",
-                    _concreteIncidentTypeId.ToString(),
-                    match);
-                return match;
-            }
-
-            // Fallback: compare by name when GUID not configured (less reliable)
-            // Note: incidentRef.Name may be null in plugins depending on how record is created
-            bool byName = incidentRef != null &&
-                          !string.IsNullOrWhiteSpace(incidentRef.Name) &&
-                          string.Equals(incidentRef.Name, "Concrete", StringComparison.OrdinalIgnoreCase);
-
-            tracing.Trace(
-                "Incident type by NAME fallback (ConcreteIncidentTypeId not configured). IncidentName={0}, match={1}",
-                incidentRef?.Name ?? "null",
-                byName);
-
-            return byName;
-        }
-
-        private static Entity EnsureHoleDetailData(IOrganizationService service, Guid holeDetailId, Entity target, ITracingService tracing)
-        private Entity EnsureHoleDetailData(IOrganizationService service, Guid holeDetailId, Entity target, ITracingService tracing)
-        {
-            bool hasWorkOrder = target.Attributes.Contains(WorkOrderField);
-            bool hasIncidentType = target.Attributes.Contains(IncidentTypeField);
-
-            // Hole type field is configurable; retrieve all likely fields via ColumnSet when needed
-            // We don’t know the configured field name here, so retrieve “all columns”? Not recommended.
-            // Instead: retrieve a focused set we know + let caller retrieve hole type via configured name if present.
-            if (hasWorkOrder && hasIncidentType)
-            // If target already contains work order and (optionally) hole type, return it
-            if (hasWorkOrder && target.Attributes.Contains(_holeTypeFieldOnHoleDetail))
+                Trace(tracing, "Target already contains Work Order field. No retrieve needed.");
                 return target;
+            }
 
-            tracing.Trace("Target missing required fields. Retrieving vgsd_holedetails {0} from DB.", holeDetailId);
+            Trace(
+                tracing,
+                "Target does not contain Work Order field. Retrieving Hole Detail {0} from Dataverse.",
+                holeDetailId);
 
-            return service.Retrieve(
+            Entity retrieved = service.Retrieve(
                 HoleDetailsEntityName,
                 holeDetailId,
-                new ColumnSet(WorkOrderField, IncidentTypeField, "vgsd_holetype"));
-            // Retrieve the work order lookup and configured hole type field (if configured)
-            var cols = new List<string> { WorkOrderField };
-            if (!string.IsNullOrWhiteSpace(_holeTypeFieldOnHoleDetail))
-                cols.Add(_holeTypeFieldOnHoleDetail);
+                new ColumnSet(WorkOrderField));
 
-            return service.Retrieve(HoleDetailsEntityName, holeDetailId, new ColumnSet(cols.ToArray()));
+            Entity merged = new Entity(HoleDetailsEntityName)
+            {
+                Id = holeDetailId
+            };
+
+            foreach (KeyValuePair<string, object> attribute in target.Attributes)
+            {
+                merged[attribute.Key] = attribute.Value;
+            }
+
+            foreach (KeyValuePair<string, object> attribute in retrieved.Attributes)
+            {
+                merged[attribute.Key] = attribute.Value;
+            }
+
+            return merged;
         }
 
-        private static Guid GetCreatedRecordId(IPluginExecutionContext context, Entity target, ITracingService tracing)
+        private bool IsConcreteIncidentType(
+            IOrganizationService service,
+            Entity holeDetail,
+            ITracingService tracing)
         {
-            if (context.OutputParameters != null && context.OutputParameters.Contains("id"))
+            EntityReference workOrderRef = holeDetail.GetAttributeValue<EntityReference>(WorkOrderField);
+
+            if (workOrderRef == null)
+            {
+                Trace(tracing, "No Work Order found. Cannot evaluate Primary Incident Type.");
+                return false;
+            }
+
+            Trace(
+                tracing,
+                "Retrieving Work Order {0} to read Primary Incident Type.",
+                workOrderRef.Id);
+
+            Entity workOrder = service.Retrieve(
+                WorkOrderEntityName,
+                workOrderRef.Id,
+                new ColumnSet(IncidentTypeField));
+
+            EntityReference incidentTypeRef = null;
+
+            if (workOrder != null && workOrder.Attributes.Contains(IncidentTypeField))
+            {
+                incidentTypeRef = workOrder.GetAttributeValue<EntityReference>(IncidentTypeField);
+            }
+
+            if (incidentTypeRef == null)
+            {
+                Trace(
+                    tracing,
+                    "Work Order {0} does not have Primary Incident Type populated.",
+                    workOrderRef.Id);
+                return false;
+            }
+
+            Trace(
+                tracing,
+                "Primary Incident Type found. IncidentTypeId={0}, IncidentTypeName={1}, EntityName={2}",
+                incidentTypeRef.Id,
+                incidentTypeRef.Name ?? "null",
+                incidentTypeRef.LogicalName ?? "null");
+
+            if (_concreteIncidentTypeId != Guid.Empty)
+            {
+                bool matchById = incidentTypeRef.Id == _concreteIncidentTypeId;
+
+                Trace(
+                    tracing,
+                    "Concrete Incident Type check by GUID. IncidentTypeId={0}, ConfigConcreteIncidentTypeId={1}, Match={2}",
+                    incidentTypeRef.Id,
+                    _concreteIncidentTypeId,
+                    matchById);
+
+                return matchById;
+            }
+
+            string incidentTypeName = incidentTypeRef.Name;
+
+            if (string.IsNullOrWhiteSpace(incidentTypeName))
+            {
+                incidentTypeName = TryRetrieveIncidentTypeName(service, incidentTypeRef, tracing);
+            }
+
+            bool matchByName =
+                !string.IsNullOrWhiteSpace(incidentTypeName) &&
+                string.Equals(incidentTypeName, _concreteIncidentTypeName, StringComparison.OrdinalIgnoreCase);
+
+            Trace(
+                tracing,
+                "Concrete Incident Type check by name. IncidentTypeName={0}, ExpectedName={1}, Match={2}",
+                incidentTypeName ?? "null",
+                _concreteIncidentTypeName,
+                matchByName);
+
+            return matchByName;
+        }
+
+        private string TryRetrieveIncidentTypeName(
+            IOrganizationService service,
+            EntityReference incidentTypeRef,
+            ITracingService tracing)
+        {
+            if (incidentTypeRef == null || incidentTypeRef.Id == Guid.Empty)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(incidentTypeRef.LogicalName))
+            {
+                Trace(tracing, "Cannot retrieve Incident Type name because LogicalName is empty.");
+                return null;
+            }
+
+            try
+            {
+                Entity incidentType = service.Retrieve(
+                    incidentTypeRef.LogicalName,
+                    incidentTypeRef.Id,
+                    new ColumnSet("msdyn_name"));
+
+                string name = incidentType.GetAttributeValue<string>("msdyn_name");
+
+                Trace(
+                    tracing,
+                    "Retrieved Incident Type name from msdyn_name. IncidentTypeId={0}, Name={1}",
+                    incidentTypeRef.Id,
+                    name ?? "null");
+
+                return name;
+            }
+            catch (Exception ex)
+            {
+                Trace(
+                    tracing,
+                    "Unable to retrieve Incident Type name using msdyn_name. IncidentTypeId={0}, Error={1}",
+                    incidentTypeRef.Id,
+                    ex.Message);
+
+                return null;
+            }
+        }
+
+        private static Guid GetCreatedRecordId(
+            IPluginExecutionContext context,
+            Entity target,
+            ITracingService tracing)
+        {
+            if (context.OutputParameters != null &&
+                context.OutputParameters.Contains("id") &&
+                context.OutputParameters["id"] is Guid)
             {
                 Guid id = (Guid)context.OutputParameters["id"];
-                tracing.Trace("Record ID obtained from OutputParameters: {0}", id);
+
+                Trace(tracing, "Record ID obtained from OutputParameters: {0}", id);
+
                 return id;
             }
 
-            if (target.Id != Guid.Empty)
+            if (target != null && target.Id != Guid.Empty)
             {
-                tracing.Trace("Record ID obtained from Target.Id: {0}", target.Id);
+                Trace(tracing, "Record ID obtained from Target.Id: {0}", target.Id);
+
                 return target.Id;
             }
 
-            tracing.Trace("Unable to determine record ID from context.");
+            Trace(tracing, "Unable to determine created record ID.");
+
             return Guid.Empty;
         }
 
-        private static bool HoleCalculationsAlreadyExist(IOrganizationService service, Guid holeDetailId, ITracingService tracing)
+        private static bool HoleCalculationsAlreadyExist(
+            IOrganizationService service,
+            Guid holeDetailId,
+            ITracingService tracing)
         {
             var query = new QueryExpression(HoleCalculationsEntityName)
             {
@@ -344,40 +471,72 @@ namespace VGS.Dynamics365.Plugins
                 TopCount = 1
             };
 
-            query.Criteria.AddCondition(HoleDetailLookupField, ConditionOperator.Equal, holeDetailId);
+            query.Criteria.AddCondition(
+                HoleDetailLookupField,
+                ConditionOperator.Equal,
+                holeDetailId);
 
             EntityCollection results = service.RetrieveMultiple(query);
-            bool exists = results.Entities.Count > 0;
 
-            tracing.Trace("Duplicate check for hole detail {0}: Existing hole calculations found = {1}", holeDetailId, exists);
+            bool exists = results != null && results.Entities.Count > 0;
+
+            Trace(
+                tracing,
+                "Duplicate check for Hole Detail {0}: Existing Hole Calculations Found={1}",
+                holeDetailId,
+                exists);
+
             return exists;
         }
 
-        private static EntityReference GetProductReferenceByNumber(IOrganizationService service, string productNumber, ITracingService tracing)
+        private static EntityReference GetProductReferenceByNumber(
+            IOrganizationService service,
+            string productNumber,
+            ITracingService tracing)
         {
             var query = new QueryExpression(ProductEntityName)
             {
-                ColumnSet = new ColumnSet("productid", "name", "productnumber"),
+                ColumnSet = new ColumnSet(ProductNameField, ProductNumberField),
                 TopCount = 1
             };
 
-            query.Criteria.AddCondition("productnumber", ConditionOperator.Equal, productNumber);
-            query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
+            query.Criteria.AddCondition(
+                ProductNumberField,
+                ConditionOperator.Equal,
+                productNumber);
+
+            query.Criteria.AddCondition(
+                StateCodeField,
+                ConditionOperator.Equal,
+                ActiveStateCode);
 
             EntityCollection results = service.RetrieveMultiple(query);
 
-            if (results.Entities.Count == 0)
+            if (results == null || results.Entities.Count == 0)
             {
-                tracing.Trace("No ACTIVE product found with productnumber = {0}", productNumber);
+                Trace(
+                    tracing,
+                    "No active product found with Product Number {0}.",
+                    productNumber);
+
                 return null;
             }
 
             Entity product = results.Entities[0];
-            string productName = product.GetAttributeValue<string>("name");
 
-            tracing.Trace("Product found: Name={0}, ProductNumber={1}, Id={2}", productName, productNumber, product.Id);
+            string productName = product.GetAttributeValue<string>(ProductNameField);
 
-            return new EntityReference(ProductEntityName, product.Id) { Name = productName };
+            Trace(
+                tracing,
+                "Product found. ProductNumber={0}, ProductName={1}, ProductId={2}",
+                productNumber,
+                productName ?? "null",
+                product.Id);
+
+            return new EntityReference(ProductEntityName, product.Id)
+            {
+                Name = productName
+            };
         }
 
         private void CreateHoleCalculation(
@@ -386,35 +545,39 @@ namespace VGS.Dynamics365.Plugins
             EntityReference workOrderRef,
             EntityReference productRef,
             string recordName,
-            object holeTypeValue,
             ITracingService tracing)
         {
             var holeCalculation = new Entity(HoleCalculationsEntityName);
 
-            holeCalculation[HoleDetailLookupField] = new EntityReference(HoleDetailsEntityName, holeDetailId);
+            holeCalculation[HoleDetailLookupField] = new EntityReference(
+                HoleDetailsEntityName,
+                holeDetailId);
 
             if (workOrderRef != null)
+            {
                 holeCalculation[WorkOrderField] = workOrderRef;
+            }
 
-            // Product optional (non-concrete path leaves it blank)
             if (productRef != null)
+            {
                 holeCalculation[ProductLookupField] = productRef;
+            }
 
-            // Hole type copy (optional but requested)
-            if (holeTypeValue != null && !string.IsNullOrWhiteSpace(_holeTypeFieldOnHoleCalc))
-                holeCalculation[_holeTypeFieldOnHoleCalc] = holeTypeValue;
-
-            holeCalculation[NameField] = $"{recordName} - {holeDetailId:D}";
+            holeCalculation[NameField] = string.Format(
+                "{0} - {1:D}",
+                recordName,
+                holeDetailId);
 
             Guid createdId = service.Create(holeCalculation);
 
-            // FIX: Safe tracing (no null deref; correct placeholders)
-            tracing.Trace(
-                "Created hole calculation. Id={0}, HoleDetailId={1}, ProductId={2}, ProductName={3}, Name={4}",
+            Trace(
+                tracing,
+                "Created Hole Calculation. Id={0}, HoleDetailId={1}, WorkOrderId={2}, ProductId={3}, ProductName={4}, Name={5}",
                 createdId,
                 holeDetailId,
+                workOrderRef != null ? workOrderRef.Id.ToString() : "null",
                 productRef != null ? productRef.Id.ToString() : "null",
-                productRef != null ? (productRef.Name ?? "null") : "null",
+                productRef != null ? productRef.Name ?? "null" : "null",
                 holeCalculation.GetAttributeValue<string>(NameField));
         }
 
@@ -423,18 +586,48 @@ namespace VGS.Dynamics365.Plugins
             var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             if (string.IsNullOrWhiteSpace(config))
-                return dict;
-
-            // supports: key=value;key=value
-            var parts = config.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var p in parts)
             {
-                var kv = p.Split(new[] { '=' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                return dict;
+            }
+
+            string[] parts = config.Split(
+                new[] { ';' },
+                StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (string part in parts)
+            {
+                string[] kv = part.Split(
+                    new[] { '=' },
+                    2,
+                    StringSplitOptions.RemoveEmptyEntries);
+
                 if (kv.Length == 2)
+                {
                     dict[kv[0].Trim()] = kv[1].Trim();
+                }
             }
 
             return dict;
+        }
+
+        private static void Trace(
+            ITracingService tracing,
+            string message,
+            params object[] args)
+        {
+            if (tracing == null || string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            if (args == null || args.Length == 0)
+            {
+                tracing.Trace(message);
+            }
+            else
+            {
+                tracing.Trace(message, args);
+            }
         }
     }
 }
