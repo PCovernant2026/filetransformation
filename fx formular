@@ -12,26 +12,25 @@ namespace VGS.Dynamics365.Plugins
     /// - Message: Create
     /// - Primary Entity: vgsd_holedetails
     /// - Stage: PostOperation
-    /// - Mode: Synchronous recommended
+    /// - Mode: Synchronous if users must see the created calculations immediately.
+    ///         Asynchronous is also acceptable if performance/user wait time is more important.
     ///
-    /// Updated Logic (Config-driven):
-    /// - Read Work Order Primary Incident Type (msdyn_primaryincidenttype)
-    /// - Query Incident Type Product (msdyn_incidenttypeproduct) where:
-    ///     - msdyn_incidenttype = WO.Primary Incident Type
-    ///     - <CalculateHoleDetailsField> = true  (custom boolean on Incident Type Product)
-    ///     - statecode = 0 (active)  [optional, default true]
-    /// - For each matching Incident Type Product row:
-    ///     Create 1 Hole Calculation with vgsd_product set to the related product.
-    /// - If no matching Incident Type Product rows are found:
-    ///     Optionally create 1 Hole Calculation with no product (default true for backward compatibility).
+    /// Logic:
+    /// - Reads the Work Order from the created Hole Detail.
+    /// - Reads Work Order Primary Incident Type: msdyn_primaryincidenttype.
+    /// - Queries Incident Type Product: msdyn_incidenttypeproduct where:
+    ///     - msdyn_incidenttype = Work Order Primary Incident Type
+    ///     - configured CalculateHoleDetailsField = true
+    ///     - statecode = Active when FilterIncidentTypeProductsToActive=true
+    /// - Creates one Hole Calculation per unique product.
+    /// - Prevents duplicates per Hole Detail + Product.
+    /// - Optionally creates one productless default Hole Calculation when no matching products are found.
     ///
-    /// Duplicate prevention:
-    /// - If ANY Hole Calculation already exists for the Hole Detail, plugin exits.
-    ///
-    /// Unsecure Configuration (optional):
+    /// Unsecure Configuration example:
     /// CalculateHoleDetailsField=vgsd_calculateholedetails;
-    /// CreateDefaultCalculationWhenNoMatch=true;
-    /// FilterIncidentTypeProductsToActive=true
+    /// CreateDefaultCalculationWhenNoMatch=false;
+    /// FilterIncidentTypeProductsToActive=true;
+    /// NameMaxLength=100
     /// </summary>
     public class CreateHoleCalculationsOnHoleDetailCreate : IPlugin
     {
@@ -39,12 +38,12 @@ namespace VGS.Dynamics365.Plugins
         private const string HoleCalculationsEntityName = "vgsd_holecalculations";
         private const string WorkOrderEntityName = "msdyn_workorder";
 
-        // Incident Type Product
+        // Incident Type Product fields
         private const string IncidentTypeProductEntityName = "msdyn_incidenttypeproduct";
         private const string ITP_IncidentTypeField = "msdyn_incidenttype";
         private const string ITP_ProductField = "msdyn_product";
 
-        // Product entity
+        // Product fields
         private const string ProductEntityName = "product";
         private const string ProductIdField = "productid";
         private const string ProductNameField = "name";
@@ -56,29 +55,28 @@ namespace VGS.Dynamics365.Plugins
         private const string ProductLookupField = "vgsd_product";
         private const string NameField = "vgsd_name";
 
-        // Work Order field
+        // Work Order fields
         private const string IncidentTypeField = "msdyn_primaryincidenttype";
 
         private const string StateCodeField = "statecode";
         private const int ActiveStateCode = 0;
-
         private const int PostOperationStage = 40;
+        private const int DefaultNameMaxLength = 100;
+        private const int QueryPageSize = 5000;
 
-        // Configurable logical name for the custom boolean on msdyn_incidenttypeproduct
         private readonly string _calculateHoleDetailsField;
-
-        // Behavior switches
         private readonly bool _createDefaultCalculationWhenNoMatch;
         private readonly bool _filterIncidentTypeProductsToActive;
+        private readonly int _nameMaxLength;
 
         public CreateHoleCalculationsOnHoleDetailCreate(string unsecureConfig, string secureConfig)
         {
-            // Defaults
             _calculateHoleDetailsField = "vgsd_calculateholedetails";
-            _createDefaultCalculationWhenNoMatch = true;      // backward compatible with old non-concrete behavior
+            _createDefaultCalculationWhenNoMatch = false;
             _filterIncidentTypeProductsToActive = true;
+            _nameMaxLength = DefaultNameMaxLength;
 
-            var cfg = ParseConfig(unsecureConfig);
+            Dictionary<string, string> cfg = ParseConfig(unsecureConfig);
 
             if (cfg.TryGetValue("CalculateHoleDetailsField", out string calcField) &&
                 !string.IsNullOrWhiteSpace(calcField))
@@ -87,19 +85,29 @@ namespace VGS.Dynamics365.Plugins
             }
 
             if (cfg.TryGetValue("CreateDefaultCalculationWhenNoMatch", out string createDefault) &&
-                bool.TryParse(createDefault, out bool createDefaultBool))
+                TryParseBoolean(createDefault, out bool createDefaultBool))
             {
                 _createDefaultCalculationWhenNoMatch = createDefaultBool;
             }
 
             if (cfg.TryGetValue("FilterIncidentTypeProductsToActive", out string filterActive) &&
-                bool.TryParse(filterActive, out bool filterActiveBool))
+                TryParseBoolean(filterActive, out bool filterActiveBool))
             {
                 _filterIncidentTypeProductsToActive = filterActiveBool;
             }
+
+            if (cfg.TryGetValue("NameMaxLength", out string nameMaxLengthText) &&
+                int.TryParse(nameMaxLengthText, out int configuredNameMaxLength) &&
+                configuredNameMaxLength >= 50 &&
+                configuredNameMaxLength <= 850)
+            {
+                _nameMaxLength = configuredNameMaxLength;
+            }
         }
 
-        public CreateHoleCalculationsOnHoleDetailCreate() : this(null, null) { }
+        public CreateHoleCalculationsOnHoleDetailCreate() : this(null, null)
+        {
+        }
 
         public void Execute(IServiceProvider serviceProvider)
         {
@@ -108,9 +116,9 @@ namespace VGS.Dynamics365.Plugins
                 throw new ArgumentNullException(nameof(serviceProvider));
             }
 
-            var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
-            var tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
-            var factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+            IPluginExecutionContext context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            ITracingService tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            IOrganizationServiceFactory factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
 
             if (context == null)
             {
@@ -122,6 +130,8 @@ namespace VGS.Dynamics365.Plugins
                 throw new InvalidPluginExecutionException("Organization service factory is null.");
             }
 
+            // Run as SYSTEM so the automation is not blocked by the creating user's table permissions.
+            // If you want to enforce the user's security, change null to context.UserId.
             IOrganizationService service = factory.CreateOrganizationService(null);
 
             Trace(
@@ -153,12 +163,6 @@ namespace VGS.Dynamics365.Plugins
                     return;
                 }
 
-                if (context.Depth > 1)
-                {
-                    Trace(tracing, "Exiting: Depth > 1 to prevent recursion. Depth={0}.", context.Depth);
-                    return;
-                }
-
                 if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity))
                 {
                     Trace(tracing, "Exiting: Target not found or invalid.");
@@ -187,20 +191,10 @@ namespace VGS.Dynamics365.Plugins
 
                 Trace(tracing, "Hole Detail ID resolved: {0}", holeDetailId);
 
-                if (HoleCalculationsAlreadyExist(service, holeDetailId, tracing))
-                {
-                    Trace(
-                        tracing,
-                        "Exiting: Hole Calculation records already exist for Hole Detail {0}.",
-                        holeDetailId);
-                    return;
-                }
-
                 Entity holeDetail = RetrieveHoleDetailData(service, holeDetailId, target, tracing);
-
                 EntityReference workOrderRef = holeDetail.GetAttributeValue<EntityReference>(WorkOrderField);
 
-                if (workOrderRef == null)
+                if (workOrderRef == null || workOrderRef.Id == Guid.Empty)
                 {
                     Trace(tracing, "No Work Order found on Hole Detail. No calculations will be created.");
                     return;
@@ -226,18 +220,28 @@ namespace VGS.Dynamics365.Plugins
                     incidentTypeRef.Id,
                     incidentTypeRef.Name ?? "null");
 
-                List<EntityReference> productsToCreate = GetProductsFromIncidentTypeProducts(
+                List<EntityReference> productsToCreate = GetUniqueProductsFromIncidentTypeProducts(
                     service,
                     incidentTypeRef.Id,
                     tracing);
 
                 if (productsToCreate.Count > 0)
                 {
-                    Trace(tracing, "Found {0} Incident Type Product(s) flagged for Hole Calculations.", productsToCreate.Count);
+                    Trace(tracing, "Found {0} unique product(s) flagged for Hole Calculations.", productsToCreate.Count);
 
-                    foreach (var productRef in productsToCreate)
+                    foreach (EntityReference productRef in productsToCreate)
                     {
-                        string nameSuffix = !string.IsNullOrWhiteSpace(productRef?.Name)
+                        if (HoleCalculationExists(service, holeDetailId, productRef, tracing))
+                        {
+                            Trace(
+                                tracing,
+                                "Skipping create: Hole Calculation already exists for HoleDetailId={0}, ProductId={1}.",
+                                holeDetailId,
+                                productRef.Id);
+                            continue;
+                        }
+
+                        string nameSuffix = !string.IsNullOrWhiteSpace(productRef.Name)
                             ? productRef.Name
                             : "Product";
 
@@ -260,7 +264,16 @@ namespace VGS.Dynamics365.Plugins
 
                     if (_createDefaultCalculationWhenNoMatch)
                     {
-                        Trace(tracing, "Creating default Hole Calculation with no product (CreateDefaultCalculationWhenNoMatch=true).");
+                        if (HoleCalculationExists(service, holeDetailId, null, tracing))
+                        {
+                            Trace(
+                                tracing,
+                                "Skipping default create: productless Hole Calculation already exists for HoleDetailId={0}.",
+                                holeDetailId);
+                            return;
+                        }
+
+                        Trace(tracing, "Creating default Hole Calculation with no product because CreateDefaultCalculationWhenNoMatch=true.");
 
                         CreateHoleCalculation(
                             service,
@@ -272,7 +285,7 @@ namespace VGS.Dynamics365.Plugins
                     }
                     else
                     {
-                        Trace(tracing, "No calculations created (CreateDefaultCalculationWhenNoMatch=false).");
+                        Trace(tracing, "No default calculation created because CreateDefaultCalculationWhenNoMatch=false.");
                     }
                 }
 
@@ -290,7 +303,7 @@ namespace VGS.Dynamics365.Plugins
                 Trace(tracing, "CreateHoleCalculationsOnHoleDetailCreate error: {0}", ex.ToString());
 
                 throw new InvalidPluginExecutionException(
-                    "An error occurred while creating Hole Calculation records from the Hole Detail record. See plugin trace log for details.",
+                    "An error occurred while creating Hole Calculation records from the Hole Detail record. See Plugin Trace Log for details.",
                     ex);
             }
         }
@@ -344,7 +357,7 @@ namespace VGS.Dynamics365.Plugins
                 workOrderId,
                 new ColumnSet(IncidentTypeField));
 
-            EntityReference incidentTypeRef = workOrder?.GetAttributeValue<EntityReference>(IncidentTypeField);
+            EntityReference incidentTypeRef = workOrder.GetAttributeValue<EntityReference>(IncidentTypeField);
 
             if (incidentTypeRef == null)
             {
@@ -354,24 +367,29 @@ namespace VGS.Dynamics365.Plugins
             return incidentTypeRef;
         }
 
-        private List<EntityReference> GetProductsFromIncidentTypeProducts(
+        private List<EntityReference> GetUniqueProductsFromIncidentTypeProducts(
             IOrganizationService service,
             Guid incidentTypeId,
             ITracingService tracing)
         {
-            var results = new List<EntityReference>();
+            var productsById = new Dictionary<Guid, EntityReference>();
 
             Trace(
                 tracing,
-                "Querying Incident Type Products for IncidentTypeId={0}, FlagField={1}, FilterActive={2}",
+                "Querying Incident Type Products. IncidentTypeId={0}, FlagField={1}, FilterActive={2}",
                 incidentTypeId,
                 _calculateHoleDetailsField,
                 _filterIncidentTypeProductsToActive);
 
-            // Query msdyn_incidenttypeproduct where incident type matches and CalculateHoleDetails flag is true
-            var query = new QueryExpression(IncidentTypeProductEntityName)
+            QueryExpression query = new QueryExpression(IncidentTypeProductEntityName)
             {
-                ColumnSet = new ColumnSet(ITP_ProductField, _calculateHoleDetailsField),
+                ColumnSet = new ColumnSet(ITP_ProductField),
+                PageInfo = new PagingInfo
+                {
+                    Count = QueryPageSize,
+                    PageNumber = 1,
+                    ReturnTotalRecordCount = false
+                }
             };
 
             query.Criteria.AddCondition(ITP_IncidentTypeField, ConditionOperator.Equal, incidentTypeId);
@@ -382,52 +400,145 @@ namespace VGS.Dynamics365.Plugins
                 query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
             }
 
-            // Link to product to pull product name for better naming/logging (optional but helpful)
-            var productLink = query.AddLink(ProductEntityName, ITP_ProductField, ProductIdField, JoinOperator.LeftOuter);
+            LinkEntity productLink = query.AddLink(ProductEntityName, ITP_ProductField, ProductIdField, JoinOperator.LeftOuter);
             productLink.EntityAlias = "p";
             productLink.Columns = new ColumnSet(ProductNameField, ProductNumberField);
 
-            EntityCollection ec = service.RetrieveMultiple(query);
-
-            if (ec == null || ec.Entities.Count == 0)
+            while (true)
             {
-                Trace(tracing, "No Incident Type Product rows found matching criteria.");
-                return results;
+                EntityCollection page = service.RetrieveMultiple(query);
+
+                if (page == null || page.Entities.Count == 0)
+                {
+                    if (query.PageInfo.PageNumber == 1)
+                    {
+                        Trace(tracing, "No Incident Type Product rows found matching criteria.");
+                    }
+
+                    break;
+                }
+
+                foreach (Entity itp in page.Entities)
+                {
+                    EntityReference productRef = itp.GetAttributeValue<EntityReference>(ITP_ProductField);
+
+                    if (productRef == null || productRef.Id == Guid.Empty)
+                    {
+                        Trace(tracing, "Incident Type Product row found but has no product. Skipping.");
+                        continue;
+                    }
+
+                    string productName = GetAliasedString(itp, "p." + ProductNameField);
+
+                    if (!string.IsNullOrWhiteSpace(productName))
+                    {
+                        productRef.Name = productName;
+                    }
+
+                    if (productsById.ContainsKey(productRef.Id))
+                    {
+                        Trace(
+                            tracing,
+                            "Duplicate Incident Type Product setup found for ProductId={0}. Keeping one Hole Calculation only.",
+                            productRef.Id);
+                        continue;
+                    }
+
+                    productsById.Add(productRef.Id, productRef);
+
+                    Trace(
+                        tracing,
+                        "Incident Type Product match accepted. ProductId={0}, ProductName={1}",
+                        productRef.Id,
+                        productRef.Name ?? "null");
+                }
+
+                if (!page.MoreRecords)
+                {
+                    break;
+                }
+
+                query.PageInfo.PageNumber++;
+                query.PageInfo.PagingCookie = page.PagingCookie;
             }
 
-            foreach (var itp in ec.Entities)
+            return new List<EntityReference>(productsById.Values);
+        }
+
+        private static bool HoleCalculationExists(
+            IOrganizationService service,
+            Guid holeDetailId,
+            EntityReference productRef,
+            ITracingService tracing)
+        {
+            QueryExpression query = new QueryExpression(HoleCalculationsEntityName)
             {
-                EntityReference productRef = itp.GetAttributeValue<EntityReference>(ITP_ProductField);
+                ColumnSet = new ColumnSet(false),
+                TopCount = 1
+            };
 
-                if (productRef == null || productRef.Id == Guid.Empty)
-                {
-                    Trace(tracing, "Incident Type Product row found but has no product. Skipping.");
-                    continue;
-                }
+            query.Criteria.AddCondition(HoleDetailLookupField, ConditionOperator.Equal, holeDetailId);
 
-                // Try to pick up product name from link-entity
-                string productName = null;
-
-                if (itp.Attributes.Contains("p." + ProductNameField))
-                {
-                    productName = (itp["p." + ProductNameField] as AliasedValue)?.Value as string;
-                }
-
-                if (!string.IsNullOrWhiteSpace(productName))
-                {
-                    productRef.Name = productName;
-                }
-
-                Trace(
-                    tracing,
-                    "Incident Type Product match: ProductId={0}, ProductName={1}",
-                    productRef.Id,
-                    productRef.Name ?? "null");
-
-                results.Add(productRef);
+            if (productRef != null && productRef.Id != Guid.Empty)
+            {
+                query.Criteria.AddCondition(ProductLookupField, ConditionOperator.Equal, productRef.Id);
+            }
+            else
+            {
+                query.Criteria.AddCondition(ProductLookupField, ConditionOperator.Null);
             }
 
-            return results;
+            EntityCollection results = service.RetrieveMultiple(query);
+            bool exists = results != null && results.Entities.Count > 0;
+
+            Trace(
+                tracing,
+                "Duplicate check. HoleDetailId={0}, ProductId={1}, Exists={2}",
+                holeDetailId,
+                productRef != null ? productRef.Id.ToString() : "null",
+                exists);
+
+            return exists;
+        }
+
+        private void CreateHoleCalculation(
+            IOrganizationService service,
+            Guid holeDetailId,
+            EntityReference workOrderRef,
+            EntityReference productRef,
+            string recordName,
+            ITracingService tracing)
+        {
+            Entity holeCalculation = new Entity(HoleCalculationsEntityName);
+
+            holeCalculation[HoleDetailLookupField] = new EntityReference(
+                HoleDetailsEntityName,
+                holeDetailId);
+
+            if (workOrderRef != null && workOrderRef.Id != Guid.Empty)
+            {
+                holeCalculation[WorkOrderField] = workOrderRef;
+            }
+
+            if (productRef != null && productRef.Id != Guid.Empty)
+            {
+                holeCalculation[ProductLookupField] = productRef;
+            }
+
+            string safeName = BuildSafeName(recordName, holeDetailId, _nameMaxLength);
+            holeCalculation[NameField] = safeName;
+
+            Guid createdId = service.Create(holeCalculation);
+
+            Trace(
+                tracing,
+                "Created Hole Calculation. Id={0}, HoleDetailId={1}, WorkOrderId={2}, ProductId={3}, ProductName={4}, Name={5}",
+                createdId,
+                holeDetailId,
+                workOrderRef != null ? workOrderRef.Id.ToString() : "null",
+                productRef != null ? productRef.Id.ToString() : "null",
+                productRef != null ? productRef.Name ?? "null" : "null",
+                safeName);
         }
 
         private static Guid GetCreatedRecordId(
@@ -454,75 +565,38 @@ namespace VGS.Dynamics365.Plugins
             return Guid.Empty;
         }
 
-        private static bool HoleCalculationsAlreadyExist(
-            IOrganizationService service,
-            Guid holeDetailId,
-            ITracingService tracing)
+        private static string GetAliasedString(Entity entity, string attributeName)
         {
-            var query = new QueryExpression(HoleCalculationsEntityName)
+            if (entity == null || string.IsNullOrWhiteSpace(attributeName) || !entity.Attributes.Contains(attributeName))
             {
-                ColumnSet = new ColumnSet(false),
-                TopCount = 1
-            };
+                return null;
+            }
 
-            query.Criteria.AddCondition(
-                HoleDetailLookupField,
-                ConditionOperator.Equal,
-                holeDetailId);
-
-            EntityCollection results = service.RetrieveMultiple(query);
-
-            bool exists = results != null && results.Entities.Count > 0;
-
-            Trace(
-                tracing,
-                "Duplicate check for Hole Detail {0}: Existing Hole Calculations Found={1}",
-                holeDetailId,
-                exists);
-
-            return exists;
+            AliasedValue aliasedValue = entity[attributeName] as AliasedValue;
+            return aliasedValue != null ? aliasedValue.Value as string : null;
         }
 
-        private void CreateHoleCalculation(
-            IOrganizationService service,
-            Guid holeDetailId,
-            EntityReference workOrderRef,
-            EntityReference productRef,
-            string recordName,
-            ITracingService tracing)
+        private static string BuildSafeName(string recordName, Guid holeDetailId, int maxLength)
         {
-            var holeCalculation = new Entity(HoleCalculationsEntityName);
+            string prefix = string.IsNullOrWhiteSpace(recordName)
+                ? "Hole Calculation"
+                : recordName.Trim();
 
-            holeCalculation[HoleDetailLookupField] = new EntityReference(
-                HoleDetailsEntityName,
-                holeDetailId);
+            string suffix = " - " + holeDetailId.ToString("D");
 
-            if (workOrderRef != null)
+            if (maxLength <= suffix.Length)
             {
-                holeCalculation[WorkOrderField] = workOrderRef;
+                return holeDetailId.ToString("D");
             }
 
-            if (productRef != null)
+            int maxPrefixLength = maxLength - suffix.Length;
+
+            if (prefix.Length > maxPrefixLength)
             {
-                holeCalculation[ProductLookupField] = productRef;
+                prefix = prefix.Substring(0, maxPrefixLength).TrimEnd();
             }
 
-            holeCalculation[NameField] = string.Format(
-                "{0} - {1:D}",
-                recordName,
-                holeDetailId);
-
-            Guid createdId = service.Create(holeCalculation);
-
-            Trace(
-                tracing,
-                "Created Hole Calculation. Id={0}, HoleDetailId={1}, WorkOrderId={2}, ProductId={3}, ProductName={4}, Name={5}",
-                createdId,
-                holeDetailId,
-                workOrderRef != null ? workOrderRef.Id.ToString() : "null",
-                productRef != null ? productRef.Id.ToString() : "null",
-                productRef != null ? productRef.Name ?? "null" : "null",
-                holeCalculation.GetAttributeValue<string>(NameField));
+            return prefix + suffix;
         }
 
         private static Dictionary<string, string> ParseConfig(string config)
@@ -534,24 +608,54 @@ namespace VGS.Dynamics365.Plugins
                 return dict;
             }
 
-            string[] parts = config.Split(
-                new[] { ';' },
-                StringSplitOptions.RemoveEmptyEntries);
+            string[] parts = config.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
 
             foreach (string part in parts)
             {
-                string[] kv = part.Split(
-                    new[] { '=' },
-                    2,
-                    StringSplitOptions.RemoveEmptyEntries);
+                string[] kv = part.Split(new[] { '=' }, 2, StringSplitOptions.RemoveEmptyEntries);
 
-                if (kv.Length == 2)
+                if (kv.Length == 2 && !string.IsNullOrWhiteSpace(kv[0]))
                 {
                     dict[kv[0].Trim()] = kv[1].Trim();
                 }
             }
 
             return dict;
+        }
+
+        private static bool TryParseBoolean(string value, out bool result)
+        {
+            result = false;
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalized = value.Trim();
+
+            if (bool.TryParse(normalized, out result))
+            {
+                return true;
+            }
+
+            if (string.Equals(normalized, "1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalized, "yes", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalized, "y", StringComparison.OrdinalIgnoreCase))
+            {
+                result = true;
+                return true;
+            }
+
+            if (string.Equals(normalized, "0", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalized, "no", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalized, "n", StringComparison.OrdinalIgnoreCase))
+            {
+                result = false;
+                return true;
+            }
+
+            return false;
         }
 
         private static void Trace(
