@@ -1,681 +1,879 @@
-using System;
-using System.Collections.Generic;
-using Microsoft.Xrm.Sdk;
-using Microsoft.Xrm.Sdk.Query;
+var formIsOnLoad = null;
+var processWhenRFQTypeSet = null;
+var currentValueQuoteNeededBy = null;
+var CurrentValueRfqType = null;
+var fieldNames = {
+    "Grids": {
+        "ExteriorGrid": "new_exteriorgrid",
+        "InteriorGrid": "new_interiorgrid",
+        "InGlassMuntin": "new_inglassgrid",
+    },
+    "GridSubAttr": {
+        "D4214": "new_d4214",
+        "D4324": "new_d4324",
+        "D4416": "new_d4416",
+        "D8114": "new_d8114",
+        "D8414": "new_d8414",
+        "D8416": "crb5d_d8416",
+        "SR8": "new_sr8",
+        "SR12": "new_sr12",
+        "SR58": "new_sr58",
+        "SR71": "new_sr71",
+        "SR84": "new_sr84",
+        "SR93": "new_sr93",
+        "FlatPlate": "new_flatplate",
+    }
+};
+var windowSeries = {
+    "1150ProjectedCasement2ThermalAW80125wall": "1150 - Projected/Casement: 2\" Thermal AW-80 .125 wall",
+    "1150SProjectedCasement2ThermalAW80125wall": "1150S - Projected/Casement:  2\" Thermal AW-80 .125 wall",
+    "1450ProjectedCasement4ThermalAW80125wall": "1450 - Projected/Casement:  4\" Thermal AW-80 .125 wall",
+    "1450HRProjectedCasement4ThermalAW80125wall": "1450HR - Projected/Casement: 4\" Thermal AW-80 .125 wall",
+    "1450SProjectedCasement4ThermalAW80125wall": "1450S - Projected/Casement:  4\" Thermal AW-80 .125 wall",
+    "1550ProjectedCasement45ThermalAW80": "1550 - Projected/Casement: 4.5\" Thermal AW-80",
+    "3250Contemporary314AW120": "3250 - (Contemporary): 3 1/4\" AW 120",
+    "3250314ContemporaryAW120": "3250 - 3-1/4\" Contemporary AW 120",
+    "3250SteelReplica": "3250: Steel Replica",
+    "3325CWSpecialty325ZeroSightlineVentforCurtainwall": "3325CW - Specialty:  3.25\" Zero Sightline Vent for Curtainwall",
+    "3325SFSpecialty325ZeroSightlineVentforStorefront": "3325SF - Specialty:  3.25\" Zero Sightline Vent for Storefront",
+    "3350ProjectedCasement35ThermalAW80125wall": "3350 - Projected/Casement:  3.5\" Thermal AW-80 .125 wall",
+    "3410SliderWindows4ThermalAW60": "3410 - Slider Windows:  4\" Thermal AW-60",
+    "3600SliderWindows325ThermalAW50": "3600 - Slider Windows: 3.25\" Thermal AW-50",
+    "3600DeepBead325ThermalAW80": "3600 Deep Bead - 3.25\" Thermal AW-80",
+    "4410HungWindows4ThermalAW65SH": "4410 - Hung Windows:  4\" Thermal AW-65 SH",
+    "4410SHungWindows4ThermalAW60SH": "4410S - Hung Windows:  4\" Thermal AW-60 SH",
+    "4500HungWindows4ThermalAW50DH": "4500 - Hung Windows:  4\" Thermal AW-50 DH",
+    "4500SHungWindows4ThermalAW50DH": "4500S - Hung Windows:  4\" Thermal AW-50 DH",
+    "8325InfinitySeries325StrutWindow": "8325 - Infinity Series:  3.25\" Strut Window",
+    "8325FInfinitySeries325FlatLegStrutWindow": "8325F - Infinity Series:  3.25\" Flat Leg Strut Window",
+    "8325SProjectedCasement": "8325S - Projected/Casement:",
+    "8800PsychiatricRetrofitInsert": "8800 – Psychiatric Retrofit Insert",
+    "8800PsychiatricWindow": "8800 - Psychiatric Window",
+    "BlindSashInsert": "Blind Sash Insert",
+    "customdesign": "custom design",
+    "FEMA361ICC50035DepthThermalFixedWindows": "FEMA 361 - ICC 500 - 3.5\" Depth Thermal Fixed Windows",
+    "NC82TerraceDoor": "NC-82 Terrace Door",
+    "TransiraRetrofit": "Transira Retrofit",
+}
+var associatedWindowSeries = [];
+var shouldSkip = false;
 
-namespace VGS.Dynamics365.Plugins
-{
-    /// <summary>
-    /// Creates vgsd_holecalculations records when a vgsd_holedetails record is created.
-    ///
-    /// Registration:
-    /// - Message: Create
-    /// - Primary Entity: vgsd_holedetails
-    /// - Stage: PostOperation
-    /// - Mode: Synchronous if users must see the created calculations immediately.
-    ///         Asynchronous is also acceptable if performance/user wait time is more important.
-    ///
-    /// Logic:
-    /// - Reads the Work Order from the created Hole Detail.
-    /// - Reads Work Order Primary Incident Type: msdyn_primaryincidenttype.
-    /// - Queries Incident Type Product: msdyn_incidenttypeproduct where:
-    ///     - msdyn_incidenttype = Work Order Primary Incident Type
-    ///     - configured CalculateHoleDetailsField = true
-    ///     - statecode = Active when FilterIncidentTypeProductsToActive=true
-    /// - Creates one Hole Calculation per unique product.
-    /// - Prevents duplicates per Hole Detail + Product.
-    /// - Optionally creates one productless default Hole Calculation when no matching products are found.
-    ///
-    /// Unsecure Configuration example:
-    /// CalculateHoleDetailsField=vgsd_calculateholedetails;
-    /// CreateDefaultCalculationWhenNoMatch=false;
-    /// FilterIncidentTypeProductsToActive=true;
-    /// NameMaxLength=100
-    /// </summary>
-    public class CreateHoleCalculationsOnHoleDetailCreate : IPlugin
-    {
-        private const string HoleDetailsEntityName = "vgsd_holedetails";
-        private const string HoleCalculationsEntityName = "vgsd_holecalculations";
-        private const string WorkOrderEntityName = "msdyn_workorder";
+$(document).ready(function () {
+    debugger; 
+    requiredFieldValidator();
+	
+    if(!shouldSkip){
+		formIsOnLoad = true;
+		currentValueQuoteNeededBy = $("#new_quoteneededby") != null ? $("#new_quoteneededby").val() : "";
+		CurrentValueRfqType = $("#new_typeofrfq") != null ? $("#new_typeofrfq").val() : "";
+		setTimeout(addeWindowsSeriesListener, 2000);
 
-        // Incident Type Product fields
-        private const string IncidentTypeProductEntityName = "msdyn_incidenttypeproduct";
-        private const string ITP_IncidentTypeField = "msdyn_incidenttype";
-        private const string ITP_ProductField = "msdyn_product";
+		hideStatusValues();
+		finishWarrantyOnChange();
+		glassWarrantyOnChange();
+		windowWarrantyOnChange();
+		breakMetalOnChange();
+		nc82OnChange();
+		hungSlideOnChange();
+		mullionsOnChange();
+		panningOnChange();
+		projectedCasementOnChange();
+		snapTrim();
+		addHovertext();
 
-        // Product fields
-        private const string ProductEntityName = "product";
-        private const string ProductIdField = "productid";
-        private const string ProductNameField = "name";
-        private const string ProductNumberField = "productnumber";
+		$("label[for='notescontrol']").text("Add Your Text Here");
 
-        // Hole Calculation fields
-        private const string HoleDetailLookupField = "vgsd_holedetail";
-        private const string WorkOrderField = "vgsd_workorderid";
-        private const string ProductLookupField = "vgsd_product";
-        private const string NameField = "vgsd_name";
+		if ($("#statuscode") != null && $("#statuscode")[0] != null && $("#statuscode")[0].innerText == "Won") {
+			hide("new_status", false);
+		} else {
+			hide("statuscode", false);
+		}
 
-        // Work Order fields
-        private const string IncidentTypeField = "msdyn_primaryincidenttype";
+		if (document.getElementById("new_finishwarranty") != null)
+			$("#new_finishwarranty").change(finishWarrantyOnChange);
+		if (document.getElementById("new_glasswarranty") != null)
+			$("#new_glasswarranty").change(glassWarrantyOnChange);
+		if (document.getElementById("new_windowwarranty") != null)
+			$("#new_windowwarranty").change(windowWarrantyOnChange);
+		if (document.getElementById("new_breakmetalinterior") != null)
+			$("#new_breakmetalinterior").change(breakMetalOnChange);
+		if (document.getElementById("new_breakmetalexterior") != null)
+			$("#new_breakmetalexterior").change(breakMetalOnChange);
+		if (document.getElementById("new_exteriorgrid") != null)
+			$("#new_exteriorgrid").change(gridOnChange);
+		if (document.getElementById("new_inglassgrid") != null)
+			$("#new_inglassgrid").change(gridOnChange);
+		if (document.getElementById("new_interiorgrid") != null)
+			$("#new_interiorgrid").change(gridOnChange);
+		if (document.getElementById("new_single") != null)
+			$("#new_single").change(nc82OnChange);
+		if (document.getElementById("new_doubleoutswing") != null)
+			$("#new_double").change(nc82OnChange);
+		if (document.getElementById("new_sidelite") != null)
+			$("#new_sidelite").change(nc82OnChange);
+		if (document.getElementById("new_transom") != null)
+			$("#new_transom").change(nc82OnChange);
+		if (document.getElementById("new_hung") != null)
+			$("#new_hung").change(hungSlideOnChange);
+		if (document.getElementById("new_slides") != null)
+			$("#new_slides").change(hungSlideOnChange);
+		if (document.getElementById("new_mullions") != null)
+			$("#new_mullions").change(mullionsOnChange);
+		if (document.getElementById("new_panninginterior") != null)
+			$("#new_panninginterior").change(panningOnChange);
+		if (document.getElementById("new_panningexterior") != null)
+			$("#new_panningexterior").change(panningOnChange);
+		if (document.getElementById("new_projectedin") != null)
+			$("#new_projectedin").change(projectedCasementOnChange);
+		if (document.getElementById("new_projectedout") != null)
+			$("#new_projectedout").change(projectedCasementOnChange);
+		if (document.getElementById("new_casement") != null)
+			$("#new_casement").change(projectedCasementOnChange);
+		if (document.getElementById("new_snaptriminterior") != null)
+			$("#new_snaptriminterior").change(snapTrim);
+		if (document.getElementById("new_snaptrimexterior") != null)
+			$("#new_snaptrimexterior").change(snapTrim);
+		if (document.getElementById("new_typeofrfq") != null)
+			$("#new_typeofrfq").change(setDateProcessingNotification);
 
-        private const string StateCodeField = "statecode";
-        private const int ActiveStateCode = 0;
-        private const int PostOperationStage = 40;
-        private const int DefaultNameMaxLength = 100;
-        private const int QueryPageSize = 5000;
+		//You cannot set an onchange for a date field directly...
+		$('div.control').each(function (index) {
+			if ($(this)[0].childNodes.length > 0 && $(this)[0].childNodes[0].id == "new_quoteneededby") {
+				console.log($(this)[0].childNodes[0].id);
+				$(this).on("dp.change", setDateProcessingNotification)
+			}
+		});
 
-        private readonly string _calculateHoleDetailsField;
-        private readonly bool _createDefaultCalculationWhenNoMatch;
-        private readonly bool _filterIncidentTypeProductsToActive;
-        private readonly int _nameMaxLength;
+		// if(document.getElementById("new_quoteneededby") != null)
+		// $("#new_quoteneededby").change(setDateProcessingNotification);
 
-        public CreateHoleCalculationsOnHoleDetailCreate(string unsecureConfig, string secureConfig)
-        {
-            _calculateHoleDetailsField = "vgsd_calculateholedetails";
-            _createDefaultCalculationWhenNoMatch = false;
-            _filterIncidentTypeProductsToActive = true;
-            _nameMaxLength = DefaultNameMaxLength;
+		formIsOnLoad = false;
+    }
+}); 
 
-            Dictionary<string, string> cfg = ParseConfig(unsecureConfig);
+function requiredFieldValidator(){
+    var newValidator = document.createElement('span');
+	newValidator.style.display = "none";
+	newValidator.id = "crb5d_revisedquoteneededbyValidator";
+	newValidator.controltovalidate = "crb5d_revisedquoteneededby";
+	newValidator.errormessage = "Revised Quote Needed By is a required field when Revision Needs contains data";
 
-            if (cfg.TryGetValue("CalculateHoleDetailsField", out string calcField) &&
-                !string.IsNullOrWhiteSpace(calcField))
-            {
-                _calculateHoleDetailsField = calcField.Trim();
-            }
+	newValidator.evaluationfunction = function () {
+		if ($('#crb5d_revisionneeds').val().trim().length > 0 && $('#crb5d_revisedquoteneededby_datepicker_description').val().trim().length < 1) {
+			return false
+		} else {
+			return true;
+		}
+	};
 
-            if (cfg.TryGetValue("CreateDefaultCalculationWhenNoMatch", out string createDefault) &&
-                TryParseBoolean(createDefault, out bool createDefaultBool))
-            {
-                _createDefaultCalculationWhenNoMatch = createDefaultBool;
-            }
+	// Add the new validator to the page validators array:
+	Page_Validators.push(newValidator);
+}
 
-            if (cfg.TryGetValue("FilterIncidentTypeProductsToActive", out string filterActive) &&
-                TryParseBoolean(filterActive, out bool filterActiveBool))
-            {
-                _filterIncidentTypeProductsToActive = filterActiveBool;
-            }
-
-            if (cfg.TryGetValue("NameMaxLength", out string nameMaxLengthText) &&
-                int.TryParse(nameMaxLengthText, out int configuredNameMaxLength) &&
-                configuredNameMaxLength >= 50 &&
-                configuredNameMaxLength <= 850)
-            {
-                _nameMaxLength = configuredNameMaxLength;
-            }
+function addeWindowsSeriesListener() {
+    if ($("#WindowSeries")[0].children[0].querySelector('.view-grid') !== null) {
+        if ($("#WindowSeries")[0].children[0].querySelector('.view-grid').querySelector("table") === null) {
+            setTimeout(addeWindowsSeriesListener, 2000);
         }
-
-        public CreateHoleCalculationsOnHoleDetailCreate() : this(null, null)
-        {
-        }
-
-        public void Execute(IServiceProvider serviceProvider)
-        {
-            if (serviceProvider == null)
-            {
-                throw new ArgumentNullException(nameof(serviceProvider));
-            }
-
-            IPluginExecutionContext context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
-            ITracingService tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
-            IOrganizationServiceFactory factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
-
-            if (context == null)
-            {
-                throw new InvalidPluginExecutionException("Plugin execution context is null.");
-            }
-
-            if (factory == null)
-            {
-                throw new InvalidPluginExecutionException("Organization service factory is null.");
-            }
-
-            // Run as SYSTEM so the automation is not blocked by the creating user's table permissions.
-            // If you want to enforce the user's security, change null to context.UserId.
-            IOrganizationService service = factory.CreateOrganizationService(null);
-
-            Trace(
-                tracing,
-                "CreateHoleCalculationsOnHoleDetailCreate started. Message={0}, PrimaryEntity={1}, Depth={2}, Mode={3}, Stage={4}",
-                context.MessageName,
-                context.PrimaryEntityName,
-                context.Depth,
-                context.Mode,
-                context.Stage);
-
-            try
-            {
-                if (!string.Equals(context.MessageName, "Create", StringComparison.OrdinalIgnoreCase))
-                {
-                    Trace(tracing, "Exiting: Message is not Create.");
-                    return;
-                }
-
-                if (!string.Equals(context.PrimaryEntityName, HoleDetailsEntityName, StringComparison.OrdinalIgnoreCase))
-                {
-                    Trace(tracing, "Exiting: Primary entity is not {0}.", HoleDetailsEntityName);
-                    return;
-                }
-
-                if (context.Stage != PostOperationStage)
-                {
-                    Trace(tracing, "Exiting: Plugin is not running in PostOperation. Current Stage={0}.", context.Stage);
-                    return;
-                }
-
-                if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity))
-                {
-                    Trace(tracing, "Exiting: Target not found or invalid.");
-                    return;
-                }
-
-                Entity target = (Entity)context.InputParameters["Target"];
-
-                if (!string.Equals(target.LogicalName, HoleDetailsEntityName, StringComparison.OrdinalIgnoreCase))
-                {
-                    Trace(
-                        tracing,
-                        "Exiting: Target logical name {0} does not match expected {1}.",
-                        target.LogicalName,
-                        HoleDetailsEntityName);
-                    return;
-                }
-
-                Guid holeDetailId = GetCreatedRecordId(context, target, tracing);
-
-                if (holeDetailId == Guid.Empty)
-                {
-                    Trace(tracing, "Exiting: Could not determine created Hole Detail ID.");
-                    return;
-                }
-
-                Trace(tracing, "Hole Detail ID resolved: {0}", holeDetailId);
-
-                Entity holeDetail = RetrieveHoleDetailData(service, holeDetailId, target, tracing);
-                EntityReference workOrderRef = holeDetail.GetAttributeValue<EntityReference>(WorkOrderField);
-
-                if (workOrderRef == null || workOrderRef.Id == Guid.Empty)
-                {
-                    Trace(tracing, "No Work Order found on Hole Detail. No calculations will be created.");
-                    return;
-                }
-
-                Trace(
-                    tracing,
-                    "Work Order found on Hole Detail. WorkOrderId={0}, WorkOrderName={1}",
-                    workOrderRef.Id,
-                    workOrderRef.Name ?? "null");
-
-                EntityReference incidentTypeRef = GetPrimaryIncidentType(service, workOrderRef.Id, tracing);
-
-                if (incidentTypeRef == null || incidentTypeRef.Id == Guid.Empty)
-                {
-                    Trace(tracing, "Work Order has no Primary Incident Type. No calculations will be created.");
-                    return;
-                }
-
-                Trace(
-                    tracing,
-                    "Primary Incident Type found. IncidentTypeId={0}, IncidentTypeName={1}",
-                    incidentTypeRef.Id,
-                    incidentTypeRef.Name ?? "null");
-
-                List<EntityReference> productsToCreate = GetUniqueProductsFromIncidentTypeProducts(
-                    service,
-                    incidentTypeRef.Id,
-                    tracing);
-
-                if (productsToCreate.Count > 0)
-                {
-                    Trace(tracing, "Found {0} unique product(s) flagged for Hole Calculations.", productsToCreate.Count);
-
-                    foreach (EntityReference productRef in productsToCreate)
-                    {
-                        if (HoleCalculationExists(service, holeDetailId, productRef, tracing))
-                        {
-                            Trace(
-                                tracing,
-                                "Skipping create: Hole Calculation already exists for HoleDetailId={0}, ProductId={1}.",
-                                holeDetailId,
-                                productRef.Id);
-                            continue;
-                        }
-
-                        string nameSuffix = !string.IsNullOrWhiteSpace(productRef.Name)
-                            ? productRef.Name
-                            : "Product";
-
-                        CreateHoleCalculation(
-                            service,
-                            holeDetailId,
-                            workOrderRef,
-                            productRef,
-                            "Hole Calculation - " + nameSuffix,
-                            tracing);
-                    }
-                }
-                else
-                {
-                    Trace(
-                        tracing,
-                        "No Incident Type Product rows flagged with {0}=true for IncidentTypeId={1}.",
-                        _calculateHoleDetailsField,
-                        incidentTypeRef.Id);
-
-                    if (_createDefaultCalculationWhenNoMatch)
-                    {
-                        if (HoleCalculationExists(service, holeDetailId, null, tracing))
-                        {
-                            Trace(
-                                tracing,
-                                "Skipping default create: productless Hole Calculation already exists for HoleDetailId={0}.",
-                                holeDetailId);
-                            return;
-                        }
-
-                        Trace(tracing, "Creating default Hole Calculation with no product because CreateDefaultCalculationWhenNoMatch=true.");
-
-                        CreateHoleCalculation(
-                            service,
-                            holeDetailId,
-                            workOrderRef,
-                            null,
-                            "Hole Calculation",
-                            tracing);
-                    }
-                    else
-                    {
-                        Trace(tracing, "No default calculation created because CreateDefaultCalculationWhenNoMatch=false.");
-                    }
-                }
-
-                Trace(
-                    tracing,
-                    "CreateHoleCalculationsOnHoleDetailCreate completed successfully for Hole Detail {0}.",
-                    holeDetailId);
-            }
-            catch (InvalidPluginExecutionException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Trace(tracing, "CreateHoleCalculationsOnHoleDetailCreate error: {0}", ex.ToString());
-
-                throw new InvalidPluginExecutionException(
-                    "An error occurred while creating Hole Calculation records from the Hole Detail record. See Plugin Trace Log for details.",
-                    ex);
-            }
-        }
-
-        private Entity RetrieveHoleDetailData(
-            IOrganizationService service,
-            Guid holeDetailId,
-            Entity target,
-            ITracingService tracing)
-        {
-            if (target.Attributes.Contains(WorkOrderField))
-            {
-                Trace(tracing, "Target already contains Work Order field. No retrieve needed.");
-                return target;
-            }
-
-            Trace(
-                tracing,
-                "Target does not contain Work Order field. Retrieving Hole Detail {0} from Dataverse.",
-                holeDetailId);
-
-            Entity retrieved = service.Retrieve(
-                HoleDetailsEntityName,
-                holeDetailId,
-                new ColumnSet(WorkOrderField));
-
-            Entity merged = new Entity(HoleDetailsEntityName) { Id = holeDetailId };
-
-            foreach (KeyValuePair<string, object> attribute in target.Attributes)
-            {
-                merged[attribute.Key] = attribute.Value;
-            }
-
-            foreach (KeyValuePair<string, object> attribute in retrieved.Attributes)
-            {
-                merged[attribute.Key] = attribute.Value;
-            }
-
-            return merged;
-        }
-
-        private EntityReference GetPrimaryIncidentType(
-            IOrganizationService service,
-            Guid workOrderId,
-            ITracingService tracing)
-        {
-            Trace(tracing, "Retrieving Work Order {0} to read Primary Incident Type.", workOrderId);
-
-            Entity workOrder = service.Retrieve(
-                WorkOrderEntityName,
-                workOrderId,
-                new ColumnSet(IncidentTypeField));
-
-            EntityReference incidentTypeRef = workOrder.GetAttributeValue<EntityReference>(IncidentTypeField);
-
-            if (incidentTypeRef == null)
-            {
-                Trace(tracing, "Work Order {0} does not have Primary Incident Type populated.", workOrderId);
-            }
-
-            return incidentTypeRef;
-        }
-
-        private List<EntityReference> GetUniqueProductsFromIncidentTypeProducts(
-            IOrganizationService service,
-            Guid incidentTypeId,
-            ITracingService tracing)
-        {
-            var productsById = new Dictionary<Guid, EntityReference>();
-
-            Trace(
-                tracing,
-                "Querying Incident Type Products. IncidentTypeId={0}, FlagField={1}, FilterActive={2}",
-                incidentTypeId,
-                _calculateHoleDetailsField,
-                _filterIncidentTypeProductsToActive);
-
-            QueryExpression query = new QueryExpression(IncidentTypeProductEntityName)
-            {
-                ColumnSet = new ColumnSet(ITP_ProductField),
-                PageInfo = new PagingInfo
-                {
-                    Count = QueryPageSize,
-                    PageNumber = 1,
-                    ReturnTotalRecordCount = false
-                }
-            };
-
-            query.Criteria.AddCondition(ITP_IncidentTypeField, ConditionOperator.Equal, incidentTypeId);
-            query.Criteria.AddCondition(_calculateHoleDetailsField, ConditionOperator.Equal, true);
-
-            if (_filterIncidentTypeProductsToActive)
-            {
-                query.Criteria.AddCondition(StateCodeField, ConditionOperator.Equal, ActiveStateCode);
-            }
-
-            LinkEntity productLink = query.AddLink(ProductEntityName, ITP_ProductField, ProductIdField, JoinOperator.LeftOuter);
-            productLink.EntityAlias = "p";
-            productLink.Columns = new ColumnSet(ProductNameField, ProductNumberField);
-
-            while (true)
-            {
-                EntityCollection page = service.RetrieveMultiple(query);
-
-                if (page == null || page.Entities.Count == 0)
-                {
-                    if (query.PageInfo.PageNumber == 1)
-                    {
-                        Trace(tracing, "No Incident Type Product rows found matching criteria.");
-                    }
-
-                    break;
-                }
-
-                foreach (Entity itp in page.Entities)
-                {
-                    EntityReference productRef = itp.GetAttributeValue<EntityReference>(ITP_ProductField);
-
-                    if (productRef == null || productRef.Id == Guid.Empty)
-                    {
-                        Trace(tracing, "Incident Type Product row found but has no product. Skipping.");
-                        continue;
-                    }
-
-                    string productName = GetAliasedString(itp, "p." + ProductNameField);
-
-                    if (!string.IsNullOrWhiteSpace(productName))
-                    {
-                        productRef.Name = productName;
-                    }
-
-                    if (productsById.ContainsKey(productRef.Id))
-                    {
-                        Trace(
-                            tracing,
-                            "Duplicate Incident Type Product setup found for ProductId={0}. Keeping one Hole Calculation only.",
-                            productRef.Id);
-                        continue;
-                    }
-
-                    productsById.Add(productRef.Id, productRef);
-
-                    Trace(
-                        tracing,
-                        "Incident Type Product match accepted. ProductId={0}, ProductName={1}",
-                        productRef.Id,
-                        productRef.Name ?? "null");
-                }
-
-                if (!page.MoreRecords)
-                {
-                    break;
-                }
-
-                query.PageInfo.PageNumber++;
-                query.PageInfo.PagingCookie = page.PagingCookie;
-            }
-
-            return new List<EntityReference>(productsById.Values);
-        }
-
-        private static bool HoleCalculationExists(
-            IOrganizationService service,
-            Guid holeDetailId,
-            EntityReference productRef,
-            ITracingService tracing)
-        {
-            QueryExpression query = new QueryExpression(HoleCalculationsEntityName)
-            {
-                ColumnSet = new ColumnSet(false),
-                TopCount = 1
-            };
-
-            query.Criteria.AddCondition(HoleDetailLookupField, ConditionOperator.Equal, holeDetailId);
-
-            if (productRef != null && productRef.Id != Guid.Empty)
-            {
-                query.Criteria.AddCondition(ProductLookupField, ConditionOperator.Equal, productRef.Id);
-            }
-            else
-            {
-                query.Criteria.AddCondition(ProductLookupField, ConditionOperator.Null);
-            }
-
-            EntityCollection results = service.RetrieveMultiple(query);
-            bool exists = results != null && results.Entities.Count > 0;
-
-            Trace(
-                tracing,
-                "Duplicate check. HoleDetailId={0}, ProductId={1}, Exists={2}",
-                holeDetailId,
-                productRef != null ? productRef.Id.ToString() : "null",
-                exists);
-
-            return exists;
-        }
-
-        private void CreateHoleCalculation(
-            IOrganizationService service,
-            Guid holeDetailId,
-            EntityReference workOrderRef,
-            EntityReference productRef,
-            string recordName,
-            ITracingService tracing)
-        {
-            Entity holeCalculation = new Entity(HoleCalculationsEntityName);
-
-            holeCalculation[HoleDetailLookupField] = new EntityReference(
-                HoleDetailsEntityName,
-                holeDetailId);
-
-            if (workOrderRef != null && workOrderRef.Id != Guid.Empty)
-            {
-                holeCalculation[WorkOrderField] = workOrderRef;
-            }
-
-            if (productRef != null && productRef.Id != Guid.Empty)
-            {
-                holeCalculation[ProductLookupField] = productRef;
-            }
-
-            string safeName = BuildSafeName(recordName, holeDetailId, _nameMaxLength);
-            holeCalculation[NameField] = safeName;
-
-            Guid createdId = service.Create(holeCalculation);
-
-            Trace(
-                tracing,
-                "Created Hole Calculation. Id={0}, HoleDetailId={1}, WorkOrderId={2}, ProductId={3}, ProductName={4}, Name={5}",
-                createdId,
-                holeDetailId,
-                workOrderRef != null ? workOrderRef.Id.ToString() : "null",
-                productRef != null ? productRef.Id.ToString() : "null",
-                productRef != null ? productRef.Name ?? "null" : "null",
-                safeName);
-        }
-
-        private static Guid GetCreatedRecordId(
-            IPluginExecutionContext context,
-            Entity target,
-            ITracingService tracing)
-        {
-            if (context.OutputParameters != null &&
-                context.OutputParameters.Contains("id") &&
-                context.OutputParameters["id"] is Guid)
-            {
-                Guid id = (Guid)context.OutputParameters["id"];
-                Trace(tracing, "Record ID obtained from OutputParameters: {0}", id);
-                return id;
-            }
-
-            if (target != null && target.Id != Guid.Empty)
-            {
-                Trace(tracing, "Record ID obtained from Target.Id: {0}", target.Id);
-                return target.Id;
-            }
-
-            Trace(tracing, "Unable to determine created record ID.");
-            return Guid.Empty;
-        }
-
-        private static string GetAliasedString(Entity entity, string attributeName)
-        {
-            if (entity == null || string.IsNullOrWhiteSpace(attributeName) || !entity.Attributes.Contains(attributeName))
-            {
-                return null;
-            }
-
-            AliasedValue aliasedValue = entity[attributeName] as AliasedValue;
-            return aliasedValue != null ? aliasedValue.Value as string : null;
-        }
-
-        private static string BuildSafeName(string recordName, Guid holeDetailId, int maxLength)
-        {
-            string prefix = string.IsNullOrWhiteSpace(recordName)
-                ? "Hole Calculation"
-                : recordName.Trim();
-
-            string suffix = " - " + holeDetailId.ToString("D");
-
-            if (maxLength <= suffix.Length)
-            {
-                return holeDetailId.ToString("D");
-            }
-
-            int maxPrefixLength = maxLength - suffix.Length;
-
-            if (prefix.Length > maxPrefixLength)
-            {
-                prefix = prefix.Substring(0, maxPrefixLength).TrimEnd();
-            }
-
-            return prefix + suffix;
-        }
-
-        private static Dictionary<string, string> ParseConfig(string config)
-        {
-            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            if (string.IsNullOrWhiteSpace(config))
-            {
-                return dict;
-            }
-
-            string[] parts = config.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-
-            foreach (string part in parts)
-            {
-                string[] kv = part.Split(new[] { '=' }, 2, StringSplitOptions.RemoveEmptyEntries);
-
-                if (kv.Length == 2 && !string.IsNullOrWhiteSpace(kv[0]))
-                {
-                    dict[kv[0].Trim()] = kv[1].Trim();
-                }
-            }
-
-            return dict;
-        }
-
-        private static bool TryParseBoolean(string value, out bool result)
-        {
-            result = false;
-
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return false;
-            }
-
-            string normalized = value.Trim();
-
-            if (bool.TryParse(normalized, out result))
-            {
-                return true;
-            }
-
-            if (string.Equals(normalized, "1", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(normalized, "yes", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(normalized, "y", StringComparison.OrdinalIgnoreCase))
-            {
-                result = true;
-                return true;
-            }
-
-            if (string.Equals(normalized, "0", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(normalized, "no", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(normalized, "n", StringComparison.OrdinalIgnoreCase))
-            {
-                result = false;
-                return true;
-            }
-
-            return false;
-        }
-
-        private static void Trace(
-            ITracingService tracing,
-            string message,
-            params object[] args)
-        {
-            if (tracing == null || string.IsNullOrWhiteSpace(message))
-            {
-                return;
-            }
-
-            if (args == null || args.Length == 0)
-            {
-                tracing.Trace(message);
-            }
-            else
-            {
-                tracing.Trace(message, args);
-            }
+        else {
+            let observer = new MutationObserver(handleRowAdded);
+            gridOnChange();
+
+            // Start observing the table body for child list changes
+            observer.observe($("#WindowSeries")[0].children[0].querySelector('.view-grid').querySelector("table"), { childList: true }); 
         }
     }
+}
+
+function addHovertext() {
+    addHoverTextToField(fieldNames.GridSubAttr.D4214, "13/16\" x 5/16\" trapezoid");
+    addHoverTextToField(fieldNames.GridSubAttr.D4324, "1-1/4\" x 5/16\" trapezoid");
+    addHoverTextToField(fieldNames.GridSubAttr.D8114, "1\" x 3/8\" trapezoid");
+    addHoverTextToField(fieldNames.GridSubAttr.SR58, "7/8\" x 5/8\" trapezoid");
+    addHoverTextToField(fieldNames.GridSubAttr.SR71, "3/4\" x 5/8\" washed");
+    addHoverTextToField(fieldNames.GridSubAttr.SR8, "1-3/16\" x 3/4\" trapezoid");
+    addHoverTextToField(fieldNames.GridSubAttr.SR93, "1-11/16\" x 1-1/8\" trapezoid");
+    addHoverTextToField(fieldNames.GridSubAttr.D8414, "2\" x 1/2\" special");
+    addHoverTextToField(fieldNames.GridSubAttr.D8416, "3/4\" x 5/8\" washed");
+    addHoverTextToField(fieldNames.GridSubAttr.D4416, "2\" x 5/16\" trapezoid");
+    addHoverTextToField(fieldNames.GridSubAttr.FlatPlate, "Flat Plate");
+}
+
+function addHoverTextToField(fieldName, text) {
+    if ($("#" + fieldName) != null && $("#" + fieldName).parent() != null && $("#" + fieldName).parent().parent() != null && $("#" + fieldName).parent().parent().parent()) {
+        $("#" + fieldName).parent().parent().parent().hover(function () {
+            $(this).css('cursor', 'pointer').attr('title', text);
+        }, function () {
+            $(this).css('cursor', 'auto');
+        });
+    }
+}
+
+function handleRowAdded(mutations) {
+    mutations.forEach(mutation => {
+        if (mutation.type === 'childList') {
+            gridOnChange();
+        }
+    });
+}
+
+
+function finishWarrantyOnChange() {
+    if (document.getElementById("new_finishwarranty") != null) {
+        var value = document.getElementById("new_finishwarranty").checked;//jQuery is not returning the value...
+
+        if (value)
+            hide("new_finishwarrantyterm", false);
+        else
+            show("new_finishwarrantyterm");
+    }
+}
+
+function glassWarrantyOnChange() {
+    if (document.getElementById("new_glasswarranty") != null) {
+        var value = document.getElementById("new_glasswarranty").checked;//jQuery is not returning the value...
+
+        if (value)
+            hide("new_glasswarrantyterm", false);
+        else
+            show("new_glasswarrantyterm");
+    }
+}
+
+function windowWarrantyOnChange() {
+    if (document.getElementById("new_windowwarranty") != null) {
+        var value = document.getElementById("new_windowwarranty").checked;//jQuery is not returning the value...
+
+        if (value)
+            hide("new_windowwarrantyterm", false);
+        else
+            show("new_windowwarrantyterm");
+    }
+}
+
+function breakMetalOnChange() {
+    if (document.getElementById("new_breakmetalinterior") != null && document.getElementById("new_breakmetalexterior") != null) {
+        var breakMetalInterior = document.getElementById("new_breakmetalinterior").checked;//jQuery is not returning the value...
+        var breakMetalExterior = document.getElementById("new_breakmetalexterior").checked;//jQuery is not returning the value...
+
+        if (breakMetalInterior || breakMetalExterior) {
+            show("new_breakmetalheader");
+            show("new_breakmetalleftjam");
+            show("new_breakmetalrightjam");
+            show("new_breakmetalsill");
+            show("new_breakmetalsizenotes");
+        } else {
+            hide("new_breakmetalheader", true);
+            hide("new_breakmetalleftjam", true);
+            hide("new_breakmetalrightjam", true);
+            hide("new_breakmetalsill", true);
+            hide("new_breakmetalsizenotes", false);
+        }
+    }
+}
+
+function gridOnChange() {
+    associatedWindowSeries = [];
+    if (document.getElementById("new_exteriorgrid") != null && document.getElementById("new_inglassgrid") != null
+        && document.getElementById("new_interiorgrid") != null) {
+        var exteriorGrid = document.getElementById("new_exteriorgrid").checked;//jQuery is not returning the value...
+        var inGlassGrid = document.getElementById("new_inglassgrid").checked;//jQuery is not returning the value...
+        var interiorGrid = document.getElementById("new_interiorgrid").checked;//jQuery is not returning the value...
+
+        if (inGlassGrid || interiorGrid) {
+            show("new_d4214");
+            show("new_d4324");
+            show("new_d8114");
+            show("new_d8414");
+            show("crb5d_d8416");
+            show("new_sr8");
+            show("new_sr12");
+            show("new_sr58");
+            show("new_sr71");
+           // show("new_sr84");
+            show("new_sr93");
+            show("new_flatplate");
+            show("new_gridscomments");
+        } else {
+            hide("new_d4214", true);
+            hide("new_d4324", true);
+            hide("new_d8114", true);
+            hide("new_d8414", true);
+            hide("crb5d_d8416", true);
+            hide("new_sr8", true);
+            hide("new_sr12", true);
+            hide("new_sr58", true);
+            hide("new_sr71", true);
+       //     hide("new_sr84", true);
+            hide("new_sr93", true);
+            hide("new_flatplate", true);
+
+            if (exteriorGrid) {
+                if (hasWindowsSeries(windowSeries["1150ProjectedCasement2ThermalAW80125wall"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["1150SProjectedCasement2ThermalAW80125wall"])) {
+                    show(fieldNames.GridSubAttr.D4214);
+                    show(fieldNames.GridSubAttr.D4324);
+                    show(fieldNames.GridSubAttr.D8114);
+                    show(fieldNames.GridSubAttr.SR12);
+                    show(fieldNames.GridSubAttr.D8414);
+                    show(fieldNames.GridSubAttr.D8416);
+                }
+
+                if (hasWindowsSeries(windowSeries["1450ProjectedCasement4ThermalAW80125wall"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["1450HRProjectedCasement4ThermalAW80125wall"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["1450SProjectedCasement4ThermalAW80125wall"])) {
+                    show(fieldNames.GridSubAttr.D4214);
+                    show(fieldNames.GridSubAttr.D4324);
+                    show(fieldNames.GridSubAttr.D8114);
+                    show(fieldNames.GridSubAttr.SR12);
+                    show(fieldNames.GridSubAttr.D8414);
+                    show(fieldNames.GridSubAttr.D8416);
+                    show(fieldNames.GridSubAttr.D4416);
+                }
+
+                if (hasWindowsSeries(windowSeries["1550ProjectedCasement45ThermalAW80"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["3350ProjectedCasement35ThermalAW80125wall"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["3410SliderWindows4ThermalAW60"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["3600SliderWindows325ThermalAW50"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["3600DeepBead325ThermalAW80"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["4410HungWindows4ThermalAW65SH"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["4410SHungWindows4ThermalAW60SH"])) {
+                    show(fieldNames.GridSubAttr.D4214);
+                    show(fieldNames.GridSubAttr.D4324);
+                    show(fieldNames.GridSubAttr.D4416);
+                }
+
+                if (hasWindowsSeries(windowSeries["4500HungWindows4ThermalAW50DH"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["4500SHungWindows4ThermalAW50DH"])) {
+                    show(fieldNames.GridSubAttr.D4214);
+                    show(fieldNames.GridSubAttr.D4324);
+                }
+
+                if (hasWindowsSeries(windowSeries["8325InfinitySeries325StrutWindow"])) {
+                    show(fieldNames.GridSubAttr.D4214);
+                    show(fieldNames.GridSubAttr.D4324);
+                    show(fieldNames.GridSubAttr.D8114);
+                    show(fieldNames.GridSubAttr.D8414);
+                    show(fieldNames.GridSubAttr.D8416);
+                    show(fieldNames.GridSubAttr.D4416);
+                }
+
+                if (hasWindowsSeries(windowSeries["8325FInfinitySeries325FlatLegStrutWindow"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["8800PsychiatricWindow"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["FEMA361ICC50035DepthThermalFixedWindows"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+
+                if (hasWindowsSeries(windowSeries["NC82TerraceDoor"])) {
+                    show(fieldNames.GridSubAttr.FlatPlate);
+                }
+            }
+            else
+                hide("new_gridscomments", false);
+        }
+    }
+}
+
+function hasWindowsSeries(name) {
+    let hasSeries = false;
+
+    if (associatedWindowSeries.length == 0) {
+        associatedWindowSeries = $("#WindowSeries")[0].children[0].querySelector('.view-grid').querySelector("table").querySelector("tbody").children
+    } 
+
+    for (let i = 0; i < associatedWindowSeries.length; i++) {
+        if (associatedWindowSeries[i].innerText.replaceAll("  ", " ").trim() == name.replaceAll("  ", " ")) {
+            hasSeries = true;
+            break;
+        }
+    }
+
+    return hasSeries
+}
+
+function hungSlideOnChange() {
+    if (document.getElementById("new_hung") != null && document.getElementById("new_slides") != null) {
+        var hung = document.getElementById("new_hung").checked;//jQuery is not returning the value...
+        var slides = document.getElementById("new_slides").checked;//jQuery is not returning the value...
+
+        if (hung || slides) {
+            show("new_sweeplock");
+            show("new_ultraliftbalancer");
+            show("new_autosnaplock");
+            show("new_poleringsnap");
+            show("new_limitstop");
+            show("new_hungslidelimitto");
+            show("new_nylonroller");
+            show("new_steelroller");
+            show("new_stainlesssteelroller");
+            show("new_stainlesssteeltrack");
+            show("new_hungslidescomments");
+        } else {
+            hide("new_sweeplock", true);
+            hide("new_ultraliftbalancer", true);
+            hide("new_autosnaplock", true);
+            hide("new_poleringsnap", true);
+            hide("new_limitstop", true);
+            hide("new_hungslidelimitto", false);
+            hide("new_nylonroller", true);
+            hide("new_steelroller", true);
+            hide("new_stainlesssteelroller", true);
+            hide("new_stainlesssteeltrack", true);
+            hide("new_hungslidescomments", false);
+        }
+    }
+}
+function nc82OnChange() {
+    if (document.getElementById("new_single") != null && document.getElementById("new_double") != null && document.getElementById("new_sidelite") != null && document.getElementById("new_transom") != null) {
+        var single = document.getElementById("new_single").checked;//jQuery is not returning the value...
+        var double = document.getElementById("new_double").checked;//jQuery is not returning the value...
+        var sidelite = document.getElementById("new_sidelite").checked;//jQuery is not returning the value...
+        var transom = document.getElementById("new_transom").checked;//jQuery is not returning the value...
+
+        if (single || double || sidelite || transom) {
+            show("new_singleoutswing");
+            show("new_singleinswing");
+            show("new_kickplate");
+            show("new_adasill");
+            show("new_nonadasill");
+            show("new_casementcomments");
+        } else {
+            hide("new_singleoutswing", true);
+            hide("new_singleinswing", true);
+            hide("new_kickplate", true);
+            hide("new_adasill", true);
+            hide("new_nonadasill", true);
+            hide("new_casementcomments", false);
+        }
+    }
+}
+
+function mullionsOnChange() {
+    if (document.getElementById("new_mullions") != null) {
+        var mullions = document.getElementById("new_mullions").checked;//jQuery is not returning the value...
+
+        if (mullions) {
+            show("new_tmullions");
+            show("new_semitube");
+            show("new_tube");
+            show("new_mullionsstackcomments")
+        } else {
+            hide("new_tmullions", true);
+            hide("new_semitube", true);
+            hide("new_tube", true);
+            hide("new_mullionsstacksomments", false)
+        }
+    }
+}
+
+function panningOnChange() {
+    if (document.getElementById("new_panningexterior") != null && document.getElementById("new_panninginterior") != null) {
+        var panningExterior = document.getElementById("new_panningexterior").checked;//jQuery is not returning the value...
+        var panningInterior = document.getElementById("new_panninginterior").checked;//jQuery is not returning the value...
+
+        if (panningInterior || panningExterior) {
+            show("new_panningheader");
+            show("new_panningleftjam");
+            show("new_panningrightjam");
+            show("new_panningsill");
+            show("new_panningsizenotes");
+        } else {
+            hide("new_panningheader", true);
+            hide("new_panningleftjam", true);
+            hide("new_panningrightjam", true);
+            hide("new_panningsill", true);
+            hide("new_panningsizenotes", false);
+        }
+    }
+}
+
+function projectedCasementOnChange() {
+    if (document.getElementById("new_projectedin") != null && document.getElementById("new_projectedout") != null && document.getElementById("new_casement") != null) {
+        var projectedIn = document.getElementById("new_projectedin").checked;//jQuery is not returning the value...
+        var projectedOut = document.getElementById("new_projectedout").checked;//jQuery is not returning the value...
+        var casement = document.getElementById("new_casement").checked;//jQuery is not returning the value...
+
+        if (projectedIn || projectedOut || casement) {
+            show("new_multipointlocks");
+            show("new_camlock");
+            show("new_poleringcamlock");
+            show("new_liftlock");
+            show("new_poleringliftlock");
+            show("new_aclock");
+            show("new_4bararmhinge");
+            show("new_5knucklebutthinge");
+            show("new_keyrelease");
+            show("new_nonadjustablelimit");
+            show("new_limitto");
+            show("new_roto");
+            show("new_scissorroto");
+            show("new_casementarms");
+            show("new_projectedcasementcomments");
+        } else {
+            hide("new_multipointlocks", true);
+            hide("new_camlock", true);
+            hide("new_poleringcamlock", true);
+            hide("new_liftlock");
+            hide("new_poleringliftlock", true);
+            hide("new_aclock", true);
+            hide("new_4bararmhinge", true);
+            hide("new_5knucklebutthinge", true);
+            hide("new_keyrelease", true);
+            hide("new_nonadjustablelimit", true);
+            hide("new_limitto", true);
+            hide("new_roto", true);
+            hide("new_scissorroto", true);
+            hide("new_casementarms", true);
+            hide("new_projectedcasementcomments", false);
+        }
+    }
+}
+
+function snapTrim() {
+    if (document.getElementById("new_snaptriminterior") != null && document.getElementById("new_snaptrimexterior") != null) {
+        var snapTrimInterior = document.getElementById("new_snaptriminterior").checked;//jQuery is not returning the value...
+        var snapTrimExterior = document.getElementById("new_snaptrimexterior").checked;//jQuery is not returning the value...
+
+        if (snapTrimInterior || snapTrimExterior) {
+            show("new_snaptrimheader");
+            show("new_snaptrimleftjam");
+            show("new_snaptrimrightjam");
+            show("new_snaptrimsill");
+            show("new_snaptrimsizenotes");
+        } else {
+            hide("new_snaptrimheader", true);
+            hide("new_snaptrimleftjam", true);
+            hide("new_snaptrimrightjam", true);
+            hide("new_snaptrimsill", true);
+            hide("new_snaptrimsizenotes", false);
+        }
+    }
+}
+
+function show(fieldName) {
+    if ($("#" + fieldName) != null) {
+        $("#" + fieldName + "_label").show();
+        $("#" + fieldName).show();
+    }
+}
+
+function hide(fieldName, isCheckBox) {
+    if ($("#" + fieldName) != null) {
+        if (isCheckBox === true && formIsOnLoad == false)
+            document.getElementById(fieldName).checked = false;
+        else if (formIsOnLoad == false)
+            $("#" + fieldName).val(null);
+
+        $("#" + fieldName + "_label").hide();
+        $("#" + fieldName).hide();
+    }
+}
+
+function rfqTypeChange() {
+    if (processWhenRFQTypeSet) {
+        setDateProcessingNotification();
+    }
+}
+
+function setDateProcessingNotification() {
+    var message = "{0} RFQ's required {1} business days to process.";
+
+    if ($("#new_quoteneededby") != null && $("#new_typeofrfq") != null) {
+        var bidDateValue = $("#new_quoteneededby").val();
+        var rfqType = $("#new_typeofrfq").val();
+        currentValueQuoteNeededBy;
+        CurrentValueRfqType
+        if (bidDateValue != currentValueQuoteNeededBy || rfqType != CurrentValueRfqType) {
+            if (bidDateValue != currentValueQuoteNeededBy)
+                processWhenRFQTypeSet = true;
+            currentValueQuoteNeededBy = bidDateValue;
+            CurrentValueRfqType = rfqType;
+
+            if (rfqType != null && rfqType != "") {
+                if (bidDateValue != null && bidDateValue != "") {
+                    var dateFormat = "YYYY-MM-DDTHH:mm:ss.SSSSSSS";
+                    var message = "{0} RFQ's required {1} business days to process.";
+                    var bidDate = new Date(bidDateValue);
+                    var shouldPost = false;
+                    var businessDays = getBusinessDatesCount(new Date(), bidDate);
+
+                    if (rfqType == 100000000 && businessDays < 5) {//Standard
+                        message = message.replace("{0}", "Standard").replace("{1}", "5");
+                        shouldPost = true;
+
+                        var futureDate = new Date();
+                        addBusinessDays(futureDate, 5);
+                        $("#new_quoteneededby").val(moment.utc(futureDate).format(dateFormat));
+
+                        var $display = $("#new_quoteneededby").nextAll(".datetimepicker").children("input");
+                        $display.val(futureDate.format("MM/dd/yyyy"));
+                    } else if (rfqType == 100000001 && businessDays < 9) {//Engineering/Blast
+                        message = message.replace("{0}", "Engineering/Blast").replace("{1}", "9");
+                        shouldPost = true;
+
+                        var futureDate = new Date();
+                        addBusinessDays(futureDate, 9);
+                        $("#new_quoteneededby").val(moment.utc(futureDate).format(dateFormat));
+
+                        var $display = $("#new_quoteneededby").nextAll(".datetimepicker").children("input");
+                        $display.val(futureDate.format("MM/dd/yyyy"));
+                    } else if (rfqType == 100000002 && businessDays < 11) {//Plans/Spec
+                        message = message.replace("{0}", "Plans/Spec").replace("{1}", "11");
+                        shouldPost = true;
+
+                        var futureDate = new Date();
+                        addBusinessDays(futureDate, 11);
+                        $("#new_quoteneededby").val(moment.utc(futureDate).format(dateFormat));
+
+                        var $display = $("#new_quoteneededby").nextAll(".datetimepicker").children("input");
+                        $display.val(futureDate.format("MM/dd/yyyy"));
+                    } else {
+                        var updateDate = false;
+                        switch (bidDate.getDay()) {
+                            case 6:
+                                bidDate.setDate(bidDate.getDate() + 2);
+                                updateDate = true;
+                                break;
+                            case 0:
+                                bidDate.setDate(bidDate.getDate() + 1);
+                                updateDate = true;
+                                break;
+                        }
+
+                        if (updateDate) {
+                            message = "Quotes can only be supplied on M-F, please review when you need the estimate.";
+                            shouldPost = true;
+
+                            $("#new_quoteneededby").val(moment.utc(bidDate).format(dateFormat));
+
+                            var $display = $("#new_quoteneededby").nextAll(".datetimepicker").children("input");
+                            $display.val(bidDate.format("Mm/dd/yyyy"));
+                        }
+                    }
+
+                    if (shouldPost)
+                        setTimeout(function () { alert(message); }, 200);
+                }
+            } else {
+                processWhenRFQTypeSet = true;
+            }
+        }
+    } else if ($("#new_quoteneededby") == null || $("#new_quoteneededby") != undefined || $("#new_quoteneededby") != "") {
+        if (rfqType == 100000000) {//Standard
+            message = message.replace("{0}", "Standard").replace("{1}", "5");
+            shouldPost = true;
+
+            var futureDate = new Date();
+            addBusinessDays(futureDate, 5);
+            $("#new_quoteneededby").val(moment.utc(futureDate).format(dateFormat));
+
+            var $display = $("#new_quoteneededby").nextAll(".datetimepicker").children("input");
+            $display.val(futureDate.format("MM/dd/yyyy"));
+        } else if (rfqType == 100000001) {//Engineering/Blast
+            message = message.replace("{0}", "Engineering/Blast").replace("{1}", "9");
+            shouldPost = true;
+
+            var futureDate = new Date();
+            addBusinessDays(futureDate, 9);
+            $("#new_quoteneededby").val(moment.utc(futureDate).format(dateFormat));
+
+            var $display = $("#new_quoteneededby").nextAll(".datetimepicker").children("input");
+            $display.val(futureDate.format("MM/dd/yyyy"));
+        } else if (rfqType == 100000002) {//Plans/Spec
+            message = message.replace("{0}", "Plans/Spec").replace("{1}", "11");
+            shouldPost = true;
+
+            var futureDate = new Date();
+            addBusinessDays(futureDate, 11);
+            $("#new_quoteneededby").val(moment.utc(futureDate).format(dateFormat));
+
+            var $display = $("#new_quoteneededby").nextAll(".datetimepicker").children("input");
+            $display.val(futureDate.format("MM/dd/yyyy"));
+        }
+    }
+}
+
+function getBusinessDatesCount(startDate, endDate) {
+    var count = 0;
+    var curDate = startDate;
+    while (curDate <= endDate) {
+        var dayOfWeek = curDate.getDay();
+        if (!((dayOfWeek == 6) || (dayOfWeek == 0)))
+            count++;
+        curDate.setDate(curDate.getDate() + 1);
+    }
+
+    return count;
+}
+
+function addBusinessDays(startDate, numBusinessDays) {
+    var curDate = startDate;
+    while (numBusinessDays > 0) {
+        var dayOfWeek = curDate.getDay();
+        if (!((dayOfWeek == 6) || (dayOfWeek == 0)))
+            numBusinessDays--;
+        curDate.setDate(curDate.getDate() + 1);
+    }
+
+    //Skips the weekend.
+    if (curDate.getDay() == 6)
+        curDate.setDate(curDate.getDate() + 2);
+    else if (curDate.getDay() == 0)
+        curDate.setDate(curDate.getDate() + 1);
+}
+
+function hideStatusValues() {
+    var statusValue = $('#new_status').val();
+    var newOptionSetValues = "<option value='' label=' '></option>";
+
+    // Assigned to Rep
+    if (statusValue == 1)
+        newOptionSetValues += "<option selected='selected' value='1'>Assigned to Rep</option>";
+    //else
+    //    newOptionSetValues += "<option value='1'>Assigned to Rep</option>";
+
+    // Lead
+    if (statusValue == 100000009)
+        newOptionSetValues += "<option selected='selected' value='100000009'>Lead</option>";
+    else
+        newOptionSetValues += "<option value='100000009'>Lead</option>";
+
+    // Draft RFQ
+    if (statusValue == 100000003)
+        newOptionSetValues += "<option selected='selected' value='100000003'>Draft RFQ</option>";
+    else
+        newOptionSetValues += "<option value='100000003'>Draft RFQ</option>";
+
+    // Sq Ft $ Budget
+    if (statusValue == 100000011)
+        newOptionSetValues += "<option selected='selected' value='100000011'>Sq Ft $ Budget</option>";
+    else
+        newOptionSetValues += "<option value='100000011'>Sq Ft $ Budget</option>";
+	
+    // Pre-Quote Review
+    if (statusValue == 100000012)
+        newOptionSetValues += "<option selected='selected' value='100000012'>Pre-Quote Review</option>";
+    else
+        newOptionSetValues += "<option value='100000012'>Pre-Quote Review</option>";
+
+    // Ready for Quote
+    if (statusValue == 100000004)
+        newOptionSetValues += "<option selected='selected' value='100000004'>Ready for Quote</option>";
+    else
+        newOptionSetValues += "<option value='100000004'>Ready for Quote</option>";
+
+    // Plans & Spec Review
+    if (statusValue == 100000014)
+        newOptionSetValues += "<option selected='selected' value='100000014'>Plans &amp; Spec Review</option>";
+    //else
+    //    newOptionSetValues += "<option value='100000014'>Plans &amp; Spec Review</option>";
+
+    // Engineering Review
+    if (statusValue == 100000006)
+        newOptionSetValues += "<option selected='selected' value='100000006'>Engineering Review</option>";
+    //else
+    //    newOptionSetValues += "<option value='100000006'>Engineering Review</option>";
+
+    // Processing Proposal
+    if (statusValue == 100000001)
+        newOptionSetValues += "<option selected='selected' value='100000001'>Processing Proposal</option>";
+    //else
+    //    newOptionSetValues += "<option value='100000001'>Processing Proposal</option>";
+
+    // Returned to Rep
+    if (statusValue == 100000002)
+        newOptionSetValues += "<option selected='selected' value='100000002'>Returned to Rep</option>";
+    //else
+    //    newOptionSetValues += "<option value='100000002'>Returned to Rep</option>";
+
+    // Questions - Issues
+    if (statusValue == 100000007)
+        newOptionSetValues += "<option selected='selected' value='100000007'>Questions - Issues</option>";
+    //else
+    //    newOptionSetValues += "<option value='100000007'>Questions - Issues</option>";
+
+    // Quoted
+    if (statusValue == 100000008)
+        newOptionSetValues += "<option selected='selected' value='100000008'>Quoted</option>";
+    //else
+    //    newOptionSetValues += "<option value='100000008'>Quoted</option>";
+
+    // Revisions
+    if (statusValue == 100000005)
+        newOptionSetValues += "<option selected='selected' value='100000005'>Revisions</option>";
+    else
+        newOptionSetValues += "<option value='100000005'>Revisions</option>";
+
+    // On Hold
+    if (statusValue == 2)
+        newOptionSetValues += "<option selected='selected' value='2'>On Hold</option>";
+    else
+        newOptionSetValues += "<option value='2'>On Hold</option>";
+	
+    // Lost - Not Pursuing
+        newOptionSetValues += buildOptionSetValueHTMLTag("Lost - Not Pursing", 100000002, (statusValue == 100000002), false);
+
+    // Lost - Late to bid
+        newOptionSetValues += buildOptionSetValueHTMLTag("Lost - Late to bid", 961490001, (statusValue == 961490001), false);
+
+    // Lost - Pricing
+        newOptionSetValues += buildOptionSetValueHTMLTag("Lost - Pricing", 961490002, (statusValue == 961490002), false);
+
+    // Lost - Specifiable differences unable to meet
+        newOptionSetValues += buildOptionSetValueHTMLTag("Lost - Specifiable differences unable to meet", 961490003, (statusValue == 961490003), false);
+
+    // Lost - Competitor
+        newOptionSetValues += buildOptionSetValueHTMLTag("Lost - Competitor", 961490004, (statusValue == 961490004), false);
+
+    // Lost - Other
+        newOptionSetValues += buildOptionSetValueHTMLTag("Lost - Other", 961490005, (statusValue == 961490005), false);
+
+    $('#new_status').html(newOptionSetValues);
+} 
+
+function buildOptionSetValueHTMLTag(label, value, isCurrentlySelected, onlyShowIfSelected){
+	var returnValue = "";
+	
+	if (isCurrentlySelected)
+        returnValue = "<option selected='selected' value='" + value + "'>" + label + "</option>";
+    else if(!onlyShowIfSelected)
+        returnValue = "<option value='" + value + "'>" + label + "</option>";
+	
+	return returnValue;
 }
