@@ -1,1 +1,81 @@
-FileLeafRef eq '@{replace(outputs('EffectiveFileName'),'''','''''')}'
+{
+  "type": "If",
+  "expression": {
+    "and": [
+      {
+        "equals": [
+          "@greater(outputs('DuplicateCount_create_file_2'), 0)",
+          ""
+        ]
+      }
+    ]
+  },
+  "actions": {},
+  "else": {
+    "actions": {
+      "Create_file_2": {
+        "type": "OpenApiConnection",
+        "inputs": {
+          "parameters": {
+            "dataset": "@parameters('SPO Site URL  (ctp_SPOSiteURL)')",
+            "folderPath": "@outputs('TargetFolderPath')",
+            "name": "@outputs('EffectiveFileName')",
+            "body": "@variables('varFileContentBinary')"
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+            "connection": "shared_sharepointonline",
+            "operationId": "CreateFile"
+          }
+        },
+        "runtimeConfiguration": {
+          "contentTransfer": {
+            "transferMode": "Chunked"
+          }
+        },
+        "metadata": {
+          "operationMetadataId": "b248003b-aaaf-4159-8699-2cd1c050d4e3"
+        }
+      },
+      "Update_a_row_1": {
+        "type": "OpenApiConnection",
+        "inputs": {
+          "parameters": {
+            "entityName": "ctp_notesharepointsyncs",
+            "recordId": "@outputs('TrackingId')"
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+            "connection": "shared_commondataserviceforapps",
+            "operationId": "UpdateOnlyRecord"
+          }
+        },
+        "runAfter": {
+          "FileUrl_A2_": [
+            "SUCCEEDED"
+          ]
+        },
+        "metadata": {
+          "operationMetadataId": "3b16e12a-73f5-4934-bd68-a10f93133685"
+        }
+      },
+      "FileUrl_A2_": {
+        "type": "Compose",
+        "inputs": "@concat(variables('varSiteUrl'), '/', variables('varLibraryName'), '/', outputs('TargetFolderName'), '/', outputs('EffectiveFileName'))",
+        "runAfter": {
+          "Create_file_2": [
+            "SUCCEEDED"
+          ]
+        },
+        "metadata": {
+          "operationMetadataId": "3322816c-eda2-44aa-b6d8-7c9110a58b6c"
+        }
+      }
+    }
+  },
+  "runAfter": {
+    "DuplicateCount_create_file_2": [
+      "SUCCEEDED"
+    ]
+  }
+}
