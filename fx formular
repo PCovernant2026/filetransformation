@@ -1,1 +1,1 @@
-@length(body('Check_duplicate_for_Create_file_2')?['value'])
+@greater(outputs('DuplicateCount_Create_file_2'), 0)
