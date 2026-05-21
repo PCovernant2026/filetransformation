@@ -288,7 +288,7 @@
                   },
                   "runAfter": {
                     "Get_file_metadata_using_path": [
-                      "FAILED"
+                      "Failed"
                     ]
                   },
                   "runtimeConfiguration": {
@@ -390,7 +390,7 @@
                   },
                   "runAfter": {
                     "Get_file_metadata_using_path": [
-                      "SUCCEEDED"
+                      "Succeeded"
                     ]
                   }
                 }
@@ -434,7 +434,23 @@
                         }
                       ]
                     },
-                    "actions": {},
+                    "actions": {
+                      "Update_a_row_6": {
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "parameters": {
+                            "entityName": "ctp_notesharepointsyncs",
+                            "recordId": "@outputs('TrackingId')",
+                            "item/ctp_spsyncstatus": 961490004
+                          },
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                            "connection": "shared_commondataserviceforapps",
+                            "operationId": "UpdateOnlyRecord"
+                          }
+                        }
+                      }
+                    },
                     "else": {
                       "actions": {
                         "Create_file_2": {
@@ -601,7 +617,7 @@
                 },
                 "runAfter": {
                   "Get_file_metadata_using_path_1": [
-                    "FAILED"
+                    "Failed"
                   ]
                 },
                 "runtimeConfiguration": {
@@ -691,7 +707,7 @@
                 },
                 "runAfter": {
                   "Get_file_metadata_using_path_1": [
-                    "SUCCEEDED"
+                    "Succeeded"
                   ]
                 }
               }
