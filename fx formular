@@ -1,1 +1,5 @@
 @concat('/', variables('varLibraryName'), '/', outputs('TargetFolderName'))
+
+@concat(variables('varSiteUrl'), '/', variables('varLibraryName'), '/', output('TargetFolderName'), '/', outputs('FinalFileName1'))
+
+@concat(variables('varSiteUrl'), '/', variables('varLibraryName'), '/', outputs('TargetFolderName'), '/', outputs('FinalFileName1'))
