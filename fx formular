@@ -302,7 +302,7 @@
                 },
                 "FinalFileName": {
                   "type": "Compose",
-                  "inputs": "@if(equals(toLower(variables('varDuplicateMode')), 'rename'), outputs('SafeFileName'), outputs('EffectiveFileName'))",
+                  "inputs": "@outputs('EffectiveFileName')",
                   "runAfter": {
                     "SafeFileName": [
                       "Succeeded"
@@ -478,7 +478,7 @@
               },
               "FinalFileName1": {
                 "type": "Compose",
-                "inputs": "@if(equals(toLower(variables('varDuplicateMode')), 'rename'), if(contains(outputs('EffectiveFileName'), '.'), concat(substring(outputs('EffectiveFileName'), 0, lastIndexOf(outputs('EffectiveFileName'), '.')), '_', formatDateTime(utcNow(), 'yyyyMMddHHmmss'), substring(outputs('EffectiveFileName'), lastIndexOf(outputs('EffectiveFileName'), '.'))), concat(outputs('EffectiveFileName'), '_', formatDateTime(utcNow(), 'yyyyMMddHHmmss'))), outputs('EffectiveFileName'))",
+                "inputs": "@outputs('EffectiveFileName')",
                 "runAfter": {
                   "TargetFolderPath_New": [
                     "Succeeded"
@@ -519,7 +519,7 @@
               },
               "FileUrl_": {
                 "type": "Compose",
-                "inputs": "@concat(variables('varSiteUrl'), '/', variables('varLibraryName'), '/', body('TargetFolderName'), '/', outputs('FinalFileName1'))",
+                "inputs": "@concat(variables('varSiteUrl'), '/', variables('varLibraryName'), '/', output('TargetFolderName'), '/', outputs('FinalFileName1'))",
                 "runAfter": {
                   "Create_file_(Path_B)": [
                     "Succeeded"
