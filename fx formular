@@ -1,1 +1,1 @@
-@concat(outputs('TargetFolderPath'), '/', outputs('EffectiveFileName'))
+@length(body('Check_duplicate_for_Create_file_2')?['value'])
