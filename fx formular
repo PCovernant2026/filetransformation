@@ -1,14 +1,1 @@
-1. Add Compose
-FullFile_New
-
-expression:
-@concat(outputs('TargetFolderPath_New'), '/', outputs('FinalFileName1'))
-
-2. Add SharePoint action
-
-SharePoint → Get file metadata using path
-
-Get_file_metadata_using_path_New
-
-
-@outputs('FullFilePath_New')
+@concat('/', variables('varLibraryName'), '/', outputs('TargetFolderName'))
