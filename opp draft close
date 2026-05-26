@@ -2,82 +2,90 @@ using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Winco.Dynamics365.Plugins
 {
     /// <summary>
-    /// Pre-Operation synchronous plugin: cancels Draft/Active quotes before an Opportunity is closed as Lost.
-    /// Prevents error: "There are still active or draft quotes associated with this opportunity..."
+    /// Pre-Operation synchronous plugin that cancels Draft/Active Quotes before an Opportunity is closed as Lost.
     ///
-    /// Register Step:
+    /// Purpose:
+    /// Prevents the standard Dynamics 365 Sales error:
+    /// "There are still active or draft quotes associated with this opportunity..."
+    ///
+    /// Recommended Plugin Registration:
     /// - Message: Lose
     /// - Primary Entity: opportunity
     /// - Stage: Pre-Operation
     /// - Mode: Synchronous
+    /// - Execution Order: 10
     ///
-    /// Optional Unsecure Configuration:
-    /// - RunAsSystem=true|false (default false)
-    /// - ContinueOnQuoteError=true|false (default false)
-    /// Example: "RunAsSystem=true;ContinueOnQuoteError=false"
+    /// Recommended Unsecure Configuration:
+    /// RunAsSystem=true;CollectAllQuoteErrors=false;ActiveQuoteStatusCode=3;CancelledQuoteStatusCode=6
     /// </summary>
     public class PreOp_CancelQuotesBeforeLoseOpportunity : IPlugin
     {
+        private const int STAGE_PREOPERATION = 20;
+        private const int MODE_SYNCHRONOUS = 0;
+
         private const int QUOTE_STATE_DRAFT = 0;
         private const int QUOTE_STATE_ACTIVE = 1;
-        private const int QUOTE_STATE_WON = 2;
-        private const int QUOTE_STATE_CLOSED = 3;
 
-        private const int QUOTE_STATUS_OPEN = 3;
-        private const int QUOTE_CLOSE_STATUS_CANCELLED = 6;
+        private const int DEFAULT_ACTIVE_QUOTE_STATUSCODE = 3;
+        private const int DEFAULT_CANCELLED_QUOTE_STATUSCODE = 6;
 
         private readonly bool _runAsSystem;
-        private readonly bool _continueOnQuoteError;
+        private readonly bool _collectAllQuoteErrors;
+        private readonly int _activeQuoteStatusCode;
+        private readonly int _cancelledQuoteStatusCode;
 
         public PreOp_CancelQuotesBeforeLoseOpportunity(string unsecureConfig, string secureConfig)
         {
-            _runAsSystem = ReadBool(unsecureConfig, "RunAsSystem", false);
-            _continueOnQuoteError = ReadBool(unsecureConfig, "ContinueOnQuoteError", false);
+            _runAsSystem = ReadBool(unsecureConfig, "RunAsSystem", true);
+
+            _collectAllQuoteErrors = ReadBool(
+                unsecureConfig,
+                "CollectAllQuoteErrors",
+                ReadBool(unsecureConfig, "ContinueOnQuoteError", false));
+
+            _activeQuoteStatusCode = ReadInt(
+                unsecureConfig,
+                "ActiveQuoteStatusCode",
+                DEFAULT_ACTIVE_QUOTE_STATUSCODE);
+
+            _cancelledQuoteStatusCode = ReadInt(
+                unsecureConfig,
+                "CancelledQuoteStatusCode",
+                DEFAULT_CANCELLED_QUOTE_STATUSCODE);
         }
 
         public void Execute(IServiceProvider serviceProvider)
         {
+            if (serviceProvider == null)
+                throw new InvalidPluginExecutionException("Service provider is null.");
+
             var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
             var tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
             var factory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
 
-            tracing?.Trace("PreOp_CancelQuotesBeforeLoseOpportunity started.");
-
             if (context == null)
                 throw new InvalidPluginExecutionException("Plugin execution context is null.");
 
-            // Prevent recursion
-            if (context.Depth > 1)
-            {
-                tracing?.Trace("Exiting because Depth > 1.");
+            if (factory == null)
+                throw new InvalidPluginExecutionException("Organization service factory is null.");
+
+            tracing?.Trace("PreOp_CancelQuotesBeforeLoseOpportunity started.");
+            tracing?.Trace(
+                "Message={0}, Stage={1}, Mode={2}, Depth={3}, UserId={4}, InitiatingUserId={5}, CorrelationId={6}",
+                context.MessageName,
+                context.Stage,
+                context.Mode,
+                context.Depth,
+                context.UserId,
+                context.InitiatingUserId,
+                context.CorrelationId);
+
+            if (!IsValidExecutionContext(context, tracing))
                 return;
-            }
-
-            // Must be PreOperation + Synchronous
-            const int STAGE_PREOP = 20;
-            const int MODE_SYNC = 0;
-
-            tracing?.Trace($"Stage={context.Stage}, Mode={context.Mode}, Message={context.MessageName}");
-
-            if (context.Stage != STAGE_PREOP || context.Mode != MODE_SYNC)
-            {
-                tracing?.Trace($"Exiting because Stage/Mode not PreOp/Sync. Stage={context.Stage}, Mode={context.Mode}");
-                return;
-            }
-
-            // IMPORTANT: registered message is typically "Lose" in PRT for opportunity
-            var msg = context.MessageName ?? string.Empty;
-            if (!msg.Equals("Lose", StringComparison.OrdinalIgnoreCase) &&
-                !msg.Equals("LoseOpportunity", StringComparison.OrdinalIgnoreCase))
-            {
-                tracing?.Trace($"Exiting because message is not Lose/LoseOpportunity. Message={msg}");
-                return;
-            }
 
             var service = _runAsSystem
                 ? factory.CreateOrganizationService(null)
@@ -86,93 +94,65 @@ namespace Winco.Dynamics365.Plugins
             try
             {
                 var opportunityId = TryGetOpportunityId(context, tracing);
+
                 if (opportunityId == Guid.Empty)
                 {
-                    tracing?.Trace("OpportunityId could not be determined. Exiting.");
+                    tracing?.Trace("Opportunity ID could not be determined from the Lose message input parameters. Exiting.");
                     return;
                 }
 
-                if (context.InputParameters.TryGetValue("Status", out var statusObj) && statusObj is OptionSetValue osv)
+                TraceLoseStatus(context, tracing);
+
+                tracing?.Trace("Retrieving Draft/Active Quotes for OpportunityId={0}.", opportunityId);
+
+                var quotes = RetrieveDraftAndActiveQuotes(service, opportunityId, tracing);
+
+                tracing?.Trace("Found {0} Draft/Active Quote(s) for OpportunityId={1}.", quotes.Count, opportunityId);
+
+                if (quotes.Count == 0)
                 {
-                    tracing?.Trace($"Close Status (status reason) = {osv.Value}");
-                }
-
-                tracing?.Trace($"Cancelling draft/active quotes for Opportunity {opportunityId}.");
-
-                var quoteQuery = new QueryExpression("quote")
-                {
-                    ColumnSet = new ColumnSet("quoteid", "statecode", "statuscode"),
-                    Criteria =
-                    {
-                        Conditions =
-                        {
-                            new ConditionExpression("opportunityid", ConditionOperator.Equal, opportunityId)
-                        }
-                    }
-                };
-
-                var quotes = service.RetrieveMultiple(quoteQuery);
-                tracing?.Trace($"Found {quotes.Entities.Count} related quote(s).");
-
-                if (quotes.Entities.Count == 0)
-                {
-                    tracing?.Trace("No related quotes found. Allowing Opportunity close to proceed.");
+                    tracing?.Trace("No Draft/Active Quotes found. Opportunity close can proceed.");
                     return;
                 }
 
                 var failures = new List<string>();
 
-                foreach (var quote in quotes.Entities)
+                foreach (var quote in quotes)
                 {
                     try
                     {
-                        var state = quote.GetAttributeValue<OptionSetValue>("statecode")?.Value;
-
-                        if (state == QUOTE_STATE_WON || state == QUOTE_STATE_CLOSED)
-                        {
-                            tracing?.Trace($"Skipping quote {quote.Id} because state={state} (Won/Closed).");
-                            continue;
-                        }
-
-                        if (state == QUOTE_STATE_DRAFT)
-                        {
-                            tracing?.Trace($"Activating draft quote {quote.Id}.");
-                            var activate = new Entity("quote", quote.Id);
-                            activate["statecode"] = new OptionSetValue(QUOTE_STATE_ACTIVE);
-                            activate["statuscode"] = new OptionSetValue(QUOTE_STATUS_OPEN);
-                            service.Update(activate);
-                        }
-
-                        tracing?.Trace($"Cancelling quote {quote.Id}.");
-                        var quoteClose = new Entity("quoteclose");
-                        quoteClose["subject"] = "Auto-cancelled due to Opportunity being closed as Lost";
-                        quoteClose["quoteid"] = quote.ToEntityReference();
-
-                        var closeReq = new OrganizationRequest("CloseQuote");
-                        closeReq["QuoteClose"] = quoteClose;
-                        closeReq["Status"] = new OptionSetValue(QUOTE_CLOSE_STATUS_CANCELLED);
-
-                        service.Execute(closeReq);
+                        CancelQuote(service, quote, tracing);
                     }
-                    catch (Exception qex)
+                    catch (Exception ex)
                     {
-                        var fail = $"Quote {quote.Id} failed to cancel. Error: {qex.Message}";
-                        failures.Add(fail);
-                        tracing?.Trace(fail);
+                        var failure = string.Format(
+                            "{0} failed to cancel. Error: {1}",
+                            FormatQuoteForLog(quote),
+                            ex.Message);
 
-                        if (!_continueOnQuoteError)
-                            throw;
+                        failures.Add(failure);
+
+                        tracing?.Trace(failure);
+                        tracing?.Trace("Full quote cancellation exception: {0}", ex);
+
+                        if (!_collectAllQuoteErrors)
+                        {
+                            throw new InvalidPluginExecutionException(
+                                "Unable to cancel an active/draft Quote before closing the Opportunity as Lost. " +
+                                failure,
+                                ex);
+                        }
                     }
                 }
 
-                if (failures.Any())
+                if (failures.Count > 0)
                 {
                     throw new InvalidPluginExecutionException(
-                        "Unable to cancel all active/draft quotes before closing the Opportunity. " +
-                        "Details: " + string.Join(" | ", failures));
+                        "Unable to cancel all active/draft Quotes before closing the Opportunity as Lost. Details: " +
+                        string.Join(" | ", failures));
                 }
 
-                tracing?.Trace("All applicable quotes cancelled. Opportunity close can proceed.");
+                tracing?.Trace("All Draft/Active Quotes were cancelled successfully. Opportunity close can proceed.");
             }
             catch (InvalidPluginExecutionException)
             {
@@ -180,24 +160,57 @@ namespace Winco.Dynamics365.Plugins
             }
             catch (Exception ex)
             {
-                tracing?.Trace($"Plugin failed: {ex}");
+                tracing?.Trace("Plugin failed. Exception: {0}", ex);
+
                 throw new InvalidPluginExecutionException(
-                    "Unable to cancel active/draft quotes before closing the Opportunity. " +
-                    "See plugin trace log for details.", ex);
+                    "Unable to cancel active/draft Quotes before closing the Opportunity as Lost. " +
+                    "See the Plugin Trace Log for technical details.",
+                    ex);
             }
+        }
+
+        private static bool IsValidExecutionContext(IPluginExecutionContext context, ITracingService tracing)
+        {
+            if (context.Stage != STAGE_PREOPERATION || context.Mode != MODE_SYNCHRONOUS)
+            {
+                tracing?.Trace(
+                    "Exiting because plugin is not running Pre-Operation/Synchronous. Stage={0}, Mode={1}",
+                    context.Stage,
+                    context.Mode);
+
+                return false;
+            }
+
+            var messageName = context.MessageName ?? string.Empty;
+
+            if (!messageName.Equals("Lose", StringComparison.OrdinalIgnoreCase) &&
+                !messageName.Equals("LoseOpportunity", StringComparison.OrdinalIgnoreCase))
+            {
+                tracing?.Trace(
+                    "Exiting because message is not Lose/LoseOpportunity. Message={0}",
+                    messageName);
+
+                return false;
+            }
+
+            return true;
         }
 
         private static Guid TryGetOpportunityId(IPluginExecutionContext context, ITracingService tracing)
         {
-            if (context.InputParameters.TryGetValue("OpportunityClose", out var oppCloseObj) && oppCloseObj is Entity oppClose)
+            if (context.InputParameters.TryGetValue("OpportunityClose", out var opportunityCloseObj) &&
+                opportunityCloseObj is Entity opportunityClose)
             {
                 tracing?.Trace("Found OpportunityClose input parameter.");
 
-                var oppRef = oppClose.GetAttributeValue<EntityReference>("opportunityid");
-                if (oppRef != null && oppRef.Id != Guid.Empty)
+                var opportunityRef = opportunityClose.GetAttributeValue<EntityReference>("opportunityid");
+
+                if (opportunityRef != null &&
+                    opportunityRef.LogicalName.Equals("opportunity", StringComparison.OrdinalIgnoreCase) &&
+                    opportunityRef.Id != Guid.Empty)
                 {
-                    tracing?.Trace($"OpportunityId from OpportunityClose = {oppRef.Id}");
-                    return oppRef.Id;
+                    tracing?.Trace("OpportunityId from OpportunityClose = {0}", opportunityRef.Id);
+                    return opportunityRef.Id;
                 }
             }
 
@@ -205,25 +218,159 @@ namespace Winco.Dynamics365.Plugins
             {
                 tracing?.Trace("Found Target input parameter.");
 
-                if (targetObj is EntityReference er &&
-                    er.LogicalName.Equals("opportunity", StringComparison.OrdinalIgnoreCase) &&
-                    er.Id != Guid.Empty)
+                if (targetObj is EntityReference targetRef &&
+                    targetRef.LogicalName.Equals("opportunity", StringComparison.OrdinalIgnoreCase) &&
+                    targetRef.Id != Guid.Empty)
                 {
-                    tracing?.Trace($"OpportunityId from Target EntityReference = {er.Id}");
-                    return er.Id;
+                    tracing?.Trace("OpportunityId from Target EntityReference = {0}", targetRef.Id);
+                    return targetRef.Id;
                 }
 
-                if (targetObj is Entity e &&
-                    e.LogicalName.Equals("opportunity", StringComparison.OrdinalIgnoreCase) &&
-                    e.Id != Guid.Empty)
+                if (targetObj is Entity targetEntity &&
+                    targetEntity.LogicalName.Equals("opportunity", StringComparison.OrdinalIgnoreCase) &&
+                    targetEntity.Id != Guid.Empty)
                 {
-                    tracing?.Trace($"OpportunityId from Target Entity = {e.Id}");
-                    return e.Id;
+                    tracing?.Trace("OpportunityId from Target Entity = {0}", targetEntity.Id);
+                    return targetEntity.Id;
                 }
             }
 
-            tracing?.Trace("Could not extract OpportunityId from InputParameters.");
+            if (context.PrimaryEntityId != Guid.Empty &&
+                (context.PrimaryEntityName ?? string.Empty).Equals("opportunity", StringComparison.OrdinalIgnoreCase))
+            {
+                tracing?.Trace("OpportunityId from PrimaryEntityId = {0}", context.PrimaryEntityId);
+                return context.PrimaryEntityId;
+            }
+
+            tracing?.Trace("Could not extract OpportunityId from input parameters.");
             return Guid.Empty;
+        }
+
+        private static void TraceLoseStatus(IPluginExecutionContext context, ITracingService tracing)
+        {
+            if (context.InputParameters.TryGetValue("Status", out var statusObj) &&
+                statusObj is OptionSetValue status)
+            {
+                tracing?.Trace("Opportunity Lost Status Reason = {0}", status.Value);
+            }
+        }
+
+        private static List<Entity> RetrieveDraftAndActiveQuotes(
+            IOrganizationService service,
+            Guid opportunityId,
+            ITracingService tracing)
+        {
+            var results = new List<Entity>();
+
+            var query = new QueryExpression("quote")
+            {
+                ColumnSet = new ColumnSet("quoteid", "quotenumber", "name", "statecode", "statuscode"),
+                Criteria =
+                {
+                    Conditions =
+                    {
+                        new ConditionExpression("opportunityid", ConditionOperator.Equal, opportunityId),
+                        new ConditionExpression("statecode", ConditionOperator.In, new object[]
+                        {
+                            QUOTE_STATE_DRAFT,
+                            QUOTE_STATE_ACTIVE
+                        })
+                    }
+                },
+                PageInfo = new PagingInfo
+                {
+                    PageNumber = 1,
+                    Count = 5000
+                }
+            };
+
+            while (true)
+            {
+                var page = service.RetrieveMultiple(query);
+
+                if (page?.Entities != null && page.Entities.Count > 0)
+                    results.AddRange(page.Entities);
+
+                if (page == null || !page.MoreRecords)
+                    break;
+
+                query.PageInfo.PageNumber++;
+                query.PageInfo.PagingCookie = page.PagingCookie;
+
+                tracing?.Trace(
+                    "Retrieving additional Quote page. Next PageNumber={0}",
+                    query.PageInfo.PageNumber);
+            }
+
+            return results;
+        }
+
+        private void CancelQuote(IOrganizationService service, Entity quote, ITracingService tracing)
+        {
+            if (quote == null)
+                throw new InvalidPluginExecutionException("Quote record is null.");
+
+            var state = quote.GetAttributeValue<OptionSetValue>("statecode")?.Value;
+
+            if (!state.HasValue)
+                throw new InvalidPluginExecutionException("Quote statecode is missing.");
+
+            tracing?.Trace("Processing {0}. State={1}", FormatQuoteForLog(quote), state.Value);
+
+            if (state.Value == QUOTE_STATE_DRAFT)
+            {
+                tracing?.Trace("Activating Draft {0} before cancellation.", FormatQuoteForLog(quote));
+
+                var activateQuote = new Entity("quote", quote.Id)
+                {
+                    ["statecode"] = new OptionSetValue(QUOTE_STATE_ACTIVE),
+                    ["statuscode"] = new OptionSetValue(_activeQuoteStatusCode)
+                };
+
+                service.Update(activateQuote);
+
+                tracing?.Trace("Draft Quote activated successfully. {0}", FormatQuoteForLog(quote));
+            }
+
+            tracing?.Trace("Cancelling {0}.", FormatQuoteForLog(quote));
+
+            var quoteClose = new Entity("quoteclose")
+            {
+                ["subject"] = "Auto-cancelled before Opportunity was closed as Lost",
+                ["quoteid"] = quote.ToEntityReference(),
+                ["actualend"] = DateTime.UtcNow,
+                ["description"] = "This Quote was automatically cancelled because the related Opportunity was closed as Lost."
+            };
+
+            var closeQuoteRequest = new OrganizationRequest("CloseQuote")
+            {
+                ["QuoteClose"] = quoteClose,
+                ["Status"] = new OptionSetValue(_cancelledQuoteStatusCode)
+            };
+
+            service.Execute(closeQuoteRequest);
+
+            tracing?.Trace("Quote cancelled successfully. {0}", FormatQuoteForLog(quote));
+        }
+
+        private static string FormatQuoteForLog(Entity quote)
+        {
+            if (quote == null)
+                return "Quote <null>";
+
+            var quoteNumber = quote.GetAttributeValue<string>("quotenumber");
+            var name = quote.GetAttributeValue<string>("name");
+
+            if (!string.IsNullOrWhiteSpace(quoteNumber) && !string.IsNullOrWhiteSpace(name))
+                return string.Format("Quote {0} - {1} ({2})", quoteNumber, name, quote.Id);
+
+            if (!string.IsNullOrWhiteSpace(quoteNumber))
+                return string.Format("Quote {0} ({1})", quoteNumber, quote.Id);
+
+            if (!string.IsNullOrWhiteSpace(name))
+                return string.Format("Quote {0} ({1})", name, quote.Id);
+
+            return string.Format("Quote ({0})", quote.Id);
         }
 
         private static bool ReadBool(string config, string key, bool defaultValue)
@@ -231,17 +378,58 @@ namespace Winco.Dynamics365.Plugins
             if (string.IsNullOrWhiteSpace(config) || string.IsNullOrWhiteSpace(key))
                 return defaultValue;
 
-            var pairs = config.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var p in pairs)
+            foreach (var pair in config.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                var kv = p.Split(new[] { '=' }, 2);
-                if (kv.Length != 2) continue;
+                var keyValue = pair.Split(new[] { '=' }, 2);
 
-                if (kv[0].Trim().Equals(key, StringComparison.OrdinalIgnoreCase))
+                if (keyValue.Length != 2)
+                    continue;
+
+                if (!keyValue[0].Trim().Equals(key, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var rawValue = keyValue[1].Trim();
+
+                if (bool.TryParse(rawValue, out var parsed))
+                    return parsed;
+
+                if (rawValue.Equals("1", StringComparison.OrdinalIgnoreCase) ||
+                    rawValue.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
+                    rawValue.Equals("y", StringComparison.OrdinalIgnoreCase) ||
+                    rawValue.Equals("on", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (bool.TryParse(kv[1].Trim(), out var b))
-                        return b;
+                    return true;
                 }
+
+                if (rawValue.Equals("0", StringComparison.OrdinalIgnoreCase) ||
+                    rawValue.Equals("no", StringComparison.OrdinalIgnoreCase) ||
+                    rawValue.Equals("n", StringComparison.OrdinalIgnoreCase) ||
+                    rawValue.Equals("off", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            return defaultValue;
+        }
+
+        private static int ReadInt(string config, string key, int defaultValue)
+        {
+            if (string.IsNullOrWhiteSpace(config) || string.IsNullOrWhiteSpace(key))
+                return defaultValue;
+
+            foreach (var pair in config.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var keyValue = pair.Split(new[] { '=' }, 2);
+
+                if (keyValue.Length != 2)
+                    continue;
+
+                if (!keyValue[0].Trim().Equals(key, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (int.TryParse(keyValue[1].Trim(), out var parsed))
+                    return parsed;
             }
 
             return defaultValue;
