@@ -1,380 +1,81 @@
 {
-  "type": "Scope",
+  "type": "If",
   "actions": {
-    "List_rows": {
+    "TrackingId": {
+      "type": "Compose"
+    },
+    "AnnotationId_String": {
+      "type": "Compose",
+      "runAfter": {
+        "TrackingId": [
+          "Succeeded"
+        ]
+      }
+    },
+    "OpportunityId": {
+      "type": "Compose",
+      "runAfter": {
+        "AnnotationId_String": [
+          "Succeeded"
+        ]
+      }
+    },
+    "TrackingDocName": {
+      "type": "Compose",
+      "runAfter": {
+        "OpportunityId": [
+          "Succeeded"
+        ]
+      }
+    },
+    "TargetFolderName": {
+      "type": "Compose",
+      "runAfter": {
+        "TrackingDocName": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Update_a_row": {
       "type": "OpenApiConnection",
       "inputs": {
-        "parameters": {
-          "entityName": "sharepointdocumentlocations",
-          "$filter": "_regardingobjectid_value eq @{outputs('OpportunityId')} and _parentsiteorlocation_value eq @{variables('varParentDocumentLocationId')} and (relativeurl eq '@{replace(outputs('FolderName_Format1'),'''','''''')}' or relativeurl eq '@{replace(outputs('FolderName_Format2_(OOB_format)'),'''','''''')}')\n"
-        },
         "host": {
           "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
           "connection": "shared_commondataserviceforapps",
-          "operationId": "ListRecords"
+          "operationId": "UpdateOnlyRecord"
         }
       },
       "runAfter": {
-        "FolderName_Format2_(OOB_format)": [
+        "TargetFolderName": [
           "Succeeded"
         ]
-      },
-      "metadata": {
-        "operationMetadataId": "4ec09593-b9f3-4cc6-bc93-3bdf4161d664"
       }
     },
-    "DoclocationCount": {
+    "AnnotationGuid": {
       "type": "Compose",
-      "inputs": "@length(body('List_rows')?['value'])",
       "runAfter": {
-        "List_rows": [
+        "Update_a_row": [
           "Succeeded"
         ]
-      },
-      "metadata": {
-        "operationMetadataId": "4a9c4d07-1a55-4a2f-b818-a0e73966951c"
       }
     },
-    "Document_Location_Exists": {
+    "Condition_2": {
       "type": "If",
-      "expression": {
-        "greater": [
-          "@outputs('DoclocationCount')",
-          0
-        ]
-      },
       "actions": {
-        "ExistingDocLoc": {
-          "type": "Compose",
-          "inputs": "@first(body('List_rows')?['value'])",
-          "metadata": {
-            "operationMetadataId": "bb1edb21-7c01-44dd-9e42-bd57e5b7642c"
-          }
-        },
-        "TargetFolderPath": {
-          "type": "Compose",
-          "inputs": "@concat('/', variables('varLibraryName'), '/', outputs('ResolvedFolderRelativeUr'))",
-          "runAfter": {
-            "ResolvedFolderRelativeUr": [
-              "Succeeded"
-            ]
-          },
-          "metadata": {
-            "operationMetadataId": "98748c6a-6f1f-47d8-a6f0-13a22a6ad4bb"
-          }
-        },
-        "Duplicate_handling_decision": {
-          "type": "If",
-          "expression": {
-            "equals": [
-              "@toLower(variables('varDuplicateMode'))",
-              "rename"
-            ]
-          },
-          "actions": {
-            "SafeFileName": {
-              "type": "Compose",
-              "inputs": "@if(contains(outputs('EffectiveFileName'), '.'), concat(substring(outputs('EffectiveFileName'), 0, lastIndexOf(outputs('EffectiveFileName'), '.')), '_', formatDateTime(utcNow(), 'yyyyMMddHHmmss'), substring(outputs('EffectiveFileName'), lastIndexOf(outputs('EffectiveFileName'), '.'))), concat(outputs('EffectiveFileName'), '_', formatDateTime(utcNow(), 'yyyyMMddHHmmss')))",
-              "metadata": {
-                "operationMetadataId": "3a93558b-98fb-46e7-87d2-be2b3510d603"
-              }
-            },
-            "Create_file": {
-              "type": "OpenApiConnection",
-              "inputs": {
-                "parameters": {
-                  "dataset": "@parameters('SPO Site URL  (ctp_SPOSiteURL)')",
-                  "folderPath": "@outputs('TargetFolderPath')",
-                  "name": "@outputs('FinalFileName')",
-                  "body": "@variables('varFileContentBinary')"
-                },
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                  "connection": "shared_sharepointonline",
-                  "operationId": "CreateFile"
-                }
-              },
-              "runAfter": {
-                "Get_file_metadata_using_path": [
-                  "Failed"
-                ]
-              },
-              "runtimeConfiguration": {
-                "contentTransfer": {
-                  "transferMode": "Chunked"
-                }
-              },
-              "metadata": {
-                "operationMetadataId": "b337d94c-0f85-4a3b-9a74-ea19f27da389"
-              }
-            },
-            "FinalFileName": {
-              "type": "Compose",
-              "inputs": "@outputs('SafeFileName')",
-              "runAfter": {
-                "OriginalFilePath": [
-                  "Succeeded"
-                ]
-              },
-              "metadata": {
-                "operationMetadataId": "ac865c23-83b5-440f-9bfd-e0654afc2092"
-              }
-            },
-            "Update_a_row_3": {
-              "type": "OpenApiConnection",
-              "inputs": {
-                "parameters": {
-                  "entityName": "ctp_notesharepointsyncs",
-                  "recordId": "@outputs('TrackingId')"
-                },
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
-                  "connection": "shared_commondataserviceforapps",
-                  "operationId": "UpdateOnlyRecord"
-                }
-              },
-              "runAfter": {
-                "FileUrl_A": [
-                  "Succeeded"
-                ]
-              },
-              "metadata": {
-                "operationMetadataId": "41db8614-925c-40f9-a469-7ca12988b99a"
-              }
-            },
-            "FileUrl_A": {
-              "type": "Compose",
-              "inputs": "@concat(variables('varSiteUrl'), '/', variables('varLibraryName'), '/', outputs('ResolvedFolderRelativeUr'), '/', outputs('EffectiveFileName'))",
-              "runAfter": {
-                "Create_file": [
-                  "Succeeded"
-                ]
-              },
-              "metadata": {
-                "operationMetadataId": "76ae8c80-cc26-46ec-8800-e6b095c322c1"
-              }
-            },
-            "FullFilePath_Existing": {
-              "type": "Compose",
-              "inputs": "@concat(outputs('TargetFolderPath'), '/', outputs('EffectiveFileName'))",
-              "runAfter": {
-                "FinalFileName": [
-                  "Succeeded"
-                ]
-              },
-              "metadata": {
-                "operationMetadataId": "84d86d36-ff44-4452-a8fd-d5613d2152d2"
-              }
-            },
-            "Get_file_metadata_using_path": {
-              "type": "OpenApiConnection",
-              "inputs": {
-                "parameters": {
-                  "dataset": "@parameters('SPO Site URL  (ctp_SPOSiteURL)')",
-                  "path": "@outputs('OriginalFilePath')"
-                },
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                  "connection": "shared_sharepointonline",
-                  "operationId": "GetFileMetadataByPath"
-                }
-              },
-              "runAfter": {
-                "FullFilePath_Existing": [
-                  "Succeeded"
-                ]
-              },
-              "metadata": {
-                "operationMetadataId": "b3a0b2e8-0a9b-4470-8c97-7072056bfb82"
-              }
-            },
-            "Update_a_row_5_1": {
-              "type": "OpenApiConnection",
-              "inputs": {
-                "parameters": {
-                  "entityName": "ctp_notesharepointsyncs",
-                  "recordId": "@outputs('TrackingId')",
-                  "item/ctp_sharepointerror": "File Already Exist in Sharepoint. Duplicate Upload Skipped",
-                  "item/ctp_spsyncstatus": 961490004
-                },
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
-                  "connection": "shared_commondataserviceforapps",
-                  "operationId": "UpdateOnlyRecord"
-                }
-              },
-              "runAfter": {
-                "Get_file_metadata_using_path": [
-                  "Succeeded"
-                ]
-              },
-              "metadata": {
-                "operationMetadataId": "ebf8a3be-568b-450b-8e9c-906fcbd7c65a"
-              }
-            },
-            "OriginalFilePath": {
-              "type": "Compose",
-              "inputs": "@concat(outputs('TargetFolderPath'), '/', outputs('EffectiveFileName'))",
-              "runAfter": {
-                "SafeFileName": [
-                  "Succeeded"
-                ]
-              }
+        "Get_a_row_by_ID": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connection": "shared_commondataserviceforapps",
+              "operationId": "GetItem"
             }
-          },
-          "else": {
-            "actions": {
-              "Get_files_(properties_only)": {
-                "type": "OpenApiConnection",
-                "inputs": {
-                  "parameters": {
-                    "dataset": "@parameters('SPO Site URL  (ctp_SPOSiteURL)')",
-                    "table": "a4b064d5-06ea-42a8-acf5-e3a96ce78846",
-                    "$filter": "FileLeafRef eq '@{replace(outputs('EffectiveFileName'),'''','''''')}'",
-                    "folderPath": "@outputs('TargetFolderPath')"
-                  },
-                  "host": {
-                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                    "connection": "shared_sharepointonline",
-                    "operationId": "GetFileItems"
-                  }
-                },
-                "metadata": {
-                  "operationMetadataId": "d5d4f6d7-4902-4b94-ab85-b82debb9cd22"
-                }
-              },
-              "DuplicateCount_create_file_2": {
-                "type": "Compose",
-                "inputs": "@length(outputs('Get_files_(properties_only)')?['body/value'])",
-                "runAfter": {
-                  "Get_files_(properties_only)": [
-                    "Succeeded"
-                  ]
-                },
-                "metadata": {
-                  "operationMetadataId": "e01441ab-7f9c-4390-b75f-d0ea5ec94c8a"
-                }
-              },
-              "Condition_1": {
-                "type": "If",
-                "expression": {
-                  "and": [
-                    {
-                      "greater": [
-                        "@outputs('DuplicateCount_create_file_2')",
-                        0
-                      ]
-                    }
-                  ]
-                },
-                "actions": {
-                  "Update_a_row_6": {
-                    "type": "OpenApiConnection",
-                    "inputs": {
-                      "parameters": {
-                        "entityName": "ctp_notesharepointsyncs",
-                        "recordId": "@outputs('TrackingId')",
-                        "item/ctp_sharepointerror": "File Already Exist in Sharepoint. Duplicate Upload Skipped",
-                        "item/ctp_spsyncstatus": 961490004
-                      },
-                      "host": {
-                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
-                        "connection": "shared_commondataserviceforapps",
-                        "operationId": "UpdateOnlyRecord"
-                      }
-                    },
-                    "metadata": {
-                      "operationMetadataId": "9c54ce1f-91ea-4edf-8acf-875e59cfd750"
-                    }
-                  }
-                },
-                "else": {
-                  "actions": {
-                    "Create_file_2": {
-                      "type": "OpenApiConnection",
-                      "inputs": {
-                        "parameters": {
-                          "dataset": "@parameters('SPO Site URL  (ctp_SPOSiteURL)')",
-                          "folderPath": "@outputs('TargetFolderPath')",
-                          "name": "@outputs('EffectiveFileName')",
-                          "body": "@variables('varFileContentBinary')"
-                        },
-                        "host": {
-                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                          "connection": "shared_sharepointonline",
-                          "operationId": "CreateFile"
-                        }
-                      },
-                      "runtimeConfiguration": {
-                        "contentTransfer": {
-                          "transferMode": "Chunked"
-                        }
-                      },
-                      "metadata": {
-                        "operationMetadataId": "b248003b-aaaf-4159-8699-2cd1c050d4e3"
-                      }
-                    },
-                    "Update_a_row_1": {
-                      "type": "OpenApiConnection",
-                      "inputs": {
-                        "parameters": {
-                          "entityName": "ctp_notesharepointsyncs",
-                          "recordId": "@outputs('TrackingId')"
-                        },
-                        "host": {
-                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
-                          "connection": "shared_commondataserviceforapps",
-                          "operationId": "UpdateOnlyRecord"
-                        }
-                      },
-                      "runAfter": {
-                        "FileUrl_A2_": [
-                          "Succeeded"
-                        ]
-                      },
-                      "metadata": {
-                        "operationMetadataId": "3b16e12a-73f5-4934-bd68-a10f93133685"
-                      }
-                    },
-                    "FileUrl_A2_": {
-                      "type": "Compose",
-                      "inputs": "@concat(variables('varSiteUrl'), '/', variables('varLibraryName'), '/', outputs('ResolvedFolderRelativeUr'), '/', outputs('EffectiveFileName'))",
-                      "runAfter": {
-                        "Create_file_2": [
-                          "Succeeded"
-                        ]
-                      },
-                      "metadata": {
-                        "operationMetadataId": "3322816c-eda2-44aa-b6d8-7c9110a58b6c"
-                      }
-                    }
-                  }
-                },
-                "runAfter": {
-                  "DuplicateCount_create_file_2": [
-                    "Succeeded"
-                  ]
-                },
-                "metadata": {
-                  "operationMetadataId": "81157d45-61c0-4de3-a33a-603ad11e3f21"
-                }
-              }
-            }
-          },
-          "runAfter": {
-            "TargetFolderPath": [
-              "Succeeded"
-            ]
-          },
-          "metadata": {
-            "operationMetadataId": "013cc718-1f4f-4f81-a862-cac580bb78e8"
           }
         },
-        "ResolvedFolderRelativeUr": {
-          "type": "Compose",
-          "inputs": "@outputs('ExistingDocLoc')?['relativeurl']",
+        "Set_variable": {
+          "type": "SetVariable",
           "runAfter": {
-            "ExistingDocLoc": [
+            "Get_a_row_by_ID": [
               "Succeeded"
             ]
           }
@@ -382,225 +83,465 @@
       },
       "else": {
         "actions": {
-          "Create_new_folder": {
+          "Get_a_row_by_ID_2": {
             "type": "OpenApiConnection",
             "inputs": {
-              "parameters": {
-                "dataset": "@variables('varSiteUrl')",
-                "table": "@variables('varLibraryName')",
-                "parameters/path": "@outputs('TargetFolderName')"
-              },
-              "host": {
-                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                "connection": "shared_sharepointonline",
-                "operationId": "CreateNewFolder"
-              }
-            },
-            "metadata": {
-              "operationMetadataId": "e2f2bdc0-ca5d-4b77-9b1b-e77920cbe41b"
-            }
-          },
-          "Add_a_new_row": {
-            "type": "OpenApiConnection",
-            "inputs": {
-              "parameters": {
-                "entityName": "sharepointdocumentlocations",
-                "item/name": "@outputs('TargetFolderName')",
-                "item/parentsiteorlocation_sharepointdocumentlocation@odata.bind": "@concat('/sharepointdocumentlocations(', variables('varParentDocumentLocationId'), ')')",
-                "item/regardingobjectid_opportunity@odata.bind": "@concat(\n  '/opportunities(',\n  outputs('OpportunityId'),\n  ')'\n)",
-                "item/relativeurl": "@outputs('TargetFolderName')"
-              },
               "host": {
                 "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
                 "connection": "shared_commondataserviceforapps",
-                "operationId": "CreateRecord"
+                "operationId": "GetItem"
               }
-            },
+            }
+          },
+          "Set_variable_2": {
+            "type": "SetVariable",
             "runAfter": {
-              "Create_new_folder": [
+              "Get_a_row_by_ID_2": [
                 "Succeeded"
               ]
-            },
-            "metadata": {
-              "operationMetadataId": "c318a6a4-c091-4253-a9e7-aee74837a31a"
-            }
-          },
-          "TargetFolderPath_New": {
-            "type": "Compose",
-            "inputs": "@concat('/', variables('varLibraryName'), '/', outputs('TargetFolderName'))",
-            "runAfter": {
-              "Add_a_new_row": [
-                "Succeeded"
-              ]
-            },
-            "metadata": {
-              "operationMetadataId": "fedcd9eb-f2d7-40c7-870e-69bacb4f2b4e"
-            }
-          },
-          "FinalFileName1": {
-            "type": "Compose",
-            "inputs": "@outputs('EffectiveFileName')",
-            "runAfter": {
-              "TargetFolderPath_New": [
-                "Succeeded"
-              ]
-            },
-            "metadata": {
-              "operationMetadataId": "526d2dd6-8c61-41cb-b38b-17fdada8dbe5"
-            }
-          },
-          "FullFile_New": {
-            "type": "Compose",
-            "inputs": "@concat(outputs('TargetFolderPath_New'), '/', outputs('FinalFileName1'))",
-            "runAfter": {
-              "FinalFileName1": [
-                "Succeeded"
-              ]
-            },
-            "metadata": {
-              "operationMetadataId": "824f9536-0ee2-45bb-afda-34bc66b4670a"
-            }
-          },
-          "Get_file_metadata_using_path_1": {
-            "type": "OpenApiConnection",
-            "inputs": {
-              "parameters": {
-                "dataset": "@parameters('SPO Site URL  (ctp_SPOSiteURL)')",
-                "path": "@outputs('FullFile_New')"
-              },
-              "host": {
-                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                "connection": "shared_sharepointonline",
-                "operationId": "GetFileMetadataByPath"
-              }
-            },
-            "runAfter": {
-              "FullFile_New": [
-                "Succeeded"
-              ]
-            },
-            "metadata": {
-              "operationMetadataId": "81ed8747-135e-4759-b173-d9a1cd0a76bd"
-            }
-          },
-          "Create_file_(Path_B)": {
-            "type": "OpenApiConnection",
-            "inputs": {
-              "parameters": {
-                "dataset": "@parameters('SPO Site URL  (ctp_SPOSiteURL)')",
-                "folderPath": "@outputs('TargetFolderPath_New')",
-                "name": "@outputs('FinalFileName1')",
-                "body": "@variables('varFileContentBinary')"
-              },
-              "host": {
-                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                "connection": "shared_sharepointonline",
-                "operationId": "CreateFile"
-              }
-            },
-            "runAfter": {
-              "Get_file_metadata_using_path_1": [
-                "FAILED"
-              ]
-            },
-            "runtimeConfiguration": {
-              "contentTransfer": {
-                "transferMode": "Chunked"
-              }
-            },
-            "metadata": {
-              "operationMetadataId": "259d0bbc-8b9c-4af7-bd46-39605f42cfaa"
-            }
-          },
-          "Update_a_row_5": {
-            "type": "OpenApiConnection",
-            "inputs": {
-              "parameters": {
-                "entityName": "ctp_notesharepointsyncs",
-                "recordId": "@outputs('TrackingId')",
-                "item/ctp_sharepointerror": "File Already Exist in Sharepoint. Duplicate Upload Skipped",
-                "item/ctp_spsyncstatus": 961490004
-              },
-              "host": {
-                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
-                "connection": "shared_commondataserviceforapps",
-                "operationId": "UpdateOnlyRecord"
-              }
-            },
-            "runAfter": {
-              "Create_file_(Path_B)": [
-                "Failed"
-              ]
-            },
-            "metadata": {
-              "operationMetadataId": "29967998-fddc-492e-9aa8-7978cad85193"
-            }
-          },
-          "FileUrl_": {
-            "type": "Compose",
-            "inputs": "@concat(variables('varSiteUrl'), '/', variables('varLibraryName'), '/', outputs('TargetFolderName'), '/', outputs('FinalFileName1'))",
-            "runAfter": {
-              "Create_file_(Path_B)": [
-                "Succeeded"
-              ]
-            },
-            "metadata": {
-              "operationMetadataId": "f43afd33-2d2c-40fb-98a6-530d8230fa3d"
-            }
-          },
-          "Update_a_row_2": {
-            "type": "OpenApiConnection",
-            "inputs": {
-              "parameters": {
-                "entityName": "ctp_notesharepointsyncs",
-                "recordId": "@outputs('TrackingId')"
-              },
-              "host": {
-                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
-                "connection": "shared_commondataserviceforapps",
-                "operationId": "UpdateOnlyRecord"
-              }
-            },
-            "runAfter": {
-              "FileUrl_": [
-                "Succeeded"
-              ]
-            },
-            "metadata": {
-              "operationMetadataId": "be67c091-4f56-4971-9f64-2f4352bb3789"
             }
           }
         }
       },
       "runAfter": {
-        "DoclocationCount": [
+        "AnnotationGuid": [
           "Succeeded"
         ]
-      },
-      "metadata": {
-        "operationMetadataId": "814f4244-285a-4931-8482-075c5ed541fd"
       }
     },
-    "FolderName_Format1": {
+    "EffectiveFileName": {
       "type": "Compose",
-      "inputs": "@concat(\r\n  trim(outputs('TargetFolderName'))\r\n)"
-    },
-    "FolderName_Format2_(OOB_format)": {
-      "type": "Compose",
-      "inputs": "@concat(trim(triggerOutputs()?['body/ctp_targetfoldername']), '-_', toUpper(replace(outputs('OpportunityId'), '-', '')))",
       "runAfter": {
-        "FolderName_Format1": [
+        "Condition_2": [
           "Succeeded"
+        ]
+      }
+    },
+    "Scope_-_TRY": {
+      "type": "Scope",
+      "actions": {
+        "List_rows": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connection": "shared_commondataserviceforapps",
+              "operationId": "ListRecords"
+            }
+          },
+          "runAfter": {
+            "FolderName_Format2_(OOB_format)": [
+              "Succeeded"
+            ]
+          }
+        },
+        "DoclocationCount": {
+          "type": "Compose",
+          "runAfter": {
+            "List_rows": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Document_Location_Exists": {
+          "type": "If",
+          "actions": {
+            "ExistingDocLoc": {
+              "type": "Compose"
+            },
+            "TargetFolderPath": {
+              "type": "Compose",
+              "runAfter": {
+                "ResolvedFolderRelativeUr": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Duplicate_handling_decision": {
+              "type": "If",
+              "actions": {
+                "SafeFileName": {
+                  "type": "Compose"
+                },
+                "Create_file": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connection": "shared_sharepointonline",
+                      "operationId": "CreateFile"
+                    }
+                  },
+                  "runAfter": {
+                    "Get_file_metadata_using_path": [
+                      "Failed"
+                    ]
+                  }
+                },
+                "FinalFileName": {
+                  "type": "Compose",
+                  "runAfter": {
+                    "OriginalFilePath": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Update_a_row_3": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                      "connection": "shared_commondataserviceforapps",
+                      "operationId": "UpdateOnlyRecord"
+                    }
+                  },
+                  "runAfter": {
+                    "FileUrl_A": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "FileUrl_A": {
+                  "type": "Compose",
+                  "runAfter": {
+                    "Create_file": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "FullFilePath_Existing": {
+                  "type": "Compose",
+                  "runAfter": {
+                    "FinalFileName": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Get_file_metadata_using_path": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connection": "shared_sharepointonline",
+                      "operationId": "GetFileMetadataByPath"
+                    }
+                  },
+                  "runAfter": {
+                    "FullFilePath_Existing": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Update_a_row_5_1": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                      "connection": "shared_commondataserviceforapps",
+                      "operationId": "UpdateOnlyRecord"
+                    }
+                  },
+                  "runAfter": {
+                    "Get_file_metadata_using_path": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "OriginalFilePath": {
+                  "type": "Compose",
+                  "runAfter": {
+                    "SafeFileName": [
+                      "Succeeded"
+                    ]
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "Get_files_(properties_only)": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "connection": "shared_sharepointonline",
+                        "operationId": "GetFileItems"
+                      }
+                    }
+                  },
+                  "DuplicateCount_create_file_2": {
+                    "type": "Compose",
+                    "runAfter": {
+                      "Get_files_(properties_only)": [
+                        "Succeeded"
+                      ]
+                    }
+                  },
+                  "Condition_1": {
+                    "type": "If",
+                    "actions": {
+                      "Update_a_row_6": {
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                            "connection": "shared_commondataserviceforapps",
+                            "operationId": "UpdateOnlyRecord"
+                          }
+                        }
+                      }
+                    },
+                    "else": {
+                      "actions": {
+                        "Create_file_2": {
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                              "connection": "shared_sharepointonline",
+                              "operationId": "CreateFile"
+                            }
+                          }
+                        },
+                        "Update_a_row_1": {
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                              "connection": "shared_commondataserviceforapps",
+                              "operationId": "UpdateOnlyRecord"
+                            }
+                          },
+                          "runAfter": {
+                            "FileUrl_A2_": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "FileUrl_A2_": {
+                          "type": "Compose",
+                          "runAfter": {
+                            "Create_file_2": [
+                              "Succeeded"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "runAfter": {
+                      "DuplicateCount_create_file_2": [
+                        "Succeeded"
+                      ]
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "TargetFolderPath": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "ResolvedFolderRelativeUr": {
+              "type": "Compose",
+              "runAfter": {
+                "ExistingDocLoc": [
+                  "Succeeded"
+                ]
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Create_new_folder": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connection": "shared_sharepointonline",
+                    "operationId": "CreateNewFolder"
+                  }
+                }
+              },
+              "Add_a_new_row": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                    "connection": "shared_commondataserviceforapps",
+                    "operationId": "CreateRecord"
+                  }
+                },
+                "runAfter": {
+                  "Create_new_folder": [
+                    "Succeeded"
+                  ]
+                }
+              },
+              "TargetFolderPath_New": {
+                "type": "Compose",
+                "runAfter": {
+                  "Add_a_new_row": [
+                    "Succeeded"
+                  ]
+                }
+              },
+              "FinalFileName1": {
+                "type": "Compose",
+                "runAfter": {
+                  "TargetFolderPath_New": [
+                    "Succeeded"
+                  ]
+                }
+              },
+              "FullFile_New": {
+                "type": "Compose",
+                "runAfter": {
+                  "FinalFileName1": [
+                    "Succeeded"
+                  ]
+                }
+              },
+              "Get_file_metadata_using_path_1": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connection": "shared_sharepointonline",
+                    "operationId": "GetFileMetadataByPath"
+                  }
+                },
+                "runAfter": {
+                  "FullFile_New": [
+                    "Succeeded"
+                  ]
+                }
+              },
+              "Create_file_(Path_B)": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connection": "shared_sharepointonline",
+                    "operationId": "CreateFile"
+                  }
+                },
+                "runAfter": {
+                  "Get_file_metadata_using_path_1": [
+                    "Failed"
+                  ]
+                }
+              },
+              "Update_a_row_5": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                    "connection": "shared_commondataserviceforapps",
+                    "operationId": "UpdateOnlyRecord"
+                  }
+                },
+                "runAfter": {
+                  "Create_file_(Path_B)": [
+                    "Failed"
+                  ]
+                }
+              },
+              "FileUrl_": {
+                "type": "Compose",
+                "runAfter": {
+                  "Create_file_(Path_B)": [
+                    "Succeeded"
+                  ]
+                }
+              },
+              "Update_a_row_2": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                    "connection": "shared_commondataserviceforapps",
+                    "operationId": "UpdateOnlyRecord"
+                  }
+                },
+                "runAfter": {
+                  "FileUrl_": [
+                    "Succeeded"
+                  ]
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "DoclocationCount": [
+              "Succeeded"
+            ]
+          }
+        },
+        "FolderName_Format1": {
+          "type": "Compose"
+        },
+        "FolderName_Format2_(OOB_format)": {
+          "type": "Compose",
+          "runAfter": {
+            "FolderName_Format1": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "EffectiveFileName": [
+          "Succeeded"
+        ]
+      }
+    },
+    "SCOPE_-_CATCH": {
+      "type": "Scope",
+      "actions": {
+        "ErrorDetails": {
+          "type": "Compose"
+        },
+        "Update_a_row_4": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connection": "shared_commondataserviceforapps",
+              "operationId": "UpdateOnlyRecord"
+            }
+          },
+          "runAfter": {
+            "ErrorDetails": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Terminate_1": {
+          "type": "Terminate",
+          "runAfter": {
+            "Update_a_row_4": [
+              "TimedOut",
+              "Skipped",
+              "Failed",
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Scope_-_TRY": [
+          "Failed",
+          "TimedOut"
         ]
       }
     }
   },
+  "else": {
+    "actions": {}
+  },
   "runAfter": {
-    "EffectiveFileName": [
+    "varFileContentBinary": [
       "Succeeded"
     ]
-  },
-  "metadata": {
-    "operationMetadataId": "61c49e9b-f647-4dcf-9381-bd05180cf609"
   }
 }
