@@ -1,3 +1,36 @@
+
+Argument 1: cannot convert from 'Microsoft.Xrm.Sdk.AttributeCollection' to 'Microsoft.Xrm.Sdk.ParameterCollection'
+Argument 1: cannot convert from 'Microsoft.Xrm.Sdk.AttributeCollection' to 'Microsoft.Xrm.Sdk.ParameterCollection'
+'AttributeCollection' is an ambiguous reference between 'System.ComponentModel.AttributeCollection' and 'Microsoft.Xrm.Sdk.AttributeCollection'
+Argument 1: cannot convert from 'Microsoft.Xrm.Sdk.AttributeCollection' to 'Microsoft.Xrm.Sdk.ParameterCollection'
+Argument 1: cannot convert from 'Microsoft.Xrm.Sdk.AttributeCollection' to 'Microsoft.Xrm.Sdk.ParameterCollection'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 using System;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
