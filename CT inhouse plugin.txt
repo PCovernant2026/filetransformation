@@ -1,3 +1,37 @@
+
+My recommended final adjustments
+Plugin 1 — Ownership defaults
+Keep, with these notes:
+
+Confirm whether ownerid truly represents Client Manager
+Add Depth > 1 guard
+Optional: use nullable bool reads
+
+
+Plugin 2 — Architect from Sub-Solution
+Keep, but:
+
+Clear Architect if selected Sub-Solution has no default architect
+Add Depth > 1 guard
+
+This plugin directly supports leadership’s request to derive the Architect from the Solution/Sub-Solution mapping in CE. [FRD D365 C...4 Revision | PDF]
+
+Plugin 3 — Close standardization
+Keep, but:
+
+Register not only on Update, but also on the won-close path your org uses
+Current logic for setting:
+
+closeprobability = 100
+new_closeprobability = 100000008
+is clean and matches the standardization goal from leadership. [FRD D365 C...4 Revision | PDF]
+
+
+
+
+
+
+
 using System;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
