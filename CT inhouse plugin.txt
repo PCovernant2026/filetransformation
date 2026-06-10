@@ -1,87 +1,97 @@
 using System;
-using System.Linq;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 
 namespace Ctp.Crm.OpportunityAutomation
 {
     /// <summary>
-    /// ============================================================
-    ///  SCHEMA CONSTANTS
-    ///  Replace placeholder logical names with your actual schema.
-    /// ============================================================
+    /// Production schema constants validated against the uploaded metadata:
+    /// - Opportunity: opportunity
+    /// - User: systemuser
+    /// - Sub-Solution: ctp_subsolutions
     /// </summary>
     public static class Schema
     {
-        // -----------------------------
-        // Entities / Tables
-        // -----------------------------
+        // Tables
         public const string Opportunity = "opportunity";
         public const string SystemUser = "systemuser";
+        public const string SubSolution = "ctp_subsolutions";
 
-        public const string UserRoleMapping = "new_userrolemapping";
-        public const string Solution = "new_solution";
-        public const string OpportunitySolution = "new_opportunitysolution";
-
-        // -----------------------------
         // Opportunity fields
-        // -----------------------------
-        public const string OpportunityClientManager = "new_clientmanagerid";
-        public const string OpportunityClientPartner = "new_clientpartnerid";
-        public const string OpportunityProbability = "closeprobability"; // OOB field
-        public const string OpportunityStagePercent = "new_stagepercent"; // Optional custom field
+        public const string OpportunityOwner = "ownerid";                       // Display name: Client Manager
+        public const string OpportunityClientPartner = "new_clientpartnerid";   // Lookup to systemuser
+        public const string OpportunityArchitect = "new_architectid";           // Lookup to systemuser
+        public const string OpportunitySubSolution = "ctp_subsolutions";        // Lookup to ctp_subsolutions
+        public const string OpportunityProbability = "closeprobability";        // OOB whole number probability
+        public const string OpportunityCustomCloseProbability = "new_closeprobability"; // Custom choice field
         public const string OpportunityStateCode = "statecode";
         public const string OpportunityStatusCode = "statuscode";
 
-        // -----------------------------
-        // User Role Mapping fields
-        // -----------------------------
-        public const string UserRoleMappingUser = "new_userid";
-        public const string UserRoleMappingRoleType = "new_roletype";
+        // User fields
+        public const string UserIsClientManager = "new_clientmanager";          // Two options
+        public const string UserIsClientPartner = "new_clientpartner";          // Two options
 
-        // -----------------------------
-        // Solution fields
-        // -----------------------------
-        public const string SolutionLeadArchitect = "new_leadarchitect";
+        // Sub-Solution fields
+        public const string SubSolutionDefaultArchitect = "ctp_architect";      // Lookup to systemuser
 
-        // -----------------------------
-        // Opportunity Solution fields
-        // -----------------------------
-        public const string OpportunitySolutionOpportunity = "new_opportunityid";
-        public const string OpportunitySolutionSolution = "new_solutionid";
-        public const string OpportunitySolutionArchitect = "new_architectid";
-
-        // -----------------------------
-        // Choice values - update to your real values
-        // -----------------------------
-        public const int RoleTypeCm = 100000000;
-        public const int RoleTypePartner = 100000001;
-
-        // Standard Opportunity state values
+        // Dataverse state values for Opportunity
         public const int OpportunityStateOpen = 0;
         public const int OpportunityStateWon = 1;
         public const int OpportunityStateLost = 2;
+
+        // new_closeprobability option value from uploaded metadata
+        public const int CustomCloseProbabilityClosed = 100000008;
     }
 
     /// <summary>
-    /// ============================================================
-    ///  PLUGIN BASE
-    /// ============================================================
+    /// Shared base class for safe tracing, target extraction, and image helpers.
+    /// Register plugin steps in sandbox, synchronous, PreOperation unless otherwise noted.
     /// </summary>
     public abstract class PluginBase : IPlugin
     {
+        protected const int PreOperationStage = 20;
+
         public void Execute(IServiceProvider serviceProvider)
         {
+            if (serviceProvider == null)
+            {
+                throw new InvalidPluginExecutionException("Service provider is null.");
+            }
+
             var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
-            var tracingService = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            var trace = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
             var serviceFactory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
-            var service = serviceFactory.CreateOrganizationService(context.UserId);
+
+            if (context == null)
+            {
+                throw new InvalidPluginExecutionException("Plugin execution context is null.");
+            }
+
+            if (serviceFactory == null)
+            {
+                throw new InvalidPluginExecutionException("Organization service factory is null.");
+            }
+
+            // Uses SYSTEM context for reads so defaulting logic is not blocked by end-user read privileges.
+            // Field changes are applied only through Target in the current transaction.
+            var service = serviceFactory.CreateOrganizationService(null);
 
             try
             {
-                tracingService.Trace($"Entered {GetType().Name}. Message={context.MessageName}, Entity={context.PrimaryEntityName}, Stage={context.Stage}, Depth={context.Depth}");
-                ExecuteInternal(serviceProvider, context, service, tracingService);
-                tracingService.Trace($"Exited {GetType().Name} successfully.");
+                trace?.Trace(
+                    "Entered {0}. Message={1}, Entity={2}, Stage={3}, Mode={4}, Depth={5}, UserId={6}, InitiatingUserId={7}",
+                    GetType().FullName,
+                    context.MessageName,
+                    context.PrimaryEntityName,
+                    context.Stage,
+                    context.Mode,
+                    context.Depth,
+                    context.UserId,
+                    context.InitiatingUserId);
+
+                ExecuteInternal(context, service, trace);
+
+                trace?.Trace("Exited {0} successfully.", GetType().FullName);
             }
             catch (InvalidPluginExecutionException)
             {
@@ -89,28 +99,29 @@ namespace Ctp.Crm.OpportunityAutomation
             }
             catch (Exception ex)
             {
-                tracingService.Trace($"Unhandled exception in {GetType().Name}: {ex}");
+                trace?.Trace("Unhandled exception in {0}: {1}", GetType().FullName, ex);
                 throw new InvalidPluginExecutionException($"An error occurred in {GetType().Name}: {ex.Message}", ex);
             }
         }
 
         protected abstract void ExecuteInternal(
-            IServiceProvider serviceProvider,
             IPluginExecutionContext context,
             IOrganizationService service,
             ITracingService trace);
 
-        protected Entity GetTargetEntity(IPluginExecutionContext context)
+        protected static Entity GetTargetEntity(IPluginExecutionContext context)
         {
-            if (context.InputParameters.Contains("Target") && context.InputParameters["Target"] is Entity entity)
+            if (context.InputParameters != null &&
+                context.InputParameters.Contains("Target") &&
+                context.InputParameters["Target"] is Entity target)
             {
-                return entity;
+                return target;
             }
 
             return null;
         }
 
-        protected Entity GetPreImage(IPluginExecutionContext context, string imageName = "PreImage")
+        protected static Entity GetPreImage(IPluginExecutionContext context, string imageName = "PreImage")
         {
             if (context.PreEntityImages != null && context.PreEntityImages.Contains(imageName))
             {
@@ -120,242 +131,313 @@ namespace Ctp.Crm.OpportunityAutomation
             return null;
         }
 
-        protected T GetAttributeValueFromTargetOrPreImage<T>(Entity target, Entity preImage, string attributeName)
+        protected static T GetAttributeValueFromTargetOrPreImage<T>(
+            Entity target,
+            Entity preImage,
+            string attributeName)
         {
-            if (target != null && target.Contains(attributeName))
+            if (target != null && target.Attributes.Contains(attributeName))
+            {
                 return target.GetAttributeValue<T>(attributeName);
+            }
 
-            if (preImage != null && preImage.Contains(attributeName))
+            if (preImage != null && preImage.Attributes.Contains(attributeName))
+            {
                 return preImage.GetAttributeValue<T>(attributeName);
+            }
 
             return default(T);
+        }
+
+        protected static bool IsMessage(IPluginExecutionContext context, string messageName)
+        {
+            return string.Equals(context.MessageName, messageName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        protected static bool IsPrimaryEntity(IPluginExecutionContext context, string entityName)
+        {
+            return string.Equals(context.PrimaryEntityName, entityName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        protected static bool IsPreOperation(IPluginExecutionContext context)
+        {
+            return context.Stage == PreOperationStage;
         }
     }
 
     /// <summary>
-    /// ============================================================
-    ///  PLUGIN 1:
-    ///  OpportunityOwnershipDefaultsPlugin
-    ///  
-    ///  Purpose:
-    ///  - On Opportunity Create
-    ///  - If creator is CM => populate Client Manager
-    ///  - If creator is Partner => populate Client Partner
+    /// Plugin 1: Defaults Opportunity ownership fields during Opportunity Create.
     ///
-    ///  Register:
-    ///  - Entity: opportunity
-    ///  - Message: Create
-    ///  - Stage: PreOperation
-    ///  - Mode: Synchronous
-    /// ============================================================
+    /// Business rules:
+    /// - If creating user has systemuser.new_clientmanager = true,
+    ///   default opportunity.ownerid to that user when ownerid was not already supplied.
+    ///
+    /// - If creating user has systemuser.new_clientpartner = true,
+    ///   default opportunity.new_clientpartnerid when it was not already supplied.
+    ///
+    /// - If user has both flags, both fields are defaulted if blank.
+    ///
+    /// Register:
+    /// - Table: opportunity
+    /// - Message: Create
+    /// - Stage: PreOperation
+    /// - Mode: Synchronous
+    /// - Filtering Attributes: none
+    /// - Images: none
     /// </summary>
     public class OpportunityOwnershipDefaultsPlugin : PluginBase
     {
         protected override void ExecuteInternal(
-            IServiceProvider serviceProvider,
             IPluginExecutionContext context,
             IOrganizationService service,
             ITracingService trace)
         {
-            if (!string.Equals(context.MessageName, "Create", StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(context.PrimaryEntityName, Schema.Opportunity, StringComparison.OrdinalIgnoreCase))
+            if (!IsPreOperation(context) ||
+                !IsMessage(context, "Create") ||
+                !IsPrimaryEntity(context, Schema.Opportunity))
             {
                 return;
             }
 
             var target = GetTargetEntity(context);
             if (target == null)
+            {
+                trace?.Trace("Target was not an Entity. Exiting.");
                 return;
+            }
 
-            var creatingUserId = context.InitiatingUserId;
+            var creatingUserId = context.InitiatingUserId != Guid.Empty
+                ? context.InitiatingUserId
+                : context.UserId;
+
             if (creatingUserId == Guid.Empty)
             {
-                trace.Trace("InitiatingUserId was empty. Exiting.");
+                trace?.Trace("Creating user could not be resolved. Exiting.");
                 return;
             }
 
-            var qe = new QueryExpression(Schema.UserRoleMapping)
+            var user = service.Retrieve(
+                Schema.SystemUser,
+                creatingUserId,
+                new ColumnSet(
+                    Schema.UserIsClientManager,
+                    Schema.UserIsClientPartner));
+
+            if (user == null)
             {
-                ColumnSet = new ColumnSet(Schema.UserRoleMappingRoleType),
-                TopCount = 1
-            };
-
-            qe.Criteria.AddCondition(Schema.UserRoleMappingUser, ConditionOperator.Equal, creatingUserId);
-
-            var mapping = service.RetrieveMultiple(qe).Entities.FirstOrDefault();
-
-            if (mapping == null)
-            {
-                trace.Trace($"No user role mapping found for user {creatingUserId}. No defaults applied.");
+                trace?.Trace("System user {0} could not be retrieved. Exiting.", creatingUserId);
                 return;
             }
 
-            var roleValue = mapping.GetAttributeValue<OptionSetValue>(Schema.UserRoleMappingRoleType)?.Value;
-            if (roleValue == null)
-            {
-                trace.Trace("User role mapping found but role type was null.");
-                return;
-            }
+            var isClientManager = user.GetAttributeValue<bool>(Schema.UserIsClientManager);
+            var isClientPartner = user.GetAttributeValue<bool>(Schema.UserIsClientPartner);
+            var userReference = new EntityReference(Schema.SystemUser, creatingUserId);
 
-            var userRef = new EntityReference(Schema.SystemUser, creatingUserId);
-
-            if (roleValue == Schema.RoleTypeCm)
+            if (isClientManager)
             {
-                if (!target.Attributes.Contains(Schema.OpportunityClientManager))
+                if (!target.Attributes.Contains(Schema.OpportunityOwner) ||
+                    target[Schema.OpportunityOwner] == null)
                 {
-                    target[Schema.OpportunityClientManager] = userRef;
-                    trace.Trace($"Set {Schema.OpportunityClientManager} to creating user.");
+                    target[Schema.OpportunityOwner] = userReference;
+                    trace?.Trace("Defaulted {0} to creating user {1}.", Schema.OpportunityOwner, creatingUserId);
                 }
                 else
                 {
-                    trace.Trace($"{Schema.OpportunityClientManager} already set. No overwrite.");
+                    trace?.Trace("{0} was already supplied. No overwrite.", Schema.OpportunityOwner);
                 }
             }
-            else if (roleValue == Schema.RoleTypePartner)
+
+            if (isClientPartner)
             {
-                if (!target.Attributes.Contains(Schema.OpportunityClientPartner))
+                if (!target.Attributes.Contains(Schema.OpportunityClientPartner) ||
+                    target[Schema.OpportunityClientPartner] == null)
                 {
-                    target[Schema.OpportunityClientPartner] = userRef;
-                    trace.Trace($"Set {Schema.OpportunityClientPartner} to creating user.");
+                    target[Schema.OpportunityClientPartner] = userReference;
+                    trace?.Trace("Defaulted {0} to creating user {1}.", Schema.OpportunityClientPartner, creatingUserId);
                 }
                 else
                 {
-                    trace.Trace($"{Schema.OpportunityClientPartner} already set. No overwrite.");
+                    trace?.Trace("{0} was already supplied. No overwrite.", Schema.OpportunityClientPartner);
                 }
             }
-            else
+
+            if (!isClientManager && !isClientPartner)
             {
-                trace.Trace($"Role value {roleValue} is not handled.");
+                trace?.Trace(
+                    "Creating user {0} is not marked as Client Manager or Client Partner. No defaults applied.",
+                    creatingUserId);
             }
         }
     }
 
     /// <summary>
-    /// ============================================================
-    ///  PLUGIN 2:
-    ///  OpportunitySolutionArchitectPlugin
+    /// Plugin 2: Defaults Opportunity Architect from selected Sub-Solution.
     ///
-    ///  Purpose:
-    ///  - On Opportunity Solution Create/Update
-    ///  - Pull Lead Architect from Solution
-    ///  - Populate Opportunity Solution Architect
+    /// Business rule:
+    /// - When opportunity.ctp_subsolutions is selected or changed,
+    ///   retrieve ctp_subsolutions.ctp_architect and populate opportunity.new_architectid.
     ///
-    ///  Register:
-    ///  1) Create step
-    ///     - Entity: new_opportunitysolution
-    ///     - Message: Create
-    ///     - Stage: PreOperation
-    ///     - Mode: Synchronous
+    /// - If new_architectid is explicitly supplied in the same save operation,
+    ///   the plugin preserves that value.
     ///
-    ///  2) Optional Update step
-    ///     - Entity: new_opportunitysolution
-    ///     - Message: Update
-    ///     - Stage: PreOperation
-    ///     - Mode: Synchronous
-    ///     - Filtering Attributes: new_solutionid
-    ///     - PreImage: "PreImage" with new_solutionid
-    /// ============================================================
+    /// - If ctp_subsolutions is cleared and new_architectid is not explicitly supplied,
+    ///   the plugin clears new_architectid.
+    ///
+    /// Register Step A:
+    /// - Table: opportunity
+    /// - Message: Create
+    /// - Stage: PreOperation
+    /// - Mode: Synchronous
+    /// - Filtering Attributes: none
+    /// - Images: none
+    ///
+    /// Register Step B:
+    /// - Table: opportunity
+    /// - Message: Update
+    /// - Stage: PreOperation
+    /// - Mode: Synchronous
+    /// - Filtering Attributes: ctp_subsolutions
+    /// - Images: none required
     /// </summary>
-    public class OpportunitySolutionArchitectPlugin : PluginBase
+    public class OpportunitySubSolutionArchitectPlugin : PluginBase
     {
         protected override void ExecuteInternal(
-            IServiceProvider serviceProvider,
             IPluginExecutionContext context,
             IOrganizationService service,
             ITracingService trace)
         {
-            if (!string.Equals(context.PrimaryEntityName, Schema.OpportunitySolution, StringComparison.OrdinalIgnoreCase))
+            if (!IsPreOperation(context) ||
+                !IsPrimaryEntity(context, Schema.Opportunity))
+            {
                 return;
+            }
 
-            if (!(string.Equals(context.MessageName, "Create", StringComparison.OrdinalIgnoreCase) ||
-                  string.Equals(context.MessageName, "Update", StringComparison.OrdinalIgnoreCase)))
+            if (!IsMessage(context, "Create") &&
+                !IsMessage(context, "Update"))
             {
                 return;
             }
 
             var target = GetTargetEntity(context);
             if (target == null)
-                return;
-
-            var preImage = GetPreImage(context);
-
-            var solutionRef = GetAttributeValueFromTargetOrPreImage<EntityReference>(
-                target,
-                preImage,
-                Schema.OpportunitySolutionSolution);
-
-            if (solutionRef == null)
             {
-                trace.Trace("No solution reference found on target or preimage.");
+                trace?.Trace("Target was not an Entity. Exiting.");
                 return;
             }
 
-            var solution = service.Retrieve(
-                Schema.Solution,
-                solutionRef.Id,
-                new ColumnSet(Schema.SolutionLeadArchitect));
-
-            if (solution == null)
+            // On update, only run when Sub-Solution is actually part of the update payload.
+            // This prevents unrelated opportunity updates from re-defaulting the Architect.
+            if (IsMessage(context, "Update") &&
+                !target.Attributes.Contains(Schema.OpportunitySubSolution))
             {
-                trace.Trace($"Solution record {solutionRef.Id} could not be retrieved.");
+                trace?.Trace("Update did not include {0}. Exiting.", Schema.OpportunitySubSolution);
                 return;
             }
 
-            var architectRef = solution.GetAttributeValue<EntityReference>(Schema.SolutionLeadArchitect);
+            // Preserve an Architect explicitly supplied by user/process in the same operation.
+            if (target.Attributes.Contains(Schema.OpportunityArchitect))
+            {
+                trace?.Trace(
+                    "{0} was explicitly supplied in Target. Preserving supplied value.",
+                    Schema.OpportunityArchitect);
+
+                return;
+            }
+
+            if (!target.Attributes.Contains(Schema.OpportunitySubSolution))
+            {
+                trace?.Trace("No {0} supplied. Exiting.", Schema.OpportunitySubSolution);
+                return;
+            }
+
+            var subSolutionRef = target.GetAttributeValue<EntityReference>(Schema.OpportunitySubSolution);
+
+            if (subSolutionRef == null)
+            {
+                target[Schema.OpportunityArchitect] = null;
+
+                trace?.Trace(
+                    "{0} was cleared, so {1} was also cleared.",
+                    Schema.OpportunitySubSolution,
+                    Schema.OpportunityArchitect);
+
+                return;
+            }
+
+            var subSolution = service.Retrieve(
+                Schema.SubSolution,
+                subSolutionRef.Id,
+                new ColumnSet(Schema.SubSolutionDefaultArchitect));
+
+            if (subSolution == null)
+            {
+                trace?.Trace(
+                    "Sub-Solution {0} could not be retrieved. Architect not defaulted.",
+                    subSolutionRef.Id);
+
+                return;
+            }
+
+            var architectRef = subSolution.GetAttributeValue<EntityReference>(
+                Schema.SubSolutionDefaultArchitect);
+
             if (architectRef == null)
             {
-                trace.Trace("Solution has no lead architect. Architect not populated.");
+                trace?.Trace(
+                    "Sub-Solution {0} has no {1}. Architect not defaulted.",
+                    subSolutionRef.Id,
+                    Schema.SubSolutionDefaultArchitect);
+
                 return;
             }
 
-            target[Schema.OpportunitySolutionArchitect] = architectRef;
-            trace.Trace($"Set {Schema.OpportunitySolutionArchitect} from solution lead architect.");
+            target[Schema.OpportunityArchitect] = architectRef;
+
+            trace?.Trace(
+                "Defaulted {0} from Sub-Solution {1} field {2}. Architect={3}",
+                Schema.OpportunityArchitect,
+                subSolutionRef.Id,
+                Schema.SubSolutionDefaultArchitect,
+                architectRef.Id);
         }
     }
 
     /// <summary>
-    /// ============================================================
-    ///  PLUGIN 3:
-    ///  OpportunityWonStandardizationPlugin
+    /// Plugin 3: Standardizes Opportunity probability when Opportunity is won.
     ///
-    ///  Purpose:
-    ///  - On Opportunity Update
-    ///  - If Opportunity is Won:
-    ///      * Set Probability = 100
-    ///      * Set custom Stage % = 100 (optional)
+    /// Business rule:
+    /// - When opportunity.statecode becomes Won, set:
+    ///   * closeprobability = 100
+    ///   * new_closeprobability = Closed option value 100000008
     ///
-    ///  Register:
-    ///  - Entity: opportunity
-    ///  - Message: Update
-    ///  - Stage: PreOperation
-    ///  - Mode: Synchronous
-    ///  - Filtering Attributes: statecode,statuscode
-    ///  - PreImage: "PreImage" with statecode,statuscode
-    /// ============================================================
+    /// Register:
+    /// - Table: opportunity
+    /// - Message: Update
+    /// - Stage: PreOperation
+    /// - Mode: Synchronous
+    /// - Filtering Attributes: statecode,statuscode
+    /// - PreImage: "PreImage" with statecode,statuscode recommended
     /// </summary>
     public class OpportunityWonStandardizationPlugin : PluginBase
     {
         protected override void ExecuteInternal(
-            IServiceProvider serviceProvider,
             IPluginExecutionContext context,
             IOrganizationService service,
             ITracingService trace)
         {
-            if (!string.Equals(context.PrimaryEntityName, Schema.Opportunity, StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(context.MessageName, "Update", StringComparison.OrdinalIgnoreCase))
+            if (!IsPreOperation(context) ||
+                !IsMessage(context, "Update") ||
+                !IsPrimaryEntity(context, Schema.Opportunity))
             {
-                return;
-            }
-
-            if (context.Depth > 1)
-            {
-                trace.Trace("Depth > 1, exiting to avoid recursion.");
                 return;
             }
 
             var target = GetTargetEntity(context);
             if (target == null)
+            {
+                trace?.Trace("Target was not an Entity. Exiting.");
                 return;
+            }
 
             var preImage = GetPreImage(context);
 
@@ -366,17 +448,23 @@ namespace Ctp.Crm.OpportunityAutomation
 
             if (state != Schema.OpportunityStateWon)
             {
-                trace.Trace($"Opportunity state is not Won. Current state: {state}");
+                trace?.Trace(
+                    "Opportunity is not Won. Current/resolved statecode={0}. Exiting.",
+                    state.HasValue ? state.Value.ToString() : "null");
+
                 return;
             }
 
-            // Set OOB probability
             target[Schema.OpportunityProbability] = 100;
-            trace.Trace($"Set {Schema.OpportunityProbability} = 100.");
 
-            // Optional custom field - remove if not used in your org
-            target[Schema.OpportunityStagePercent] = 100;
-            trace.Trace($"Set {Schema.OpportunityStagePercent} = 100.");
+            target[Schema.OpportunityCustomCloseProbability] =
+                new OptionSetValue(Schema.CustomCloseProbabilityClosed);
+
+            trace?.Trace(
+                "Opportunity is Won. Set {0}=100 and {1}={2}.",
+                Schema.OpportunityProbability,
+                Schema.OpportunityCustomCloseProbability,
+                Schema.CustomCloseProbabilityClosed);
         }
     }
 }
