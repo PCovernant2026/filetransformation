@@ -1,3 +1,35 @@
+TRACE-START: Ctp.Crm.OpportunityAutomation.OpportunityWonStagePlugin
+TRACE-CONTEXT: Message=Win; PrimaryEntity=opportunity; PrimaryEntityId=00000000-0000-0000-0000-000000000000; Stage=20; Mode=0; Depth=1; UserId=33a0818c-940b-f111-8407-7ced8d1f3b2f; Paul Aneng InitiatingUserId=33a0818c-940b-f111-8407-7ced8d1f3b2f; Paul Aneng OrganizationId=cc92cb35-52f4-4701-b853-7360c994664d; CorrelationId=8e1342d2-28f4-4235-b4ff-b017412115e2; OperationId=9d0afb51-9b79-4ecc-88c9-331d00772609
+TRACE-PARAMETERS: InputParameters=[OpportunityClose, Status, x-ms-app-name, Caller]; OutputParameters=[none]; SharedVariables=[IsAutoTransact, AcceptLang, x-ms-app-name]
+TRACE-WONSTAGE: Starting OpportunityWonStagePlugin.
+TRACE-WONSTAGE-SKIP: Message Win is not handled.
+TRACE-END: Ctp.Crm.OpportunityAutomation.OpportunityWonStagePlugin completed successfully. CorrelationId=8e1342d2-28f4-4235-b4ff-b017412115e2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 using System;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
