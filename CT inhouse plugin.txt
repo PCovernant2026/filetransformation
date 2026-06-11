@@ -4,52 +4,77 @@ using Microsoft.Xrm.Sdk.Query;
 
 namespace Ctp.Crm.OpportunityAutomation
 {
-    // ============================================================
-    //  SCHEMA CONSTANTS
-    // ============================================================
+    /// <summary>
+    /// ============================================================
+    ///  SCHEMA CONSTANTS
+    ///  Original namespace and plugin type names are preserved so
+    ///  the existing Dataverse assembly can be updated safely.
+    /// ============================================================
+    /// </summary>
     public static class Schema
     {
+        // -----------------------------
         // Tables
+        // -----------------------------
         public const string Opportunity = "opportunity";
         public const string SystemUser = "systemuser";
         public const string SubSolution = "ctp_subsolutions";
 
+        // -----------------------------
         // Opportunity fields
-        public const string OpportunityClientPartner = "new_clientpartnerid";  // Lookup to systemuser
-        public const string OpportunityArchitect = "new_architectid";          // Lookup to systemuser
-        public const string OpportunitySubSolution = "ctp_subsolutions";       // Lookup to ctp_subsolutions
-        public const string OpportunitySolution = "ctp_solution";              // Choice/OptionSet on opportunity; not used for architect lookup
-        public const string OpportunityStage = "new_percentcomplete";          // Display name: Stage
+        // -----------------------------
+        public const string OpportunityClientPartner = "new_clientpartnerid";   // Lookup to systemuser
+        public const string OpportunityArchitect = "new_architectid";           // Lookup to systemuser
+        public const string OpportunitySubSolution = "ctp_subsolutions";        // Lookup to ctp_subsolutions
+        public const string OpportunityStage = "new_percentcomplete";           // Stage field on opportunity
         public const string OpportunityStateCode = "statecode";
         public const string OpportunityStatusCode = "statuscode";
 
+        // -----------------------------
         // System User fields
-        public const string UserTitle = "title";                               // User title field
+        // -----------------------------
+        public const string SystemUserTitle = "title";
 
+        // -----------------------------
         // Sub-Solution fields
-        public const string SubSolutionArchitect = "ctp_architect";            // Lookup to systemuser
+        // -----------------------------
+        public const string SubSolutionArchitect = "ctp_architect";             // Lookup to systemuser
 
-        // Opportunity close / state parameters
+        // -----------------------------
+        // Opportunity Close / state parameters
+        // -----------------------------
         public const string OpportunityCloseInputParameter = "OpportunityClose";
         public const string OpportunityCloseOpportunity = "opportunityid";
         public const string EntityMonikerInputParameter = "EntityMoniker";
         public const string StateInputParameter = "State";
 
+        // -----------------------------
         // Dataverse pipeline stages
+        // -----------------------------
         public const int PreOperationStage = 20;
         public const int PostOperationStage = 40;
 
+        // -----------------------------
         // Opportunity state values
+        // -----------------------------
+        public const int OpportunityStateOpen = 0;
         public const int OpportunityStateWon = 1;
+        public const int OpportunityStateLost = 2;
 
-        // Stage option values from target org metadata
-        // new_percentcomplete options include: 100000000 = "100 - SOW signed"
-        public const int Stage100Percent = 100000000;
+        // -----------------------------
+        // Stage option value
+        // Display label in target metadata: 100 - SOW signed
+        // Business meaning: 100%
+        // -----------------------------
+        public const int OpportunityStage100Percent = 100000000;
     }
 
-    // ============================================================
-    //  SHARED PLUGIN BASE
-    // ============================================================
+    /// <summary>
+    /// ============================================================
+    ///  PLUGIN BASE
+    ///  Shared helpers for tracing, target extraction, and images.
+    /// ============================================================
+    /// </summary>
     public abstract class PluginBase : IPlugin
     {
         public void Execute(IServiceProvider serviceProvider)
@@ -73,8 +98,8 @@ namespace Ctp.Crm.OpportunityAutomation
                 throw new InvalidPluginExecutionException("Organization service factory is null.");
             }
 
-            // System context is used for reads/defaulting so the automation is not blocked by user read privileges.
-            // PreOperation field updates are applied through Target. PostOperation close-path updates use service.Update.
+            // System context is used for reads/defaulting so user read privileges do not block automation.
+            // Writes are only used where required, such as PostOperation WinOpportunity.
             var service = serviceFactory.CreateOrganizationService(null);
 
             try
@@ -86,10 +111,11 @@ namespace Ctp.Crm.OpportunityAutomation
             catch (InvalidPluginExecutionException ex)
             {
                 trace?.Trace(
-                    "TRACE-ERROR: InvalidPluginExecutionException in {0}. Message={1}. CorrelationId={2}",
+                    "TRACE-ERROR: {0} threw InvalidPluginExecutionException. Message={1}. CorrelationId={2}",
                     GetType().FullName,
                     ex.Message,
                     context.CorrelationId);
+
                 throw;
             }
             catch (Exception ex)
@@ -169,20 +195,22 @@ namespace Ctp.Crm.OpportunityAutomation
             return context.Stage == Schema.PostOperationStage;
         }
 
-        protected static bool ContainsPartner(string title)
+        protected static bool TextContains(string value, string token)
         {
-            return !string.IsNullOrWhiteSpace(title) &&
-                   title.IndexOf("Partner", StringComparison.OrdinalIgnoreCase) >= 0;
+            return !string.IsNullOrWhiteSpace(value) &&
+                   !string.IsNullOrWhiteSpace(token) &&
+                   value.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        protected static void SetOpportunityStageTo100(Entity opportunity)
+        protected static void SetOpportunityStageTo100Percent(Entity opportunity)
         {
             if (opportunity == null)
             {
                 return;
             }
 
-            opportunity[Schema.OpportunityStage] = new OptionSetValue(Schema.Stage100Percent);
+            opportunity[Schema.OpportunityStage] =
+                new OptionSetValue(Schema.OpportunityStage100Percent);
         }
 
         protected static void TraceExecutionStart(
@@ -191,8 +219,9 @@ namespace Ctp.Crm.OpportunityAutomation
             string pluginName)
         {
             trace?.Trace("TRACE-START: {0}", pluginName);
+
             trace?.Trace(
-                "TRACE-CONTEXT: Message={0}; Entity={1}; EntityId={2}; Stage={3}; Mode={4}; Depth={5}; UserId={6}; InitiatingUserId={7}; CorrelationId={8}; OperationId={9}",
+                "TRACE-CONTEXT: Message={0}; PrimaryEntity={1}; PrimaryEntityId={2}; Stage={3}; Mode={4}; Depth={5}; UserId={6}; InitiatingUserId={7}; OrganizationId={8}; CorrelationId={9}; OperationId={10}",
                 context.MessageName,
                 context.PrimaryEntityName,
                 context.PrimaryEntityId,
@@ -201,8 +230,10 @@ namespace Ctp.Crm.OpportunityAutomation
                 context.Depth,
                 context.UserId,
                 context.InitiatingUserId,
+                context.OrganizationId,
                 context.CorrelationId,
                 context.OperationId);
+
             trace?.Trace(
                 "TRACE-PARAMETERS: InputParameters=[{0}]; OutputParameters=[{1}]; SharedVariables=[{2}]",
                 FormatKeys(context.InputParameters),
@@ -243,7 +274,8 @@ namespace Ctp.Crm.OpportunityAutomation
                 FormatKeys(preImage.Attributes));
         }
 
-        // Single method avoids AttributeCollection ambiguity compile errors.
+        // Single helper fixes AttributeCollection ambiguity.
+        // Works for ParameterCollection, SharedVariables, and Microsoft.Xrm.Sdk.AttributeCollection.
         protected static string FormatKeys(Microsoft.Xrm.Sdk.DataCollection<string, object> collection)
         {
             if (collection == null || collection.Count == 0)
@@ -270,20 +302,28 @@ namespace Ctp.Crm.OpportunityAutomation
         }
     }
 
-    // ============================================================
-    //  PLUGIN 1: DEFAULT CLIENT PARTNER FROM CREATING USER TITLE
-    // ============================================================
     /// <summary>
-    /// Business rule:
-    /// On Opportunity Create, query the creating user. If systemuser.title contains "Partner",
-    /// populate opportunity.new_clientpartnerid with the creating user, unless the field was already supplied.
+    /// ============================================================
+    ///  PLUGIN 1:
+    ///  OpportunityOwnershipDefaultsPlugin
     ///
-    /// Register:
-    /// - Table: opportunity
-    /// - Message: Create
-    /// - Stage: PreOperation
-    /// - Mode: Synchronous
-    /// - Images: none
+    ///  Original class name preserved.
+    ///
+    ///  Current business rule:
+    ///  - On Opportunity Create
+    ///  - Query the creating user
+    ///  - If systemuser.title contains "Partner"
+    ///  - Populate opportunity.new_clientpartnerid with the creating user
+    ///  - Do not overwrite if new_clientpartnerid was manually supplied
+    ///
+    ///  Register:
+    ///  - Table: opportunity
+    ///  - Message: Create
+    ///  - Stage: PreOperation
+    ///  - Mode: Synchronous
+    ///  - Filtering Attributes: none
+    ///  - Images: none
+    /// ============================================================
     /// </summary>
     public class OpportunityOwnershipDefaultsPlugin : PluginBase
     {
@@ -305,7 +345,7 @@ namespace Ctp.Crm.OpportunityAutomation
                 !IsPrimaryEntity(context, Schema.Opportunity))
             {
                 trace?.Trace(
-                    "TRACE-PLUGIN1-SKIP: Expected Create opportunity PreOperation. Actual Message={0}, Entity={1}, Stage={2}.",
+                    "TRACE-PLUGIN1-SKIP: Expected Create opportunity PreOperation. Actual Message={0}; Entity={1}; Stage={2}.",
                     context.MessageName,
                     context.PrimaryEntityName,
                     context.Stage);
@@ -325,19 +365,15 @@ namespace Ctp.Crm.OpportunityAutomation
                 target[Schema.OpportunityClientPartner] != null)
             {
                 trace?.Trace(
-                    "TRACE-PLUGIN1-NOOP: {0} was already supplied as {1}. No overwrite.",
+                    "TRACE-PLUGIN1-NOOP: {0} already supplied as {1}. No overwrite.",
                     Schema.OpportunityClientPartner,
                     FormatEntityReference(target.GetAttributeValue<EntityReference>(Schema.OpportunityClientPartner)));
                 return;
             }
 
-            var creatingUserId = ResolveCreatingUserId(context);
-
-            trace?.Trace(
-                "TRACE-PLUGIN1: CreatingUserId resolved to {0}. InitiatingUserId={1}; UserId={2}",
-                creatingUserId,
-                context.InitiatingUserId,
-                context.UserId);
+            var creatingUserId = context.InitiatingUserId != Guid.Empty
+                ? context.InitiatingUserId
+                : context.UserId;
 
             if (creatingUserId == Guid.Empty)
             {
@@ -345,22 +381,26 @@ namespace Ctp.Crm.OpportunityAutomation
                 return;
             }
 
-            var user = service.Retrieve(
+            trace?.Trace(
+                "TRACE-PLUGIN1: Retrieving systemuser {0} column [{1}].",
+                creatingUserId,
+                Schema.SystemUserTitle);
+
+            var creatingUser = service.Retrieve(
                 Schema.SystemUser,
                 creatingUserId,
-                new ColumnSet(Schema.UserTitle));
+                new ColumnSet(Schema.SystemUserTitle));
 
-            var title = user?.GetAttributeValue<string>(Schema.UserTitle);
+            var title = creatingUser?.GetAttributeValue<string>(Schema.SystemUserTitle);
 
             trace?.Trace(
-                "TRACE-PLUGIN1: Retrieved creating user's {0}='{1}'.",
-                Schema.UserTitle,
-                title ?? "null");
+                "TRACE-PLUGIN1: Creating user title='{0}'. Checking whether it contains 'Partner'.",
+                string.IsNullOrWhiteSpace(title) ? "null/blank" : title);
 
-            if (!ContainsPartner(title))
+            if (!TextContains(title, "Partner"))
             {
                 trace?.Trace(
-                    "TRACE-PLUGIN1-NOOP: User title does not contain 'Partner'. {0} was not defaulted.",
+                    "TRACE-PLUGIN1-NOOP: Creating user title does not contain 'Partner'. {0} not populated.",
                     Schema.OpportunityClientPartner);
                 return;
             }
@@ -369,58 +409,56 @@ namespace Ctp.Crm.OpportunityAutomation
             target[Schema.OpportunityClientPartner] = userReference;
 
             trace?.Trace(
-                "TRACE-PLUGIN1-ACTION: User title contains 'Partner'. Defaulted {0} to {1}.",
+                "TRACE-PLUGIN1-ACTION: Title contains 'Partner'. Defaulted {0} to {1}.",
                 Schema.OpportunityClientPartner,
                 FormatEntityReference(userReference));
-        }
 
-        private static Guid ResolveCreatingUserId(IPluginExecutionContext context)
-        {
-            if (context.InitiatingUserId != Guid.Empty)
-            {
-                return context.InitiatingUserId;
-            }
-
-            return context.UserId;
+            trace?.Trace("TRACE-PLUGIN1: Completed OpportunityOwnershipDefaultsPlugin.");
         }
     }
 
-    // ============================================================
-    //  PLUGIN 2: DEFAULT ARCHITECT FROM SELECTED SUB-SOLUTION
-    // ============================================================
     /// <summary>
-    /// Business rule:
-    /// When opportunity.ctp_subsolutions is selected or changed, retrieve the selected
-    /// ctp_subsolutions record and copy ctp_subsolutions.ctp_architect to opportunity.new_architectid.
+    /// ============================================================
+    ///  PLUGIN 2:
+    ///  OpportunitySolutionArchitectPlugin
     ///
-    /// Notes:
-    /// - opportunity.ctp_solution is a Choice/OptionSet and is not used for the architect lookup.
-    /// - opportunity.ctp_subsolutions is the lookup to the Sub-Solution table.
-    /// - ctp_subsolutions.ctp_architect is a lookup to systemuser.
+    ///  Original class name preserved.
     ///
-    /// Register Step A:
-    /// - Table: opportunity
-    /// - Message: Create
-    /// - Stage: PreOperation
-    /// - Mode: Synchronous
-    /// - Images: none
+    ///  Current business rule:
+    ///  - ctp_solution is an option set on opportunity. It is not queried.
+    ///  - ctp_subsolutions is a lookup on opportunity to ctp_subsolutions.
+    ///  - When ctp_subsolutions is selected/changed:
+    ///      retrieve ctp_subsolutions.ctp_architect
+    ///      populate opportunity.new_architectid
+    ///  - If ctp_subsolutions is cleared, clear new_architectid.
+    ///  - If selected Sub-Solution has no ctp_architect, clear new_architectid.
+    ///  - Do not overwrite new_architectid if it was explicitly supplied in the same operation.
     ///
-    /// Register Step B:
-    /// - Table: opportunity
-    /// - Message: Update
-    /// - Stage: PreOperation
-    /// - Mode: Synchronous
-    /// - Filtering Attributes: ctp_subsolutions
-    /// - Images: none
+    ///  Register Step A:
+    ///  - Table: opportunity
+    ///  - Message: Create
+    ///  - Stage: PreOperation
+    ///  - Mode: Synchronous
+    ///  - Filtering Attributes: none
+    ///  - Images: none
+    ///
+    ///  Register Step B:
+    ///  - Table: opportunity
+    ///  - Message: Update
+    ///  - Stage: PreOperation
+    ///  - Mode: Synchronous
+    ///  - Filtering Attributes: ctp_subsolutions
+    ///  - Images: none
+    /// ============================================================
     /// </summary>
-    public class OpportunitySubSolutionArchitectPlugin : PluginBase
+    public class OpportunitySolutionArchitectPlugin : PluginBase
     {
         protected override void ExecuteInternal(
             IPluginExecutionContext context,
             IOrganizationService service,
             ITracingService trace)
         {
-            trace?.Trace("TRACE-PLUGIN2: Starting OpportunitySubSolutionArchitectPlugin.");
+            trace?.Trace("TRACE-PLUGIN2: Starting OpportunitySolutionArchitectPlugin.");
 
             if (context.Depth > 1)
             {
@@ -428,18 +466,22 @@ namespace Ctp.Crm.OpportunityAutomation
                 return;
             }
 
-            if (!IsPreOperation(context) || !IsPrimaryEntity(context, Schema.Opportunity))
+            if (!IsPreOperation(context) ||
+                !IsPrimaryEntity(context, Schema.Opportunity))
             {
                 trace?.Trace(
-                    "TRACE-PLUGIN2-SKIP: Expected opportunity PreOperation. Actual Entity={0}, Stage={1}.",
+                    "TRACE-PLUGIN2-SKIP: Expected opportunity PreOperation. Actual Entity={0}; Stage={1}.",
                     context.PrimaryEntityName,
                     context.Stage);
                 return;
             }
 
-            if (!IsMessage(context, "Create") && !IsMessage(context, "Update"))
+            if (!IsMessage(context, "Create") &&
+                !IsMessage(context, "Update"))
             {
-                trace?.Trace("TRACE-PLUGIN2-SKIP: Message {0} is not handled.", context.MessageName);
+                trace?.Trace(
+                    "TRACE-PLUGIN2-SKIP: Message {0} is not handled.",
+                    context.MessageName);
                 return;
             }
 
@@ -456,29 +498,31 @@ namespace Ctp.Crm.OpportunityAutomation
                 !target.Attributes.Contains(Schema.OpportunitySubSolution))
             {
                 trace?.Trace(
-                    "TRACE-PLUGIN2-SKIP: Update did not include {0}. Target Attributes=[{1}].",
+                    "TRACE-PLUGIN2-SKIP: Update did not include {0}. Target attributes=[{1}].",
                     Schema.OpportunitySubSolution,
                     FormatKeys(target.Attributes));
+                return;
+            }
+
+            if (target.Attributes.Contains(Schema.OpportunityArchitect))
+            {
+                trace?.Trace(
+                    "TRACE-PLUGIN2-NOOP: {0} explicitly supplied as {1}. Preserving supplied value.",
+                    Schema.OpportunityArchitect,
+                    FormatEntityReference(target.GetAttributeValue<EntityReference>(Schema.OpportunityArchitect)));
                 return;
             }
 
             if (!target.Attributes.Contains(Schema.OpportunitySubSolution))
             {
                 trace?.Trace(
-                    "TRACE-PLUGIN2-SKIP: No {0} supplied on Target.",
+                    "TRACE-PLUGIN2-SKIP: Target does not contain {0}. Nothing to map.",
                     Schema.OpportunitySubSolution);
                 return;
             }
 
-            ApplyArchitectFromSubSolution(target, service, trace);
-        }
-
-        private static void ApplyArchitectFromSubSolution(
-            Entity target,
-            IOrganizationService service,
-            ITracingService trace)
-        {
-            var subSolutionRef = target.GetAttributeValue<EntityReference>(Schema.OpportunitySubSolution);
+            var subSolutionRef = target.GetAttributeValue<EntityReference>(
+                Schema.OpportunitySubSolution);
 
             trace?.Trace(
                 "TRACE-PLUGIN2: Resolved {0}={1}.",
@@ -490,7 +534,7 @@ namespace Ctp.Crm.OpportunityAutomation
                 target[Schema.OpportunityArchitect] = null;
 
                 trace?.Trace(
-                    "TRACE-PLUGIN2-ACTION: {0} was cleared, so {1} was also cleared.",
+                    "TRACE-PLUGIN2-ACTION: {0} was cleared, so {1} was cleared.",
                     Schema.OpportunitySubSolution,
                     Schema.OpportunityArchitect);
                 return;
@@ -501,7 +545,8 @@ namespace Ctp.Crm.OpportunityAutomation
                 subSolutionRef.Id,
                 new ColumnSet(Schema.SubSolutionArchitect));
 
-            var architectRef = subSolution?.GetAttributeValue<EntityReference>(Schema.SubSolutionArchitect);
+            var architectRef = subSolution?.GetAttributeValue<EntityReference>(
+                Schema.SubSolutionArchitect);
 
             trace?.Trace(
                 "TRACE-PLUGIN2: Retrieved {0}.{1}={2}.",
@@ -514,7 +559,7 @@ namespace Ctp.Crm.OpportunityAutomation
                 target[Schema.OpportunityArchitect] = null;
 
                 trace?.Trace(
-                    "TRACE-PLUGIN2-ACTION: Selected Sub-Solution has no Architect. Cleared {0}.",
+                    "TRACE-PLUGIN2-ACTION: Selected Sub-Solution has no architect. Cleared {0}.",
                     Schema.OpportunityArchitect);
                 return;
             }
@@ -526,41 +571,45 @@ namespace Ctp.Crm.OpportunityAutomation
                 Schema.OpportunityArchitect,
                 FormatEntityReference(architectRef),
                 subSolutionRef.Id);
+
+            trace?.Trace("TRACE-PLUGIN2: Completed OpportunitySolutionArchitectPlugin.");
         }
     }
 
-    // ============================================================
-    //  PLUGIN 3: SET STAGE TO 100% WHEN OPPORTUNITY IS WON
-    // ============================================================
     /// <summary>
-    /// Business rule:
-    /// When an Opportunity is closed as Won, automatically set the Stage field to 100%.
+    /// ============================================================
+    ///  PLUGIN 3:
+    ///  OpportunityWonStandardizationPlugin
     ///
-    /// Implementation:
-    /// - Stage field logical name: opportunity.new_percentcomplete
-    /// - 100% option value: 100000000 = "100 - SOW signed"
+    ///  Original class name preserved.
     ///
-    /// Register Step A:
-    /// - Table: opportunity
-    /// - Message: Update
-    /// - Stage: PreOperation
-    /// - Mode: Synchronous
-    /// - Filtering Attributes: statecode,statuscode
-    /// - PreImage Name: PreImage
-    /// - PreImage Fields: statecode,statuscode
+    ///  Current business rule:
+    ///  - When Opportunity is closed as Won, set Stage field to 100%.
+    ///  - Field: opportunity.new_percentcomplete
+    ///  - Value: 100000000
     ///
-    /// Register Step B:
-    /// - Table: opportunity
-    /// - Message: WinOpportunity
-    /// - Stage: PostOperation
-    /// - Mode: Synchronous
-    /// - Images: none
+    ///  Register Step A:
+    ///  - Table: opportunity
+    ///  - Message: Update
+    ///  - Stage: PreOperation
+    ///  - Mode: Synchronous
+    ///  - Filtering Attributes: statecode,statuscode
+    ///  - Pre Image Name: PreImage
+    ///  - Pre Image Fields: statecode,statuscode
     ///
-    /// Optional Step C:
-    /// - Table: opportunity
-    /// - Message: SetState or SetStateDynamicEntity
-    /// - Stage: PostOperation
-    /// - Mode: Synchronous
+    ///  Register Step B:
+    ///  - Table: opportunity
+    ///  - Message: WinOpportunity
+    ///  - Stage: PostOperation
+    ///  - Mode: Synchronous
+    ///  - Images: none
+    ///
+    ///  Optional Step C:
+    ///  - Table: opportunity
+    ///  - Message: SetState or SetStateDynamicEntity
+    ///  - Stage: PostOperation
+    ///  - Mode: Synchronous
+    /// ============================================================
     /// </summary>
     public class OpportunityWonStandardizationPlugin : PluginBase
     {
@@ -589,13 +638,16 @@ namespace Ctp.Crm.OpportunityAutomation
                 return;
             }
 
-            if (IsMessage(context, "SetState") || IsMessage(context, "SetStateDynamicEntity"))
+            if (IsMessage(context, "SetState") ||
+                IsMessage(context, "SetStateDynamicEntity"))
             {
                 HandleSetStatePath(context, service, trace);
                 return;
             }
 
-            trace?.Trace("TRACE-PLUGIN3-SKIP: Message {0} is not handled.", context.MessageName);
+            trace?.Trace(
+                "TRACE-PLUGIN3-SKIP: Message {0} is not handled.",
+                context.MessageName);
         }
 
         private static void HandleUpdatePath(
@@ -604,10 +656,11 @@ namespace Ctp.Crm.OpportunityAutomation
         {
             trace?.Trace("TRACE-PLUGIN3: Handling Update path.");
 
-            if (!IsPreOperation(context) || !IsPrimaryEntity(context, Schema.Opportunity))
+            if (!IsPreOperation(context) ||
+                !IsPrimaryEntity(context, Schema.Opportunity))
             {
                 trace?.Trace(
-                    "TRACE-PLUGIN3-SKIP: Update path expected opportunity PreOperation. Actual Entity={0}, Stage={1}.",
+                    "TRACE-PLUGIN3-SKIP: Update path expected opportunity PreOperation. Actual Entity={0}; Stage={1}.",
                     context.PrimaryEntityName,
                     context.Stage);
                 return;
@@ -625,30 +678,39 @@ namespace Ctp.Crm.OpportunityAutomation
             var preImage = GetPreImage(context);
             TracePreImage(trace, preImage);
 
+            var targetState = target.GetAttributeValue<OptionSetValue>(
+                Schema.OpportunityStateCode);
+
+            var preImageState = preImage?.GetAttributeValue<OptionSetValue>(
+                Schema.OpportunityStateCode);
+
             var resolvedState = GetAttributeValueFromTargetOrPreImage<OptionSetValue>(
                 target,
                 preImage,
                 Schema.OpportunityStateCode);
 
             trace?.Trace(
-                "TRACE-PLUGIN3: Resolved statecode={0}.",
+                "TRACE-PLUGIN3: State resolved. TargetState={0}; PreImageState={1}; ResolvedState={2}.",
+                FormatOptionSet(targetState),
+                FormatOptionSet(preImageState),
                 FormatOptionSet(resolvedState));
 
-            if (resolvedState == null || resolvedState.Value != Schema.OpportunityStateWon)
+            if (resolvedState == null ||
+                resolvedState.Value != Schema.OpportunityStateWon)
             {
                 trace?.Trace(
-                    "TRACE-PLUGIN3-NOOP: Opportunity is not Won. Expected={0}; Actual={1}.",
+                    "TRACE-PLUGIN3-NOOP: Opportunity is not Won. Expected statecode={0}; Actual={1}.",
                     Schema.OpportunityStateWon,
                     FormatOptionSet(resolvedState));
                 return;
             }
 
-            SetOpportunityStageTo100(target);
+            SetOpportunityStageTo100Percent(target);
 
             trace?.Trace(
                 "TRACE-PLUGIN3-ACTION: Update path set {0}={1}.",
                 Schema.OpportunityStage,
-                Schema.Stage100Percent);
+                Schema.OpportunityStage100Percent);
         }
 
         private static void HandleWinOpportunityPath(
@@ -661,7 +723,7 @@ namespace Ctp.Crm.OpportunityAutomation
             if (!IsPostOperation(context))
             {
                 trace?.Trace(
-                    "TRACE-PLUGIN3-SKIP: WinOpportunity must be PostOperation stage 40. Actual Stage={0}.",
+                    "TRACE-PLUGIN3-SKIP: WinOpportunity must be registered PostOperation stage 40. Actual Stage={0}.",
                     context.Stage);
                 return;
             }
@@ -677,7 +739,7 @@ namespace Ctp.Crm.OpportunityAutomation
 
             if (opportunityClose == null)
             {
-                trace?.Trace("TRACE-PLUGIN3-SKIP: WinOpportunity did not include OpportunityClose Entity.");
+                trace?.Trace("TRACE-PLUGIN3-SKIP: WinOpportunity did not include OpportunityClose entity.");
                 return;
             }
 
@@ -686,27 +748,30 @@ namespace Ctp.Crm.OpportunityAutomation
                 opportunityClose.LogicalName,
                 FormatKeys(opportunityClose.Attributes));
 
-            var opportunityRef = opportunityClose.GetAttributeValue<EntityReference>(Schema.OpportunityCloseOpportunity);
+            var opportunityRef = opportunityClose.GetAttributeValue<EntityReference>(
+                Schema.OpportunityCloseOpportunity);
 
             trace?.Trace(
-                "TRACE-PLUGIN3: Opportunity reference={0}.",
+                "TRACE-PLUGIN3: OpportunityClose opportunity reference={0}.",
                 FormatEntityReference(opportunityRef));
 
-            if (opportunityRef == null || opportunityRef.Id == Guid.Empty)
+            if (opportunityRef == null ||
+                opportunityRef.Id == Guid.Empty)
             {
                 trace?.Trace("TRACE-PLUGIN3-SKIP: OpportunityClose did not contain a valid opportunityid.");
                 return;
             }
 
             var update = new Entity(Schema.Opportunity, opportunityRef.Id);
-            SetOpportunityStageTo100(update);
+            SetOpportunityStageTo100Percent(update);
+
             service.Update(update);
 
             trace?.Trace(
                 "TRACE-PLUGIN3-ACTION: WinOpportunity path updated opportunity {0}. Set {1}={2}.",
                 opportunityRef.Id,
                 Schema.OpportunityStage,
-                Schema.Stage100Percent);
+                Schema.OpportunityStage100Percent);
         }
 
         private static void HandleSetStatePath(
@@ -714,12 +779,12 @@ namespace Ctp.Crm.OpportunityAutomation
             IOrganizationService service,
             ITracingService trace)
         {
-            trace?.Trace("TRACE-PLUGIN3: Handling SetState/SetStateDynamicEntity path.");
+            trace?.Trace("TRACE-PLUGIN3: Handling SetState / SetStateDynamicEntity path.");
 
             if (!IsPostOperation(context))
             {
                 trace?.Trace(
-                    "TRACE-PLUGIN3-SKIP: SetState must be PostOperation stage 40. Actual Stage={0}.",
+                    "TRACE-PLUGIN3-SKIP: SetState path must be registered PostOperation stage 40. Actual Stage={0}.",
                     context.Stage);
                 return;
             }
@@ -754,7 +819,8 @@ namespace Ctp.Crm.OpportunityAutomation
                 return;
             }
 
-            if (state == null || state.Value != Schema.OpportunityStateWon)
+            if (state == null ||
+                state.Value != Schema.OpportunityStateWon)
             {
                 trace?.Trace(
                     "TRACE-PLUGIN3-NOOP: SetState state is not Won. Expected={0}; Actual={1}.",
@@ -764,14 +830,15 @@ namespace Ctp.Crm.OpportunityAutomation
             }
 
             var update = new Entity(Schema.Opportunity, entityMoniker.Id);
-            SetOpportunityStageTo100(update);
+            SetOpportunityStageTo100Percent(update);
+
             service.Update(update);
 
             trace?.Trace(
                 "TRACE-PLUGIN3-ACTION: SetState path updated opportunity {0}. Set {1}={2}.",
                 entityMoniker.Id,
                 Schema.OpportunityStage,
-                Schema.Stage100Percent);
+                Schema.OpportunityStage100Percent);
         }
     }
 }
