@@ -1,13 +1,777 @@
-ctp_solution is an option set field on the opportunity table 
+using System;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
 
-ctp_subsolutions is a lookup field on the opportunity table that looksup to the subsolution table (ctp_subsolutions)
-logig should be when sub solution is selected query and populate the architect (ctp_architect) assigned to that sub_solution note: the ctp_architect is a lookup feild to the user table
+namespace Ctp.Crm.OpportunityAutomation
+{
+    // ============================================================
+    //  SCHEMA CONSTANTS
+    // ============================================================
+    public static class Schema
+    {
+        // Tables
+        public const string Opportunity = "opportunity";
+        public const string SystemUser = "systemuser";
+        public const string SubSolution = "ctp_subsolutions";
 
+        // Opportunity fields
+        public const string OpportunityClientPartner = "new_clientpartnerid";  // Lookup to systemuser
+        public const string OpportunityArchitect = "new_architectid";          // Lookup to systemuser
+        public const string OpportunitySubSolution = "ctp_subsolutions";       // Lookup to ctp_subsolutions
+        public const string OpportunitySolution = "ctp_solution";              // Choice/OptionSet on opportunity; not used for architect lookup
+        public const string OpportunityStage = "new_percentcomplete";          // Display name: Stage
+        public const string OpportunityStateCode = "statecode";
+        public const string OpportunityStatusCode = "statuscode";
 
-ON creation of the opportunity 
+        // System User fields
+        public const string UserTitle = "title";                               // User title field
 
-query the creating user, check their title (title) on the user record if title contains Partner, populate the new_clientpartnerid field on the opportunity form. note new_clientpartnerid is a lookup field on the opportunity
- table that also looks up to the user table.
+        // Sub-Solution fields
+        public const string SubSolutionArchitect = "ctp_architect";            // Lookup to systemuser
 
+        // Opportunity close / state parameters
+        public const string OpportunityCloseInputParameter = "OpportunityClose";
+        public const string OpportunityCloseOpportunity = "opportunityid";
+        public const string EntityMonikerInputParameter = "EntityMoniker";
+        public const string StateInputParameter = "State";
 
-When we close a deal as won, automatically set the "Stage" field to 100%
+        // Dataverse pipeline stages
+        public const int PreOperationStage = 20;
+        public const int PostOperationStage = 40;
+
+        // Opportunity state values
+        public const int OpportunityStateWon = 1;
+
+        // Stage option values from target org metadata
+        // new_percentcomplete options include: 100000000 = "100 - SOW signed"
+        public const int Stage100Percent = 100000000;
+    }
+
+    // ============================================================
+    //  SHARED PLUGIN BASE
+    // ============================================================
+    public abstract class PluginBase : IPlugin
+    {
+        public void Execute(IServiceProvider serviceProvider)
+        {
+            if (serviceProvider == null)
+            {
+                throw new InvalidPluginExecutionException("Service provider is null.");
+            }
+
+            var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            var trace = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            var serviceFactory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+
+            if (context == null)
+            {
+                throw new InvalidPluginExecutionException("Plugin execution context is null.");
+            }
+
+            if (serviceFactory == null)
+            {
+                throw new InvalidPluginExecutionException("Organization service factory is null.");
+            }
+
+            // System context is used for reads/defaulting so the automation is not blocked by user read privileges.
+            // PreOperation field updates are applied through Target. PostOperation close-path updates use service.Update.
+            var service = serviceFactory.CreateOrganizationService(null);
+
+            try
+            {
+                TraceExecutionStart(context, trace, GetType().FullName);
+                ExecuteInternal(context, service, trace);
+                trace?.Trace("TRACE-END: {0} completed successfully. CorrelationId={1}", GetType().FullName, context.CorrelationId);
+            }
+            catch (InvalidPluginExecutionException ex)
+            {
+                trace?.Trace(
+                    "TRACE-ERROR: InvalidPluginExecutionException in {0}. Message={1}. CorrelationId={2}",
+                    GetType().FullName,
+                    ex.Message,
+                    context.CorrelationId);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                trace?.Trace(
+                    "TRACE-ERROR: Unhandled exception in {0}. CorrelationId={1}. Exception={2}",
+                    GetType().FullName,
+                    context.CorrelationId,
+                    ex);
+
+                throw new InvalidPluginExecutionException($"An error occurred in {GetType().Name}: {ex.Message}", ex);
+            }
+        }
+
+        protected abstract void ExecuteInternal(
+            IPluginExecutionContext context,
+            IOrganizationService service,
+            ITracingService trace);
+
+        protected static Entity GetTargetEntity(IPluginExecutionContext context)
+        {
+            if (context.InputParameters != null &&
+                context.InputParameters.Contains("Target") &&
+                context.InputParameters["Target"] is Entity target)
+            {
+                return target;
+            }
+
+            return null;
+        }
+
+        protected static Entity GetPreImage(IPluginExecutionContext context, string imageName = "PreImage")
+        {
+            if (context.PreEntityImages != null && context.PreEntityImages.Contains(imageName))
+            {
+                return context.PreEntityImages[imageName];
+            }
+
+            return null;
+        }
+
+        protected static T GetAttributeValueFromTargetOrPreImage<T>(
+            Entity target,
+            Entity preImage,
+            string attributeName)
+        {
+            if (target != null && target.Attributes.Contains(attributeName))
+            {
+                return target.GetAttributeValue<T>(attributeName);
+            }
+
+            if (preImage != null && preImage.Attributes.Contains(attributeName))
+            {
+                return preImage.GetAttributeValue<T>(attributeName);
+            }
+
+            return default(T);
+        }
+
+        protected static bool IsMessage(IPluginExecutionContext context, string messageName)
+        {
+            return string.Equals(context.MessageName, messageName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        protected static bool IsPrimaryEntity(IPluginExecutionContext context, string entityName)
+        {
+            return string.Equals(context.PrimaryEntityName, entityName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        protected static bool IsPreOperation(IPluginExecutionContext context)
+        {
+            return context.Stage == Schema.PreOperationStage;
+        }
+
+        protected static bool IsPostOperation(IPluginExecutionContext context)
+        {
+            return context.Stage == Schema.PostOperationStage;
+        }
+
+        protected static bool ContainsPartner(string title)
+        {
+            return !string.IsNullOrWhiteSpace(title) &&
+                   title.IndexOf("Partner", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        protected static void SetOpportunityStageTo100(Entity opportunity)
+        {
+            if (opportunity == null)
+            {
+                return;
+            }
+
+            opportunity[Schema.OpportunityStage] = new OptionSetValue(Schema.Stage100Percent);
+        }
+
+        protected static void TraceExecutionStart(
+            IPluginExecutionContext context,
+            ITracingService trace,
+            string pluginName)
+        {
+            trace?.Trace("TRACE-START: {0}", pluginName);
+            trace?.Trace(
+                "TRACE-CONTEXT: Message={0}; Entity={1}; EntityId={2}; Stage={3}; Mode={4}; Depth={5}; UserId={6}; InitiatingUserId={7}; CorrelationId={8}; OperationId={9}",
+                context.MessageName,
+                context.PrimaryEntityName,
+                context.PrimaryEntityId,
+                context.Stage,
+                context.Mode,
+                context.Depth,
+                context.UserId,
+                context.InitiatingUserId,
+                context.CorrelationId,
+                context.OperationId);
+            trace?.Trace(
+                "TRACE-PARAMETERS: InputParameters=[{0}]; OutputParameters=[{1}]; SharedVariables=[{2}]",
+                FormatKeys(context.InputParameters),
+                FormatKeys(context.OutputParameters),
+                FormatKeys(context.SharedVariables));
+        }
+
+        protected static void TraceTarget(ITracingService trace, Entity target)
+        {
+            if (target == null)
+            {
+                trace?.Trace("TRACE-TARGET: Target is null.");
+                return;
+            }
+
+            trace?.Trace(
+                "TRACE-TARGET: LogicalName={0}; Id={1}; AttributeCount={2}; Attributes=[{3}]",
+                target.LogicalName,
+                target.Id,
+                target.Attributes.Count,
+                FormatKeys(target.Attributes));
+        }
+
+        protected static void TracePreImage(ITracingService trace, Entity preImage, string imageName = "PreImage")
+        {
+            if (preImage == null)
+            {
+                trace?.Trace("TRACE-PREIMAGE: {0} was not available.", imageName);
+                return;
+            }
+
+            trace?.Trace(
+                "TRACE-PREIMAGE: {0}; LogicalName={1}; Id={2}; AttributeCount={3}; Attributes=[{4}]",
+                imageName,
+                preImage.LogicalName,
+                preImage.Id,
+                preImage.Attributes.Count,
+                FormatKeys(preImage.Attributes));
+        }
+
+        // Single method avoids AttributeCollection ambiguity compile errors.
+        protected static string FormatKeys(Microsoft.Xrm.Sdk.DataCollection<string, object> collection)
+        {
+            if (collection == null || collection.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(", ", collection.Keys);
+        }
+
+        protected static string FormatEntityReference(EntityReference entityReference)
+        {
+            if (entityReference == null)
+            {
+                return "null";
+            }
+
+            return $"{entityReference.LogicalName}:{entityReference.Id}";
+        }
+
+        protected static string FormatOptionSet(OptionSetValue optionSetValue)
+        {
+            return optionSetValue == null ? "null" : optionSetValue.Value.ToString();
+        }
+    }
+
+    // ============================================================
+    //  PLUGIN 1: DEFAULT CLIENT PARTNER FROM CREATING USER TITLE
+    // ============================================================
+    /// <summary>
+    /// Business rule:
+    /// On Opportunity Create, query the creating user. If systemuser.title contains "Partner",
+    /// populate opportunity.new_clientpartnerid with the creating user, unless the field was already supplied.
+    ///
+    /// Register:
+    /// - Table: opportunity
+    /// - Message: Create
+    /// - Stage: PreOperation
+    /// - Mode: Synchronous
+    /// - Images: none
+    /// </summary>
+    public class OpportunityClientPartnerFromTitlePlugin : PluginBase
+    {
+        protected override void ExecuteInternal(
+            IPluginExecutionContext context,
+            IOrganizationService service,
+            ITracingService trace)
+        {
+            trace?.Trace("TRACE-PLUGIN1: Starting OpportunityClientPartnerFromTitlePlugin.");
+
+            if (context.Depth > 1)
+            {
+                trace?.Trace("TRACE-PLUGIN1-SKIP: Depth {0} > 1. Exiting to avoid recursion.", context.Depth);
+                return;
+            }
+
+            if (!IsPreOperation(context) ||
+                !IsMessage(context, "Create") ||
+                !IsPrimaryEntity(context, Schema.Opportunity))
+            {
+                trace?.Trace(
+                    "TRACE-PLUGIN1-SKIP: Expected Create opportunity PreOperation. Actual Message={0}, Entity={1}, Stage={2}.",
+                    context.MessageName,
+                    context.PrimaryEntityName,
+                    context.Stage);
+                return;
+            }
+
+            var target = GetTargetEntity(context);
+            TraceTarget(trace, target);
+
+            if (target == null)
+            {
+                trace?.Trace("TRACE-PLUGIN1-SKIP: Target was not an Entity.");
+                return;
+            }
+
+            if (target.Attributes.Contains(Schema.OpportunityClientPartner) &&
+                target[Schema.OpportunityClientPartner] != null)
+            {
+                trace?.Trace(
+                    "TRACE-PLUGIN1-NOOP: {0} was already supplied as {1}. No overwrite.",
+                    Schema.OpportunityClientPartner,
+                    FormatEntityReference(target.GetAttributeValue<EntityReference>(Schema.OpportunityClientPartner)));
+                return;
+            }
+
+            var creatingUserId = ResolveCreatingUserId(context);
+
+            trace?.Trace(
+                "TRACE-PLUGIN1: CreatingUserId resolved to {0}. InitiatingUserId={1}; UserId={2}",
+                creatingUserId,
+                context.InitiatingUserId,
+                context.UserId);
+
+            if (creatingUserId == Guid.Empty)
+            {
+                trace?.Trace("TRACE-PLUGIN1-SKIP: Creating user could not be resolved.");
+                return;
+            }
+
+            var user = service.Retrieve(
+                Schema.SystemUser,
+                creatingUserId,
+                new ColumnSet(Schema.UserTitle));
+
+            var title = user?.GetAttributeValue<string>(Schema.UserTitle);
+
+            trace?.Trace(
+                "TRACE-PLUGIN1: Retrieved creating user's {0}='{1}'.",
+                Schema.UserTitle,
+                title ?? "null");
+
+            if (!ContainsPartner(title))
+            {
+                trace?.Trace(
+                    "TRACE-PLUGIN1-NOOP: User title does not contain 'Partner'. {0} was not defaulted.",
+                    Schema.OpportunityClientPartner);
+                return;
+            }
+
+            var userReference = new EntityReference(Schema.SystemUser, creatingUserId);
+            target[Schema.OpportunityClientPartner] = userReference;
+
+            trace?.Trace(
+                "TRACE-PLUGIN1-ACTION: User title contains 'Partner'. Defaulted {0} to {1}.",
+                Schema.OpportunityClientPartner,
+                FormatEntityReference(userReference));
+        }
+
+        private static Guid ResolveCreatingUserId(IPluginExecutionContext context)
+        {
+            if (context.InitiatingUserId != Guid.Empty)
+            {
+                return context.InitiatingUserId;
+            }
+
+            return context.UserId;
+        }
+    }
+
+    // ============================================================
+    //  PLUGIN 2: DEFAULT ARCHITECT FROM SELECTED SUB-SOLUTION
+    // ============================================================
+    /// <summary>
+    /// Business rule:
+    /// When opportunity.ctp_subsolutions is selected or changed, retrieve the selected
+    /// ctp_subsolutions record and copy ctp_subsolutions.ctp_architect to opportunity.new_architectid.
+    ///
+    /// Notes:
+    /// - opportunity.ctp_solution is a Choice/OptionSet and is not used for the architect lookup.
+    /// - opportunity.ctp_subsolutions is the lookup to the Sub-Solution table.
+    /// - ctp_subsolutions.ctp_architect is a lookup to systemuser.
+    ///
+    /// Register Step A:
+    /// - Table: opportunity
+    /// - Message: Create
+    /// - Stage: PreOperation
+    /// - Mode: Synchronous
+    /// - Images: none
+    ///
+    /// Register Step B:
+    /// - Table: opportunity
+    /// - Message: Update
+    /// - Stage: PreOperation
+    /// - Mode: Synchronous
+    /// - Filtering Attributes: ctp_subsolutions
+    /// - Images: none
+    /// </summary>
+    public class OpportunityArchitectFromSubSolutionPlugin : PluginBase
+    {
+        protected override void ExecuteInternal(
+            IPluginExecutionContext context,
+            IOrganizationService service,
+            ITracingService trace)
+        {
+            trace?.Trace("TRACE-PLUGIN2: Starting OpportunityArchitectFromSubSolutionPlugin.");
+
+            if (context.Depth > 1)
+            {
+                trace?.Trace("TRACE-PLUGIN2-SKIP: Depth {0} > 1. Exiting to avoid recursion.", context.Depth);
+                return;
+            }
+
+            if (!IsPreOperation(context) || !IsPrimaryEntity(context, Schema.Opportunity))
+            {
+                trace?.Trace(
+                    "TRACE-PLUGIN2-SKIP: Expected opportunity PreOperation. Actual Entity={0}, Stage={1}.",
+                    context.PrimaryEntityName,
+                    context.Stage);
+                return;
+            }
+
+            if (!IsMessage(context, "Create") && !IsMessage(context, "Update"))
+            {
+                trace?.Trace("TRACE-PLUGIN2-SKIP: Message {0} is not handled.", context.MessageName);
+                return;
+            }
+
+            var target = GetTargetEntity(context);
+            TraceTarget(trace, target);
+
+            if (target == null)
+            {
+                trace?.Trace("TRACE-PLUGIN2-SKIP: Target was not an Entity.");
+                return;
+            }
+
+            if (IsMessage(context, "Update") &&
+                !target.Attributes.Contains(Schema.OpportunitySubSolution))
+            {
+                trace?.Trace(
+                    "TRACE-PLUGIN2-SKIP: Update did not include {0}. Target Attributes=[{1}].",
+                    Schema.OpportunitySubSolution,
+                    FormatKeys(target.Attributes));
+                return;
+            }
+
+            if (!target.Attributes.Contains(Schema.OpportunitySubSolution))
+            {
+                trace?.Trace(
+                    "TRACE-PLUGIN2-SKIP: No {0} supplied on Target.",
+                    Schema.OpportunitySubSolution);
+                return;
+            }
+
+            ApplyArchitectFromSubSolution(target, service, trace);
+        }
+
+        private static void ApplyArchitectFromSubSolution(
+            Entity target,
+            IOrganizationService service,
+            ITracingService trace)
+        {
+            var subSolutionRef = target.GetAttributeValue<EntityReference>(Schema.OpportunitySubSolution);
+
+            trace?.Trace(
+                "TRACE-PLUGIN2: Resolved {0}={1}.",
+                Schema.OpportunitySubSolution,
+                FormatEntityReference(subSolutionRef));
+
+            if (subSolutionRef == null)
+            {
+                target[Schema.OpportunityArchitect] = null;
+
+                trace?.Trace(
+                    "TRACE-PLUGIN2-ACTION: {0} was cleared, so {1} was also cleared.",
+                    Schema.OpportunitySubSolution,
+                    Schema.OpportunityArchitect);
+                return;
+            }
+
+            var subSolution = service.Retrieve(
+                Schema.SubSolution,
+                subSolutionRef.Id,
+                new ColumnSet(Schema.SubSolutionArchitect));
+
+            var architectRef = subSolution?.GetAttributeValue<EntityReference>(Schema.SubSolutionArchitect);
+
+            trace?.Trace(
+                "TRACE-PLUGIN2: Retrieved {0}.{1}={2}.",
+                Schema.SubSolution,
+                Schema.SubSolutionArchitect,
+                FormatEntityReference(architectRef));
+
+            if (architectRef == null)
+            {
+                target[Schema.OpportunityArchitect] = null;
+
+                trace?.Trace(
+                    "TRACE-PLUGIN2-ACTION: Selected Sub-Solution has no Architect. Cleared {0}.",
+                    Schema.OpportunityArchitect);
+                return;
+            }
+
+            target[Schema.OpportunityArchitect] = architectRef;
+
+            trace?.Trace(
+                "TRACE-PLUGIN2-ACTION: Defaulted {0} to {1} from Sub-Solution {2}.",
+                Schema.OpportunityArchitect,
+                FormatEntityReference(architectRef),
+                subSolutionRef.Id);
+        }
+    }
+
+    // ============================================================
+    //  PLUGIN 3: SET STAGE TO 100% WHEN OPPORTUNITY IS WON
+    // ============================================================
+    /// <summary>
+    /// Business rule:
+    /// When an Opportunity is closed as Won, automatically set the Stage field to 100%.
+    ///
+    /// Implementation:
+    /// - Stage field logical name: opportunity.new_percentcomplete
+    /// - 100% option value: 100000000 = "100 - SOW signed"
+    ///
+    /// Register Step A:
+    /// - Table: opportunity
+    /// - Message: Update
+    /// - Stage: PreOperation
+    /// - Mode: Synchronous
+    /// - Filtering Attributes: statecode,statuscode
+    /// - PreImage Name: PreImage
+    /// - PreImage Fields: statecode,statuscode
+    ///
+    /// Register Step B:
+    /// - Table: opportunity
+    /// - Message: WinOpportunity
+    /// - Stage: PostOperation
+    /// - Mode: Synchronous
+    /// - Images: none
+    ///
+    /// Optional Step C:
+    /// - Table: opportunity
+    /// - Message: SetState or SetStateDynamicEntity
+    /// - Stage: PostOperation
+    /// - Mode: Synchronous
+    /// </summary>
+    public class OpportunityWonStagePlugin : PluginBase
+    {
+        protected override void ExecuteInternal(
+            IPluginExecutionContext context,
+            IOrganizationService service,
+            ITracingService trace)
+        {
+            trace?.Trace("TRACE-PLUGIN3: Starting OpportunityWonStagePlugin.");
+
+            if (context.Depth > 1)
+            {
+                trace?.Trace("TRACE-PLUGIN3-SKIP: Depth {0} > 1. Exiting to avoid recursion.", context.Depth);
+                return;
+            }
+
+            if (IsMessage(context, "Update"))
+            {
+                HandleUpdatePath(context, trace);
+                return;
+            }
+
+            if (IsMessage(context, "WinOpportunity"))
+            {
+                HandleWinOpportunityPath(context, service, trace);
+                return;
+            }
+
+            if (IsMessage(context, "SetState") || IsMessage(context, "SetStateDynamicEntity"))
+            {
+                HandleSetStatePath(context, service, trace);
+                return;
+            }
+
+            trace?.Trace("TRACE-PLUGIN3-SKIP: Message {0} is not handled.", context.MessageName);
+        }
+
+        private static void HandleUpdatePath(
+            IPluginExecutionContext context,
+            ITracingService trace)
+        {
+            trace?.Trace("TRACE-PLUGIN3: Handling Update path.");
+
+            if (!IsPreOperation(context) || !IsPrimaryEntity(context, Schema.Opportunity))
+            {
+                trace?.Trace(
+                    "TRACE-PLUGIN3-SKIP: Update path expected opportunity PreOperation. Actual Entity={0}, Stage={1}.",
+                    context.PrimaryEntityName,
+                    context.Stage);
+                return;
+            }
+
+            var target = GetTargetEntity(context);
+            TraceTarget(trace, target);
+
+            if (target == null)
+            {
+                trace?.Trace("TRACE-PLUGIN3-SKIP: Target was not an Entity.");
+                return;
+            }
+
+            var preImage = GetPreImage(context);
+            TracePreImage(trace, preImage);
+
+            var resolvedState = GetAttributeValueFromTargetOrPreImage<OptionSetValue>(
+                target,
+                preImage,
+                Schema.OpportunityStateCode);
+
+            trace?.Trace(
+                "TRACE-PLUGIN3: Resolved statecode={0}.",
+                FormatOptionSet(resolvedState));
+
+            if (resolvedState == null || resolvedState.Value != Schema.OpportunityStateWon)
+            {
+                trace?.Trace(
+                    "TRACE-PLUGIN3-NOOP: Opportunity is not Won. Expected={0}; Actual={1}.",
+                    Schema.OpportunityStateWon,
+                    FormatOptionSet(resolvedState));
+                return;
+            }
+
+            SetOpportunityStageTo100(target);
+
+            trace?.Trace(
+                "TRACE-PLUGIN3-ACTION: Update path set {0}={1}.",
+                Schema.OpportunityStage,
+                Schema.Stage100Percent);
+        }
+
+        private static void HandleWinOpportunityPath(
+            IPluginExecutionContext context,
+            IOrganizationService service,
+            ITracingService trace)
+        {
+            trace?.Trace("TRACE-PLUGIN3: Handling WinOpportunity path.");
+
+            if (!IsPostOperation(context))
+            {
+                trace?.Trace(
+                    "TRACE-PLUGIN3-SKIP: WinOpportunity must be PostOperation stage 40. Actual Stage={0}.",
+                    context.Stage);
+                return;
+            }
+
+            Entity opportunityClose = null;
+
+            if (context.InputParameters != null &&
+                context.InputParameters.Contains(Schema.OpportunityCloseInputParameter) &&
+                context.InputParameters[Schema.OpportunityCloseInputParameter] is Entity closeEntity)
+            {
+                opportunityClose = closeEntity;
+            }
+
+            if (opportunityClose == null)
+            {
+                trace?.Trace("TRACE-PLUGIN3-SKIP: WinOpportunity did not include OpportunityClose Entity.");
+                return;
+            }
+
+            trace?.Trace(
+                "TRACE-PLUGIN3: OpportunityClose found. LogicalName={0}; Attributes=[{1}].",
+                opportunityClose.LogicalName,
+                FormatKeys(opportunityClose.Attributes));
+
+            var opportunityRef = opportunityClose.GetAttributeValue<EntityReference>(Schema.OpportunityCloseOpportunity);
+
+            trace?.Trace(
+                "TRACE-PLUGIN3: Opportunity reference={0}.",
+                FormatEntityReference(opportunityRef));
+
+            if (opportunityRef == null || opportunityRef.Id == Guid.Empty)
+            {
+                trace?.Trace("TRACE-PLUGIN3-SKIP: OpportunityClose did not contain a valid opportunityid.");
+                return;
+            }
+
+            var update = new Entity(Schema.Opportunity, opportunityRef.Id);
+            SetOpportunityStageTo100(update);
+            service.Update(update);
+
+            trace?.Trace(
+                "TRACE-PLUGIN3-ACTION: WinOpportunity path updated opportunity {0}. Set {1}={2}.",
+                opportunityRef.Id,
+                Schema.OpportunityStage,
+                Schema.Stage100Percent);
+        }
+
+        private static void HandleSetStatePath(
+            IPluginExecutionContext context,
+            IOrganizationService service,
+            ITracingService trace)
+        {
+            trace?.Trace("TRACE-PLUGIN3: Handling SetState/SetStateDynamicEntity path.");
+
+            if (!IsPostOperation(context))
+            {
+                trace?.Trace(
+                    "TRACE-PLUGIN3-SKIP: SetState must be PostOperation stage 40. Actual Stage={0}.",
+                    context.Stage);
+                return;
+            }
+
+            EntityReference entityMoniker = null;
+            OptionSetValue state = null;
+
+            if (context.InputParameters != null &&
+                context.InputParameters.Contains(Schema.EntityMonikerInputParameter) &&
+                context.InputParameters[Schema.EntityMonikerInputParameter] is EntityReference moniker)
+            {
+                entityMoniker = moniker;
+            }
+
+            if (context.InputParameters != null &&
+                context.InputParameters.Contains(Schema.StateInputParameter) &&
+                context.InputParameters[Schema.StateInputParameter] is OptionSetValue stateValue)
+            {
+                state = stateValue;
+            }
+
+            trace?.Trace(
+                "TRACE-PLUGIN3: SetState inputs. EntityMoniker={0}; State={1}.",
+                FormatEntityReference(entityMoniker),
+                FormatOptionSet(state));
+
+            if (entityMoniker == null ||
+                entityMoniker.Id == Guid.Empty ||
+                !string.Equals(entityMoniker.LogicalName, Schema.Opportunity, StringComparison.OrdinalIgnoreCase))
+            {
+                trace?.Trace("TRACE-PLUGIN3-SKIP: EntityMoniker is not a valid opportunity reference.");
+                return;
+            }
+
+            if (state == null || state.Value != Schema.OpportunityStateWon)
+            {
+                trace?.Trace(
+                    "TRACE-PLUGIN3-NOOP: SetState state is not Won. Expected={0}; Actual={1}.",
+                    Schema.OpportunityStateWon,
+                    FormatOptionSet(state));
+                return;
+            }
+
+            var update = new Entity(Schema.Opportunity, entityMoniker.Id);
+            SetOpportunityStageTo100(update);
+            service.Update(update);
+
+            trace?.Trace(
+                "TRACE-PLUGIN3-ACTION: SetState path updated opportunity {0}. Set {1}={2}.",
+                entityMoniker.Id,
+                Schema.OpportunityStage,
+                Schema.Stage100Percent);
+        }
+    }
+}
