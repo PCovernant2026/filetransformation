@@ -1,36 +1,13 @@
-public static class Schema
-{
-    // Tables
-    public const string Opportunity = "opportunity";
-    public const string SystemUser = "systemuser";
-    public const string SubSolution = "ctp_subsolutions"; // likely correct, but still best to verify from table designer
+ctp_solution is an option set field on the opportunity table 
 
-    // Opportunity fields
-    public const string OpportunityName = "name";
-    public const string OpportunityOwner = "ownerid";                    // Client Manager
-    public const string OpportunityClientPartner = "new_clientpartnerid";
-    public const string OpportunityArchitect = "new_architectid";
-    public const string OpportunitySolution = "ctp_solution";
-    public const string OpportunitySubSolution = "ctp_subsolutions";
-    public const string OpportunityProbability = "closeprobability";
-    public const string OpportunityCustomCloseProbability = "new_closeprobability"; // still needs final metadata confirmation
-    public const string OpportunityStateCode = "statecode";
-    public const string OpportunityStatusCode = "statuscode";
+ctp_subsolutions is a lookup field on the opportunity table that looksup to the subsolution table (ctp_subsolutions)
+logig should be when sub solution is selected query and populate the architect (ctp_architect) assigned to that sub_solution note: the ctp_architect is a lookup feild to the user table
 
-    // User role flags
-    public const string UserIsClientManager = "new_clientmanager";
-    public const string UserIsClientPartner = "new_clientpartner";
-    public const string UserIsProjectManager = "new_projectmanager";
-    public const string UserIsArchitect = "new_architect";
 
-    // Sub-Solution fields
-    public const string SubSolutionDefaultArchitect = "ctp_architect";   // still needs confirmation from Sub-Solution table
+ON creation of the opportunity 
 
-    // Opportunity state values
-    public const int OpportunityStateOpen = 0;
-    public const int OpportunityStateWon = 1;
-    public const int OpportunityStateLost = 2;
+query the creating user, check their title (title) on the user record if title contains Partner, populate the new_clientpartnerid field on the opportunity form. note new_clientpartnerid is a lookup field on the opportunity
+ table that also looks up to the user table.
 
-    // Custom close probability option
-    public const int CustomCloseProbabilityClosed = 100000008;
-}
+
+When we close a deal as won, automatically set the "Stage" field to 100%
