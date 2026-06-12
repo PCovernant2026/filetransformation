@@ -1,3 +1,148 @@
+
+
+
+
+
+/// <summary>
+/// ============================================================
+///  PLUGIN 1:
+///  OpportunityClientPartnerFromUserFlagPlugin
+///
+///  Business rule:
+///  - On Opportunity Create
+///  - Query the creating user
+///  - If systemuser.new_clientpartner = Yes/true
+///  - Populate opportunity.new_clientpartnerid
+///
+///  Register:
+///  - Table: opportunity
+///  - Message: Create
+///  - Stage: PreOperation
+///  - Mode: Synchronous
+///  - Filtering Attributes: none
+///  - Images: none
+/// ============================================================
+/// </summary>
+public class OpportunityClientPartnerFromUserFlagPlugin : PluginBase
+{
+    protected override void ExecuteInternal(
+        IPluginExecutionContext context,
+        IOrganizationService service,
+        ITracingService trace)
+    {
+        trace?.Trace("TRACE-PARTNER: Starting OpportunityClientPartnerFromUserFlagPlugin.");
+
+        if (context.Depth > 1)
+        {
+            trace?.Trace("TRACE-PARTNER-SKIP: Depth {0} > 1. Exiting.", context.Depth);
+            return;
+        }
+
+        if (!IsPreOperation(context) ||
+            !IsMessage(context, "Create") ||
+            !IsPrimaryEntity(context, Schema.Opportunity))
+        {
+            trace?.Trace(
+                "TRACE-PARTNER-SKIP: Expected Create opportunity PreOperation. Actual Message={0}; Entity={1}; Stage={2}.",
+                context.MessageName,
+                context.PrimaryEntityName,
+                context.Stage);
+            return;
+        }
+
+        var target = GetTargetEntity(context);
+        TraceTarget(trace, target);
+
+        if (target == null)
+        {
+            trace?.Trace("TRACE-PARTNER-SKIP: Target is null.");
+            return;
+        }
+
+        if (target.Attributes.Contains(Schema.OpportunityClientPartner) &&
+            target[Schema.OpportunityClientPartner] != null)
+        {
+            trace?.Trace(
+                "TRACE-PARTNER-NOOP: {0} already supplied as {1}. No overwrite.",
+                Schema.OpportunityClientPartner,
+                FormatEntityReference(target.GetAttributeValue<EntityReference>(Schema.OpportunityClientPartner)));
+            return;
+        }
+
+        var creatingUserId = context.InitiatingUserId != Guid.Empty
+            ? context.InitiatingUserId
+            : context.UserId;
+
+        if (creatingUserId == Guid.Empty)
+        {
+            trace?.Trace("TRACE-PARTNER-SKIP: Creating user could not be resolved.");
+            return;
+        }
+
+        trace?.Trace(
+            "TRACE-PARTNER: Retrieving systemuser {0} with column {1}.",
+            creatingUserId,
+            Schema.SystemUserIsClientPartner);
+
+        var creatingUser = service.Retrieve(
+            Schema.SystemUser,
+            creatingUserId,
+            new ColumnSet(Schema.SystemUserIsClientPartner));
+
+        if (creatingUser == null)
+        {
+            trace?.Trace("TRACE-PARTNER-SKIP: Creating user record could not be retrieved.");
+            return;
+        }
+
+        bool isClientPartner =
+            creatingUser.Contains(Schema.SystemUserIsClientPartner) &&
+            creatingUser.GetAttributeValue<bool>(Schema.SystemUserIsClientPartner);
+
+        trace?.Trace(
+            "TRACE-PARTNER: Creating user {0}; {1}={2}.",
+            creatingUserId,
+            Schema.SystemUserIsClientPartner,
+            isClientPartner);
+
+        if (!isClientPartner)
+        {
+            trace?.Trace(
+                "TRACE-PARTNER-NOOP: User is not marked as Client Partner. {0} not populated.",
+                Schema.OpportunityClientPartner);
+            return;
+        }
+
+        var userRef = new EntityReference(Schema.SystemUser, creatingUserId);
+        target[Schema.OpportunityClientPartner] = userRef;
+
+        trace?.Trace(
+            "TRACE-PARTNER-ACTION: User is Client Partner. Defaulted {0} to {1}.",
+            Schema.OpportunityClientPartner,
+            FormatEntityReference(userRef));
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+////////////////////////////
 public class OpportunityWonStagePlugin : PluginBase
 {
     protected override void ExecuteInternal(
