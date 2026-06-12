@@ -1,373 +1,91 @@
-
-
-
-
-
-/// <summary>
-/// ============================================================
-///  PLUGIN 1:
-///  OpportunityClientPartnerFromUserFlagPlugin
-///
-///  Business rule:
-///  - On Opportunity Create
-///  - Query the creating user
-///  - If systemuser.new_clientpartner = Yes/true
-///  - Populate opportunity.new_clientpartnerid
-///
-///  Register:
-///  - Table: opportunity
-///  - Message: Create
-///  - Stage: PreOperation
-///  - Mode: Synchronous
-///  - Filtering Attributes: none
-///  - Images: none
-/// ============================================================
-/// </summary>
-public class OpportunityClientPartnerFromUserFlagPlugin : PluginBase
-{
-    protected override void ExecuteInternal(
-        IPluginExecutionContext context,
-        IOrganizationService service,
-        ITracingService trace)
-    {
-        trace?.Trace("TRACE-PARTNER: Starting OpportunityClientPartnerFromUserFlagPlugin.");
-
-        if (context.Depth > 1)
-        {
-            trace?.Trace("TRACE-PARTNER-SKIP: Depth {0} > 1. Exiting.", context.Depth);
-            return;
-        }
-
-        if (!IsPreOperation(context) ||
-            !IsMessage(context, "Create") ||
-            !IsPrimaryEntity(context, Schema.Opportunity))
-        {
-            trace?.Trace(
-                "TRACE-PARTNER-SKIP: Expected Create opportunity PreOperation. Actual Message={0}; Entity={1}; Stage={2}.",
-                context.MessageName,
-                context.PrimaryEntityName,
-                context.Stage);
-            return;
-        }
-
-        var target = GetTargetEntity(context);
-        TraceTarget(trace, target);
-
-        if (target == null)
-        {
-            trace?.Trace("TRACE-PARTNER-SKIP: Target is null.");
-            return;
-        }
-
-        if (target.Attributes.Contains(Schema.OpportunityClientPartner) &&
-            target[Schema.OpportunityClientPartner] != null)
-        {
-            trace?.Trace(
-                "TRACE-PARTNER-NOOP: {0} already supplied as {1}. No overwrite.",
-                Schema.OpportunityClientPartner,
-                FormatEntityReference(target.GetAttributeValue<EntityReference>(Schema.OpportunityClientPartner)));
-            return;
-        }
-
-        var creatingUserId = context.InitiatingUserId != Guid.Empty
-            ? context.InitiatingUserId
-            : context.UserId;
-
-        if (creatingUserId == Guid.Empty)
-        {
-            trace?.Trace("TRACE-PARTNER-SKIP: Creating user could not be resolved.");
-            return;
-        }
-
-        trace?.Trace(
-            "TRACE-PARTNER: Retrieving systemuser {0} with column {1}.",
-            creatingUserId,
-            Schema.SystemUserIsClientPartner);
-
-        var creatingUser = service.Retrieve(
-            Schema.SystemUser,
-            creatingUserId,
-            new ColumnSet(Schema.SystemUserIsClientPartner));
-
-        if (creatingUser == null)
-        {
-            trace?.Trace("TRACE-PARTNER-SKIP: Creating user record could not be retrieved.");
-            return;
-        }
-
-        bool isClientPartner =
-            creatingUser.Contains(Schema.SystemUserIsClientPartner) &&
-            creatingUser.GetAttributeValue<bool>(Schema.SystemUserIsClientPartner);
-
-        trace?.Trace(
-            "TRACE-PARTNER: Creating user {0}; {1}={2}.",
-            creatingUserId,
-            Schema.SystemUserIsClientPartner,
-            isClientPartner);
-
-        if (!isClientPartner)
-        {
-            trace?.Trace(
-                "TRACE-PARTNER-NOOP: User is not marked as Client Partner. {0} not populated.",
-                Schema.OpportunityClientPartner);
-            return;
-        }
-
-        var userRef = new EntityReference(Schema.SystemUser, creatingUserId);
-        target[Schema.OpportunityClientPartner] = userRef;
-
-        trace?.Trace(
-            "TRACE-PARTNER-ACTION: User is Client Partner. Defaulted {0} to {1}.",
-            Schema.OpportunityClientPartner,
-            FormatEntityReference(userRef));
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-////////////////////////////
-public class OpportunityWonStagePlugin : PluginBase
-{
-    protected override void ExecuteInternal(
-        IPluginExecutionContext context,
-        IOrganizationService service,
-        ITracingService trace)
-    {
-        trace?.Trace("TRACE-WONSTAGE: Starting OpportunityWonStagePlugin.");
-
-        if (context.Depth > 1)
-        {
-            trace?.Trace("TRACE-WONSTAGE-SKIP: Depth {0} > 1. Exiting.", context.Depth);
-            return;
-        }
-
-        if (IsMessage(context, "Update"))
-        {
-            HandleUpdatePath(context, trace);
-            return;
-        }
-
-        // IMPORTANT:
-        // Your org fires Message=Win, not WinOpportunity.
-        // We support both to be safe.
-        if (IsMessage(context, "Win") || IsMessage(context, "WinOpportunity"))
-        {
-            HandleWinPath(context, service, trace);
-            return;
-        }
-
-        if (IsMessage(context, "SetState") ||
-            IsMessage(context, "SetStateDynamicEntity"))
-        {
-            HandleSetStatePath(context, service, trace);
-            return;
-        }
-
-        trace?.Trace(
-            "TRACE-WONSTAGE-SKIP: Message {0} is not handled.",
-            context.MessageName);
-    }
-
-    private static void HandleUpdatePath(
-        IPluginExecutionContext context,
-        ITracingService trace)
-    {
-        trace?.Trace("TRACE-WONSTAGE: Handling Update path.");
-
-        if (!IsPreOperation(context) ||
-            !IsPrimaryEntity(context, Schema.Opportunity))
-        {
-            trace?.Trace(
-                "TRACE-WONSTAGE-SKIP: Update path expected opportunity PreOperation. Actual Entity={0}; Stage={1}.",
-                context.PrimaryEntityName,
-                context.Stage);
-            return;
-        }
-
-        var target = GetTargetEntity(context);
-        TraceTarget(trace, target);
-
-        if (target == null)
-        {
-            trace?.Trace("TRACE-WONSTAGE-SKIP: Target is null.");
-            return;
-        }
-
-        var preImage = GetPreImage(context);
-        TracePreImage(trace, preImage);
-
-        var targetState = target.GetAttributeValue<OptionSetValue>(
-            Schema.OpportunityStateCode);
-
-        var preImageState = preImage?.GetAttributeValue<OptionSetValue>(
-            Schema.OpportunityStateCode);
-
-        var resolvedState = GetAttributeValueFromTargetOrPreImage<OptionSetValue>(
-            target,
-            preImage,
-            Schema.OpportunityStateCode);
-
-        trace?.Trace(
-            "TRACE-WONSTAGE: TargetState={0}; PreImageState={1}; ResolvedState={2}.",
-            FormatOptionSet(targetState),
-            FormatOptionSet(preImageState),
-            FormatOptionSet(resolvedState));
-
-        if (resolvedState == null ||
-            resolvedState.Value != Schema.OpportunityStateWon)
-        {
-            trace?.Trace(
-                "TRACE-WONSTAGE-NOOP: Opportunity is not Won. Expected={0}; Actual={1}.",
-                Schema.OpportunityStateWon,
-                FormatOptionSet(resolvedState));
-            return;
-        }
-
-        SetOpportunityStageTo100Percent(target);
-
-        trace?.Trace(
-            "TRACE-WONSTAGE-ACTION: Update path set {0}={1}.",
-            Schema.OpportunityStage,
-            Schema.OpportunityStage100Percent);
-    }
-
-    private static void HandleWinPath(
-        IPluginExecutionContext context,
-        IOrganizationService service,
-        ITracingService trace)
-    {
-        trace?.Trace(
-            "TRACE-WONSTAGE: Handling Win path. Message={0}; Stage={1}.",
-            context.MessageName,
-            context.Stage);
-
-        Entity opportunityClose = null;
-
-        if (context.InputParameters != null &&
-            context.InputParameters.Contains(Schema.OpportunityCloseInputParameter) &&
-            context.InputParameters[Schema.OpportunityCloseInputParameter] is Entity closeEntity)
-        {
-            opportunityClose = closeEntity;
-        }
-
-        if (opportunityClose == null)
-        {
-            trace?.Trace("TRACE-WONSTAGE-SKIP: OpportunityClose input was not found.");
-            return;
-        }
-
-        trace?.Trace(
-            "TRACE-WONSTAGE: OpportunityClose found. LogicalName={0}; Attributes=[{1}].",
-            opportunityClose.LogicalName,
-            FormatKeys(opportunityClose.Attributes));
-
-        var opportunityRef = opportunityClose.GetAttributeValue<EntityReference>(
-            Schema.OpportunityCloseOpportunity);
-
-        trace?.Trace(
-            "TRACE-WONSTAGE: Opportunity reference={0}.",
-            FormatEntityReference(opportunityRef));
-
-        if (opportunityRef == null ||
-            opportunityRef.Id == Guid.Empty)
-        {
-            trace?.Trace("TRACE-WONSTAGE-SKIP: Invalid opportunity reference.");
-            return;
-        }
-
-        var update = new Entity(Schema.Opportunity, opportunityRef.Id);
-        SetOpportunityStageTo100Percent(update);
-
-        service.Update(update);
-
-        trace?.Trace(
-            "TRACE-WONSTAGE-ACTION: Win path updated opportunity {0}. Set {1}={2}.",
-            opportunityRef.Id,
-            Schema.OpportunityStage,
-            Schema.OpportunityStage100Percent);
-    }
-
-    private static void HandleSetStatePath(
-        IPluginExecutionContext context,
-        IOrganizationService service,
-        ITracingService trace)
-    {
-        trace?.Trace("TRACE-WONSTAGE: Handling SetState / SetStateDynamicEntity path.");
-
-        if (!IsPostOperation(context))
-        {
-            trace?.Trace(
-                "TRACE-WONSTAGE-SKIP: SetState must be PostOperation stage 40. Actual Stage={0}.",
-                context.Stage);
-            return;
-        }
-
-        EntityReference entityMoniker = null;
-        OptionSetValue state = null;
-
-        if (context.InputParameters != null &&
-            context.InputParameters.Contains(Schema.EntityMonikerInputParameter) &&
-            context.InputParameters[Schema.EntityMonikerInputParameter] is EntityReference moniker)
-        {
-            entityMoniker = moniker;
-        }
-
-        if (context.InputParameters != null &&
-            context.InputParameters.Contains(Schema.StateInputParameter) &&
-            context.InputParameters[Schema.StateInputParameter] is OptionSetValue stateValue)
-        {
-            state = stateValue;
-        }
-
-        trace?.Trace(
-            "TRACE-WONSTAGE: EntityMoniker={0}; State={1}.",
-            FormatEntityReference(entityMoniker),
-            FormatOptionSet(state));
-
-        if (entityMoniker == null ||
-            entityMoniker.Id == Guid.Empty ||
-            !string.Equals(entityMoniker.LogicalName, Schema.Opportunity, StringComparison.OrdinalIgnoreCase))
-        {
-            trace?.Trace("TRACE-WONSTAGE-SKIP: EntityMoniker is not a valid opportunity.");
-            return;
-        }
-
-        if (state == null ||
-            state.Value != Schema.OpportunityStateWon)
-        {
-            trace?.Trace(
-                "TRACE-WONSTAGE-NOOP: State is not Won. Expected={0}; Actual={1}.",
-                Schema.OpportunityStateWon,
-                FormatOptionSet(state));
-            return;
-        }
-
-        var update = new Entity(Schema.Opportunity, entityMoniker.Id);
-        SetOpportunityStageTo100Percent(update);
-
-        service.Update(update);
-
-        trace?.Trace(
-            "TRACE-WONSTAGE-ACTION: SetState updated opportunity {0}. Set {1}={2}.",
-            entityMoniker.Id,
-            Schema.OpportunityStage,
-            Schema.OpportunityStage100Percent);
-    }
-}
+Exception Message: An error occurred in OpportunityClientPartnerFromUserFlagPlugin: attribute
+
+ErrorCode: -2147220891
+HexErrorCode: 0x80040265
+
+ErrorDetails: 
+	OperationStatus: 0
+	SubErrorCode: -2146233088
+	Plugin: 
+		ExceptionFromPluginExecute: Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin
+		ExceptionRetriable: False
+		ExceptionSource: PluginExecution
+		OriginalException: PluginExecution
+		PluginTrace: TRACE-START: Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin
+TRACE-CONTEXT: Message=Create; PrimaryEntity=opportunity; PrimaryEntityId=7895f9fe-4966-f111-a825-3833c5e85e70; Stage=20; Mode=0; Depth=1; UserId=5ab55247-7154-e611-80dc-c4346bac9934; InitiatingUserId=5ab55247-7154-e611-80dc-c4346bac9934; OrganizationId=cc92cb35-52f4-4701-b853-7360c994664d; CorrelationId=efbd4aac-ac7f-421f-96c4-f4d5cb607785; OperationId=b5d5cdb9-c216-4120-bd8a-352774baeba3
+TRACE-PARAMETERS: InputParameters=[Target]; OutputParameters=[none]; SharedVariables=[IsAutoTransact, AcceptLang, x-ms-app-name, DefaultsAddedFlag]
+TRACE-PARTNER: Starting OpportunityClientPartnerFromUserFlagPlugin.
+TRACE-TARGET: LogicalName=opportunity; Id=7895f9fe-4966-f111-a825-3833c5e85e70; AttributeCount=66; Attributes=[totaltax, confirminterest, statecode, filedebrief, isprivate, ctp_billingratetype, ctp_notifypmo, sendthankyounote, totalamount, ctp_wbsreceived, resolvefeedback, salesstagecode, ctp_psx, pursuitdecision, opportunityratingcode, identifypursuitteam, developproposal, totallineitemamount, captureproposalfeedback, new_percentcomplete, ownerid, presentfinalproposal, totallineitemdiscountamount, name, msdyn_forecastcategory, ctp_pmonotified, li_isinfluenced, totalamountlessfreight, createdon, identifycompetitors, transactioncurrencyid, isrevenuesystemcalculated, pricingerrorcode, parentcontactid, ctp_responsibleid, opportunityid, modifiedby, estimatedvalue, statuscode, modifiedonbehalfby, decisionmaker, evaluatefit, msdyn_gdproptout, estimatedclosedate, identifycustomercontacts, new_softwaredivisiondemorequest, totaldiscountamount, completeinternalreview, presentproposal, parentaccountid, ctp_addedtopartnercenter, timezoneruleversionnumber, createdby, completefinalproposal, msft_microsoftpartnercenterreferralsync, prioritycode, ctp_prioritydeal, customerid, createdonbehalfby, processid, owningbusinessunit, modifiedon, participatesinworkflow, skippricecalculation, msft_microsoftpartnercenterreferralvisible, new_lovleadsourceid]
+TRACE-PARTNER: Retrieving systemuser 5ab55247-7154-e611-80dc-c4346bac9934 with column .
+TRACE-ERROR: Unhandled exception in Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin. CorrelationId=efbd4aac-ac7f-421f-96c4-f4d5cb607785. Exception=System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: attribute (Fault Detail is equal to Exception details: 
+ErrorCode: 0x80040203
+Message: attribute
+TimeStamp: 2026-06-12T10:32:31.0000000Z
+OriginalException: System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: attribute (Fault Detail is equal to Exception details: 
+ErrorCode: 0x80040203
+Message: attribute
+TimeStamp: 2026-06-12T10:32:31.3333769Z
+--
+Exception details: 
+ErrorCode: 0x80040203
+Message: attribute
+TimeStamp: 2026-06-12T10:32:31.3333769Z
+--
+Exception details: 
+ErrorCode: 0x80040216
+Message: System.ArgumentNullException: Value cannot be null.
+Parameter name: attribute
+TimeStamp: 2026-06-12T10:32:31.3333769Z
+--
+).
+ExceptionSource: SdkClientError
+--
+).
+
+HelpLink: http://go.microsoft.com/fwlink/?LinkID=398563&error=Microsoft.Crm.CrmException%3a80040265&client=platform
+
+TraceText: 
+	[New_Opportunity auomation: Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin]
+	[af93671c-4766-f111-a825-000d3a8ff69f: Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin: Create of opportunity]
+	Starting sync workflow 'New business rule', Id: b2d2295c-5dcc-ef11-b8e8-7c1e52146f9e
+	Entering ConditionStep1_step: 
+	Entering SetFieldRequiredLevelStep5_step: 
+	Entering SetFieldRequiredLevelStep6_step: 
+	Entering SetFieldRequiredLevelStep7_step: 
+	Entering SetFieldRequiredLevelStep8_step: 
+	Entering ConditionBranchStep3_step: 
+	Sync workflow 'New business rule' completed successfully
+	
+		
+		TRACE-START: Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin
+		TRACE-CONTEXT: Message=Create; PrimaryEntity=opportunity; PrimaryEntityId=7895f9fe-4966-f111-a825-3833c5e85e70; Stage=20; Mode=0; Depth=1; UserId=5ab55247-7154-e611-80dc-c4346bac9934; InitiatingUserId=5ab55247-7154-e611-80dc-c4346bac9934; OrganizationId=cc92cb35-52f4-4701-b853-7360c994664d; CorrelationId=efbd4aac-ac7f-421f-96c4-f4d5cb607785; OperationId=b5d5cdb9-c216-4120-bd8a-352774baeba3
+		TRACE-PARAMETERS: InputParameters=[Target]; OutputParameters=[none]; SharedVariables=[IsAutoTransact, AcceptLang, x-ms-app-name, DefaultsAddedFlag]
+		TRACE-PARTNER: Starting OpportunityClientPartnerFromUserFlagPlugin.
+		TRACE-TARGET: LogicalName=opportunity; Id=7895f9fe-4966-f111-a825-3833c5e85e70; AttributeCount=66; Attributes=[totaltax, confirminterest, statecode, filedebrief, isprivate, ctp_billingratetype, ctp_notifypmo, sendthankyounote, totalamount, ctp_wbsreceived, resolvefeedback, salesstagecode, ctp_psx, pursuitdecision, opportunityratingcode, identifypursuitteam, developproposal, totallineitemamount, captureproposalfeedback, new_percentcomplete, ownerid, presentfinalproposal, totallineitemdiscountamount, name, msdyn_forecastcategory, ctp_pmonotified, li_isinfluenced, totalamountlessfreight, createdon, identifycompetitors, transactioncurrencyid, isrevenuesystemcalculated, pricingerrorcode, parentcontactid, ctp_responsibleid, opportunityid, modifiedby, estimatedvalue, statuscode, modifiedonbehalfby, decisionmaker, evaluatefit, msdyn_gdproptout, estimatedclosedate, identifycustomercontacts, new_softwaredivisiondemorequest, totaldiscountamount, completeinternalreview, presentproposal, parentaccountid, ctp_addedtopartnercenter, timezoneruleversionnumber, createdby, completefinalproposal, msft_microsoftpartnercenterreferralsync, prioritycode, ctp_prioritydeal, customerid, createdonbehalfby, processid, owningbusinessunit, modifiedon, participatesinworkflow, skippricecalculation, msft_microsoftpartnercenterreferralvisible, new_lovleadsourceid]
+		TRACE-PARTNER: Retrieving systemuser 5ab55247-7154-e611-80dc-c4346bac9934 with column .
+		TRACE-ERROR: Unhandled exception in Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin. CorrelationId=efbd4aac-ac7f-421f-96c4-f4d5cb607785. Exception=System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: attribute (Fault Detail is equal to Exception details: 
+		ErrorCode: 0x80040203
+		Message: attribute
+		TimeStamp: 2026-06-12T10:32:31.0000000Z
+		OriginalException: System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: attribute (Fault Detail is equal to Exception details: 
+		ErrorCode: 0x80040203
+		Message: attribute
+		TimeStamp: 2026-06-12T10:32:31.3333769Z
+		--
+		Exception details: 
+		ErrorCode: 0x80040203
+		Message: attribute
+		TimeStamp: 2026-06-12T10:32:31.3333769Z
+		--
+		Exception details: 
+		ErrorCode: 0x80040216
+		Message: System.ArgumentNullException: Value cannot be null.
+		Parameter name: attribute
+		TimeStamp: 2026-06-12T10:32:31.3333769Z
+		--
+		).
+		ExceptionSource: SdkClientError
+		--
+		).
+
+Activity Id: c749eb9b-4167-4306-9ec2-15c0e2ca54c9
