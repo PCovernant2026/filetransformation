@@ -1,7 +1,6 @@
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using System;
-using System.Security.Principal;
 
 namespace Ctp.Crm.OpportunityAutomation
 {
@@ -26,7 +25,7 @@ namespace Ctp.Crm.OpportunityAutomation
         public const string OpportunityStatusCode = "statuscode";
 
         // System User fields
-        public const string SystemUserIsclientPartner = "new_clientpartner";
+        public const string SystemUserIsClientPartner = "new_clientpartner";    // Boolean / Two Options field
 
         // Sub-Solution fields
         public const string SubSolutionArchitect = "ctp_architect";             // Lookup to systemuser
@@ -49,8 +48,6 @@ namespace Ctp.Crm.OpportunityAutomation
         // Stage option value for 100%
         // Target metadata label: 100 - SOW signed
         public const int OpportunityStage100Percent = 100000000;
-
-        public static string SystemUserIsClientPartner { get; internal set; }
     }
 
     /// <summary>
@@ -185,13 +182,6 @@ namespace Ctp.Crm.OpportunityAutomation
             return context.Stage == Schema.PostOperationStage;
         }
 
-        protected static bool TextContains(string value, string token)
-        {
-            return !string.IsNullOrWhiteSpace(value) &&
-                   !string.IsNullOrWhiteSpace(token) &&
-                   value.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
         protected static void SetOpportunityStageTo100Percent(Entity opportunity)
         {
             if (opportunity == null)
@@ -297,6 +287,19 @@ namespace Ctp.Crm.OpportunityAutomation
     /// <summary>
     /// ============================================================
     ///  PLUGIN 1:
+    ///  OpportunityClientPartnerFromUserFlagPlugin
+    ///
+    ///  Business rule:
+    ///  - On Opportunity Create
+    ///  - Query creating user
+    ///  - If systemuser.new_clientpartner = true
+    ///  - Populate opportunity.new_clientpartnerid
+    ///
+    ///  Register:
+    ///  - Table: opportunity
+    ///  - Message: Create
+    ///  - Stage: PreOperation
+    ///  - Mode: Synchronous
     /// ============================================================
     /// </summary>
     public class OpportunityClientPartnerFromUserFlagPlugin : PluginBase
@@ -372,13 +375,13 @@ namespace Ctp.Crm.OpportunityAutomation
             }
 
             bool isClientPartner =
-                creatingUser.Contains(Schema.SystemUserIsclientPartner) &&
+                creatingUser.Contains(Schema.SystemUserIsClientPartner) &&
                 creatingUser.GetAttributeValue<bool>(Schema.SystemUserIsClientPartner);
 
             trace?.Trace(
                 "TRACE-PARTNER: Creating user {0}; {1}={2}.",
                 creatingUserId,
-                Schema.SystemUserIsclientPartner,
+                Schema.SystemUserIsClientPartner,
                 isClientPartner);
 
             if (!isClientPartner)
@@ -402,6 +405,24 @@ namespace Ctp.Crm.OpportunityAutomation
     /// <summary>
     /// ============================================================
     ///  PLUGIN 2:
+    ///  OpportunityArchitectFromSubSolutionPlugin
+    ///
+    ///  Business rule:
+    ///  - On Opportunity Create/Update
+    ///  - Use opportunity.ctp_subsolutions lookup
+    ///  - Query ctp_subsolutions.ctp_architect
+    ///  - Populate opportunity.new_architectid
+    ///
+    ///  Register Create:
+    ///  - Table: opportunity
+    ///  - Message: Create
+    ///  - Stage: PreOperation
+    ///
+    ///  Register Update:
+    ///  - Table: opportunity
+    ///  - Message: Update
+    ///  - Stage: PreOperation
+    ///  - Filtering Attributes: ctp_subsolutions
     /// ============================================================
     /// </summary>
     public class OpportunityArchitectFromSubSolutionPlugin : PluginBase
@@ -528,6 +549,16 @@ namespace Ctp.Crm.OpportunityAutomation
     /// ============================================================
     ///  PLUGIN 3:
     ///  OpportunityWonStagePlugin
+    ///
+    ///  Business rule:
+    ///  - When Opportunity is won
+    ///  - Set opportunity.new_percentcomplete to 100%
+    ///
+    ///  Supports:
+    ///  - Update
+    ///  - Win
+    ///  - WinOpportunity
+    ///  - SetState / SetStateDynamicEntity
     /// ============================================================
     /// </summary>
     public class OpportunityWonStagePlugin : PluginBase
@@ -551,8 +582,6 @@ namespace Ctp.Crm.OpportunityAutomation
                 return;
             }
 
-            // IMPORTANT:
-            // fires Message=Win,and WinOpportunity to be safe.
             if (IsMessage(context, "Win") || IsMessage(context, "WinOpportunity"))
             {
                 HandleWinPath(context, service, trace);
@@ -758,95 +787,3 @@ namespace Ctp.Crm.OpportunityAutomation
         }
     }
 }
-/////////////////////////
-Exception Message: An error occurred in OpportunityClientPartnerFromUserFlagPlugin: attribute
-
-ErrorCode: -2147220891
-HexErrorCode: 0x80040265
-
-ErrorDetails: 
-	OperationStatus: 0
-	SubErrorCode: -2146233088
-	Plugin: 
-		ExceptionFromPluginExecute: Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin
-		ExceptionRetriable: False
-		ExceptionSource: PluginExecution
-		OriginalException: PluginExecution
-		PluginTrace: TRACE-START: Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin
-TRACE-CONTEXT: Message=Create; PrimaryEntity=opportunity; PrimaryEntityId=7895f9fe-4966-f111-a825-3833c5e85e70; Stage=20; Mode=0; Depth=1; UserId=5ab55247-7154-e611-80dc-c4346bac9934; InitiatingUserId=5ab55247-7154-e611-80dc-c4346bac9934; OrganizationId=cc92cb35-52f4-4701-b853-7360c994664d; CorrelationId=efbd4aac-ac7f-421f-96c4-f4d5cb607785; OperationId=b5d5cdb9-c216-4120-bd8a-352774baeba3
-TRACE-PARAMETERS: InputParameters=[Target]; OutputParameters=[none]; SharedVariables=[IsAutoTransact, AcceptLang, x-ms-app-name, DefaultsAddedFlag]
-TRACE-PARTNER: Starting OpportunityClientPartnerFromUserFlagPlugin.
-TRACE-TARGET: LogicalName=opportunity; Id=7895f9fe-4966-f111-a825-3833c5e85e70; AttributeCount=66; Attributes=[totaltax, confirminterest, statecode, filedebrief, isprivate, ctp_billingratetype, ctp_notifypmo, sendthankyounote, totalamount, ctp_wbsreceived, resolvefeedback, salesstagecode, ctp_psx, pursuitdecision, opportunityratingcode, identifypursuitteam, developproposal, totallineitemamount, captureproposalfeedback, new_percentcomplete, ownerid, presentfinalproposal, totallineitemdiscountamount, name, msdyn_forecastcategory, ctp_pmonotified, li_isinfluenced, totalamountlessfreight, createdon, identifycompetitors, transactioncurrencyid, isrevenuesystemcalculated, pricingerrorcode, parentcontactid, ctp_responsibleid, opportunityid, modifiedby, estimatedvalue, statuscode, modifiedonbehalfby, decisionmaker, evaluatefit, msdyn_gdproptout, estimatedclosedate, identifycustomercontacts, new_softwaredivisiondemorequest, totaldiscountamount, completeinternalreview, presentproposal, parentaccountid, ctp_addedtopartnercenter, timezoneruleversionnumber, createdby, completefinalproposal, msft_microsoftpartnercenterreferralsync, prioritycode, ctp_prioritydeal, customerid, createdonbehalfby, processid, owningbusinessunit, modifiedon, participatesinworkflow, skippricecalculation, msft_microsoftpartnercenterreferralvisible, new_lovleadsourceid]
-TRACE-PARTNER: Retrieving systemuser 5ab55247-7154-e611-80dc-c4346bac9934 with column .
-TRACE-ERROR: Unhandled exception in Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin. CorrelationId=efbd4aac-ac7f-421f-96c4-f4d5cb607785. Exception=System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: attribute (Fault Detail is equal to Exception details: 
-ErrorCode: 0x80040203
-Message: attribute
-TimeStamp: 2026-06-12T10:32:31.0000000Z
-OriginalException: System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: attribute (Fault Detail is equal to Exception details: 
-ErrorCode: 0x80040203
-Message: attribute
-TimeStamp: 2026-06-12T10:32:31.3333769Z
---
-Exception details: 
-ErrorCode: 0x80040203
-Message: attribute
-TimeStamp: 2026-06-12T10:32:31.3333769Z
---
-Exception details: 
-ErrorCode: 0x80040216
-Message: System.ArgumentNullException: Value cannot be null.
-Parameter name: attribute
-TimeStamp: 2026-06-12T10:32:31.3333769Z
---
-).
-ExceptionSource: SdkClientError
---
-).
-
-HelpLink: http://go.microsoft.com/fwlink/?LinkID=398563&error=Microsoft.Crm.CrmException%3a80040265&client=platform
-
-TraceText: 
-	[New_Opportunity auomation: Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin]
-	[af93671c-4766-f111-a825-000d3a8ff69f: Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin: Create of opportunity]
-	Starting sync workflow 'New business rule', Id: b2d2295c-5dcc-ef11-b8e8-7c1e52146f9e
-	Entering ConditionStep1_step: 
-	Entering SetFieldRequiredLevelStep5_step: 
-	Entering SetFieldRequiredLevelStep6_step: 
-	Entering SetFieldRequiredLevelStep7_step: 
-	Entering SetFieldRequiredLevelStep8_step: 
-	Entering ConditionBranchStep3_step: 
-	Sync workflow 'New business rule' completed successfully
-	
-		
-		TRACE-START: Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin
-		TRACE-CONTEXT: Message=Create; PrimaryEntity=opportunity; PrimaryEntityId=7895f9fe-4966-f111-a825-3833c5e85e70; Stage=20; Mode=0; Depth=1; UserId=5ab55247-7154-e611-80dc-c4346bac9934; InitiatingUserId=5ab55247-7154-e611-80dc-c4346bac9934; OrganizationId=cc92cb35-52f4-4701-b853-7360c994664d; CorrelationId=efbd4aac-ac7f-421f-96c4-f4d5cb607785; OperationId=b5d5cdb9-c216-4120-bd8a-352774baeba3
-		TRACE-PARAMETERS: InputParameters=[Target]; OutputParameters=[none]; SharedVariables=[IsAutoTransact, AcceptLang, x-ms-app-name, DefaultsAddedFlag]
-		TRACE-PARTNER: Starting OpportunityClientPartnerFromUserFlagPlugin.
-		TRACE-TARGET: LogicalName=opportunity; Id=7895f9fe-4966-f111-a825-3833c5e85e70; AttributeCount=66; Attributes=[totaltax, confirminterest, statecode, filedebrief, isprivate, ctp_billingratetype, ctp_notifypmo, sendthankyounote, totalamount, ctp_wbsreceived, resolvefeedback, salesstagecode, ctp_psx, pursuitdecision, opportunityratingcode, identifypursuitteam, developproposal, totallineitemamount, captureproposalfeedback, new_percentcomplete, ownerid, presentfinalproposal, totallineitemdiscountamount, name, msdyn_forecastcategory, ctp_pmonotified, li_isinfluenced, totalamountlessfreight, createdon, identifycompetitors, transactioncurrencyid, isrevenuesystemcalculated, pricingerrorcode, parentcontactid, ctp_responsibleid, opportunityid, modifiedby, estimatedvalue, statuscode, modifiedonbehalfby, decisionmaker, evaluatefit, msdyn_gdproptout, estimatedclosedate, identifycustomercontacts, new_softwaredivisiondemorequest, totaldiscountamount, completeinternalreview, presentproposal, parentaccountid, ctp_addedtopartnercenter, timezoneruleversionnumber, createdby, completefinalproposal, msft_microsoftpartnercenterreferralsync, prioritycode, ctp_prioritydeal, customerid, createdonbehalfby, processid, owningbusinessunit, modifiedon, participatesinworkflow, skippricecalculation, msft_microsoftpartnercenterreferralvisible, new_lovleadsourceid]
-		TRACE-PARTNER: Retrieving systemuser 5ab55247-7154-e611-80dc-c4346bac9934 with column .
-		TRACE-ERROR: Unhandled exception in Ctp.Crm.OpportunityAutomation.OpportunityClientPartnerFromUserFlagPlugin. CorrelationId=efbd4aac-ac7f-421f-96c4-f4d5cb607785. Exception=System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: attribute (Fault Detail is equal to Exception details: 
-		ErrorCode: 0x80040203
-		Message: attribute
-		TimeStamp: 2026-06-12T10:32:31.0000000Z
-		OriginalException: System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]: attribute (Fault Detail is equal to Exception details: 
-		ErrorCode: 0x80040203
-		Message: attribute
-		TimeStamp: 2026-06-12T10:32:31.3333769Z
-		--
-		Exception details: 
-		ErrorCode: 0x80040203
-		Message: attribute
-		TimeStamp: 2026-06-12T10:32:31.3333769Z
-		--
-		Exception details: 
-		ErrorCode: 0x80040216
-		Message: System.ArgumentNullException: Value cannot be null.
-		Parameter name: attribute
-		TimeStamp: 2026-06-12T10:32:31.3333769Z
-		--
-		).
-		ExceptionSource: SdkClientError
-		--
-		).
-
-Activity Id: c749eb9b-4167-4306-9ec2-15c0e2ca54c9
