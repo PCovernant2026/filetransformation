@@ -1,3 +1,10 @@
+
+I'd like you to start looking into building an agent as reusable IP that takes a vendor's quote document ( a PDF/Excel file) containing products and cost, reads the line details out of it, and creates a Quote with Quote Lines in D365 Sales associated to an existing Opportunity. It should pull the Account and other header data from that Opportunity. The agent populates Product ID, description, quantity, and cost on each line; the user sets the sell pricing themselves afterward.
+
+
+
+//////////////////////////////
+
 PHASE 1 — FOUNDATION (Dataverse + Storage)
 ✅ Step 1 — Create Supporting Tables (Dataverse)
 You need a staging layer (don’t skip this).
