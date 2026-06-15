@@ -1,0 +1,98 @@
+Vendor Quote Automation Agent (D365 Sales)
+One-Page Solution Overview
+Objective
+Enable sales teams to quickly convert vendor quote documents (PDF/Excel) into structured Quotes with Quote Lines in Dynamics 365 Sales, associated to an existing Opportunity.
+The solution accelerates quote creation, reduces manual data entry, and ensures consistency across accounts—while allowing users to retain control over final sell pricing.
+
+Proposed Approach & Architecture
+We propose a hybrid agent + automation architecture that balances usability, accuracy, and scalability:
+1. Intelligent Intake
+•	User initiates the process from an existing Opportunity
+•	Vendor quote document (PDF or Excel) is uploaded
+•	System captures file and initiates processing
+2. Document Extraction
+•	Extract line-level details (product, description, quantity, cost) using: 
+o	Structured parsing for Excel files
+o	AI-based document processing for PDFs
+•	Normalize extracted data into a consistent format
+3. Data Normalization & Matching
+•	Standardize extracted data into a reusable structure
+•	Apply configurable mapping rules: 
+o	Product ID / SKU matching
+o	Alias or lookup-based mapping
+o	Flag exceptions for user review
+4. User Review & Approval
+•	User reviews extracted lines in a guided interface: 
+o	Validate data accuracy
+o	Resolve unmatched or low-confidence items
+•	Approval step ensures quality before system write
+5. Quote Creation in D365 Sales
+•	System creates a Quote linked to the Opportunity
+•	Automatically inherits header data (Account, currency, etc.)
+•	Creates Quote Lines with: 
+o	Product (or write-in)
+o	Description
+o	Quantity
+o	Cost (reference only)
+•	User sets final sell pricing manually
+
+What We Reuse vs. What We Build
+Reuse (Native Platform Capabilities)
+•	Dynamics 365 Sales entities: 
+o	Opportunities, Quotes, Quote Lines
+•	Product catalog and pricing framework
+•	Power Automate for orchestration
+•	AI Builder for document extraction
+•	Optional Copilot/agent interface for user interaction
+Build (Reusable IP)
+•	Vendor quote import framework (staging + processing)
+•	Configurable vendor layout & mapping logic
+•	Product matching and exception handling engine
+•	Review/approval interface
+•	Reusable orchestration layer for quote creation
+•	Deployment-ready managed solution (configurable across clients)
+
+Proof of Concept (POC) Plan
+Goal
+Demonstrate end-to-end automation from vendor file → D365 Quote.
+Thin Slice (Phase 1)
+•	Single client
+•	Single vendor format
+•	Excel-based input (structured)
+•	User-triggered from Opportunity
+•	Basic line extraction + Quote/Quote Line creation
+•	Exception summary
+Expanded POC (Phase 2)
+•	Add PDF document processing
+•	Introduce user review screen
+•	Validate second vendor/client pattern
+•	Add audit logging and error handling
+
+Key Open Questions
+To move forward, we need alignment on:
+1.	Cost Handling
+o	Where should vendor cost be stored on the Quote Line?
+o	Should it influence pricing or remain informational?
+2.	Product Matching Strategy
+o	Priority rules (e.g., Product ID → SKU → alias → manual)
+3.	Exception Handling Approach
+o	Allow incomplete lines (write-in), or require resolution before creation?
+4.	Opportunity Integration Behavior
+o	Create new Quote only, or reconcile with existing Opportunity products?
+5.	Document Variability
+o	How many vendor formats need to be supported initially?
+6.	User Experience Entry Point
+o	Button on Opportunity vs. embedded agent vs. upload interface
+
+Effort Estimate
+Phase	Scope	Estimated Effort
+Initial POC	Single vendor, Excel-only, minimal UI	~1.5–2.5 weeks
+Expanded POC	PDF support, review UI, exception handling	~2.5–4 weeks
+Reusable IP	Config-driven, multi-client, packaged solution	~5–8 weeks
+
+Value Summary
+•	30–60% reduction in manual quote entry effort (based on typical workflows)
+•	Improved accuracy and consistency across quotes
+•	Scalable, reusable design for multiple clients and vendors
+•	Foundation for future enhancements (pricing automation, supplier integration, etc.)
+
