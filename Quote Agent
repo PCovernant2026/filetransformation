@@ -1,3 +1,26 @@
+
+
+
+table: opportunityclose
+lookup field: competitorid ( that lookup to the competitor table competoro table logical name: competitor)
+relationship between opportunity closed table and competitor table is: competitor_opportunity_activities
+
+relationship between opportunity and opportunity closed is  Opportunity_OpportunityClose
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 | Order | Build Item                               |
 | ----: | ---------------------------------------- |
 |     1 | Create solution                          |
