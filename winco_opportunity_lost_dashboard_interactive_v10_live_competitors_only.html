@@ -1,0 +1,1780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Winco Opportunity Lost Dashboard - Interactive Stable v5 v5</title>
+  <style>
+    :root {
+      --winco-navy: #153d5a;
+      --winco-blue: #1f6d93;
+      --winco-sky: #d7e9f3;
+      --winco-steel: #687888;
+      --winco-orange: #d97b28;
+      --winco-gold: #f2b25b;
+      --winco-green: #2f7d64;
+      --winco-red: #b94435;
+      --winco-bg: #f4f7fa;
+      --card: #ffffff;
+      --line: #dbe4ea;
+      --text: #17212b;
+      --muted: #6f7d88;
+      --shadow: 0 12px 30px rgba(21,61,90,.12);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin:0; padding:0; height:100%; background:var(--winco-bg); color:var(--text); font-family: "Segoe UI", Arial, sans-serif; }
+    body { overflow-x:hidden; }
+    .app { min-height:100vh; padding:18px; }
+
+    .hero {
+      position: relative;
+      border-radius: 24px;
+      padding: 22px 24px;
+      overflow:hidden;
+      background:
+        radial-gradient(circle at 85% 10%, rgba(242,178,91,.25), transparent 28%),
+        linear-gradient(135deg, var(--winco-navy), #0d2638 62%, #102f46);
+      color:#fff;
+      box-shadow: var(--shadow);
+    }
+    .hero:before {
+      content:"";
+      position:absolute;
+      inset:0;
+      background-image:
+        linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px),
+        linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px);
+      background-size: 42px 42px;
+      pointer-events:none;
+    }
+    .hero-content { position:relative; z-index:1; display:flex; justify-content:space-between; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+    .brand-row { display:flex; align-items:center; gap:14px; }
+    .logo-mark {
+      width:54px; height:54px; border-radius:16px;
+      background: linear-gradient(145deg, #fff, #d7e9f3);
+      display:grid; place-items:center; color:var(--winco-navy);
+      font-weight:900; letter-spacing:.5px; box-shadow:0 10px 24px rgba(0,0,0,.18);
+    }
+    .hero h1 { margin:0; font-size:28px; line-height:1.15; font-weight:750; letter-spacing:.1px; }
+    .hero .subtitle { margin:7px 0 0; color:rgba(255,255,255,.78); font-size:13.5px; max-width:780px; }
+    .meta { display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+    .pill {
+      border:1px solid rgba(255,255,255,.18);
+      color:#fff;
+      background:rgba(255,255,255,.10);
+      padding:8px 12px;
+      border-radius:999px;
+      font-size:12px;
+      backdrop-filter: blur(6px);
+      white-space:nowrap;
+    }
+
+    .toolbar {
+      margin:16px 0 16px;
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:10px;
+      align-items:end;
+    }
+    .control {
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:10px 12px;
+      min-height:64px;
+      box-shadow: 0 5px 18px rgba(21,61,90,.05);
+    }
+    .control label { display:block; color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+    .control select, .control input {
+      width:100%;
+      border:0;
+      outline:0;
+      background:transparent;
+      color:var(--text);
+      font-size:14px;
+      font-family:inherit;
+    }
+    .span-2 { grid-column: span 2; }
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .button-row { display:flex; gap:8px; flex-wrap:wrap; }
+    button {
+      border:0;
+      border-radius:12px;
+      padding:10px 12px;
+      cursor:pointer;
+      font-weight:700;
+      font-family:inherit;
+      color:#fff;
+      background:var(--winco-blue);
+      box-shadow: 0 8px 18px rgba(31,109,147,.22);
+    }
+    button.secondary {
+      color:var(--winco-navy);
+      background:#fff;
+      border:1px solid var(--line);
+      box-shadow:none;
+    }
+    button.warning { background: var(--winco-orange); }
+    button:active { transform: translateY(1px); }
+
+    .status-line {
+      margin: -3px 2px 15px;
+      color: var(--muted);
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+      font-size:12.5px;
+    }
+    .status-dot { width:8px; height:8px; border-radius:50%; background:var(--winco-green); display:inline-block; }
+    .status-dot.error { background:var(--winco-red); }
+
+    .kpi-grid {
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:12px;
+      margin-bottom:14px;
+    }
+    .kpi {
+      grid-column: span 3;
+      min-height:126px;
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius: var(--radius);
+      padding:15px;
+      box-shadow: var(--shadow);
+      position:relative;
+      overflow:hidden;
+    }
+    .kpi:after {
+      content:"";
+      position:absolute; right:-40px; top:-42px;
+      width:120px; height:120px; border-radius:50%;
+      background:rgba(31,109,147,.08);
+    }
+    .kpi.orange:after { background:rgba(217,123,40,.11); }
+    .kpi.red:after { background:rgba(185,68,53,.09); }
+    .kpi.green:after { background:rgba(47,125,100,.10); }
+    .kpi .label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.07em; font-weight:800; }
+    .kpi .value { margin-top:8px; font-size:28px; line-height:1.1; font-weight:800; color:var(--winco-navy); }
+    .kpi .sub { margin-top:8px; color:var(--muted); font-size:12px; line-height:1.35; position:relative; z-index:1; }
+    .kpi.clickable { cursor:pointer; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+    .kpi.clickable:hover { transform: translateY(-2px); border-color:rgba(31,109,147,.45); box-shadow:0 16px 34px rgba(21,61,90,.17); }
+    .kpi .click-hint { margin-top:8px; color:var(--winco-blue); font-size:11.5px; font-weight:800; position:relative; z-index:1; }
+    .clickable-chart { cursor:pointer; }
+    .reason-item.clickable { cursor:pointer; border-radius:12px; padding:6px; margin:-6px; transition: background .12s ease; }
+    .reason-item.clickable:hover { background:#f3f8fb; }
+    .table-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .tiny-btn { padding:7px 10px; border-radius:999px; font-size:11px; box-shadow:none; }
+    .details-summary { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+    .details-summary .hint { margin:0; }
+    tr.clickable-row { cursor:pointer; }
+    tr.clickable-row:hover td { background:#f2f8fb; }
+
+    .grid {
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:14px;
+    }
+    .card {
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      padding:16px;
+      box-shadow: var(--shadow);
+      min-width:0;
+    }
+    .card h2 {
+      margin:0 0 8px;
+      font-size:16px;
+      color:var(--winco-navy);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+    }
+    .card .hint { color:var(--muted); font-size:12px; margin:0 0 12px; }
+    .col-3 { grid-column: span 3; }
+    .col-4 { grid-column: span 4; }
+    .col-5 { grid-column: span 5; }
+    .col-6 { grid-column: span 6; }
+    .col-7 { grid-column: span 7; }
+    .col-8 { grid-column: span 8; }
+    .col-9 { grid-column: span 9; }
+    .col-12 { grid-column: span 12; }
+
+    canvas { width:100%; height:290px; display:block; }
+    .short-canvas { height:240px; }
+
+    .reason-list { display:flex; flex-direction:column; gap:9px; margin-top:8px; }
+    .reason-item { display:grid; grid-template-columns: 1fr auto; gap:10px; align-items:center; font-size:13px; }
+    .bar-track { grid-column:1 / -1; height:8px; border-radius:999px; background:#edf2f5; overflow:hidden; }
+    .bar-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,var(--winco-blue),var(--winco-orange)); }
+
+    .table-wrap { overflow:auto; border:1px solid var(--line); border-radius:14px; }
+    table { width:100%; border-collapse:separate; border-spacing:0; min-width:1040px; font-size:12.5px; }
+    th {
+      position:sticky; top:0; z-index:2;
+      background:#f0f5f8;
+      color:var(--winco-navy);
+      text-align:left;
+      padding:10px;
+      border-bottom:1px solid var(--line);
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.05em;
+      white-space:nowrap;
+    }
+    td { padding:10px; border-bottom:1px solid #edf2f5; vertical-align:top; color:#26323d; }
+    tr:hover td { background:#fbfdfe; }
+    .link { color:var(--winco-blue); font-weight:750; cursor:pointer; text-decoration:none; }
+    .tag { display:inline-flex; border-radius:999px; padding:4px 8px; background:#eef5f8; color:var(--winco-navy); font-weight:700; white-space:nowrap; }
+    .tag.lost { background:#f7e7e3; color:var(--winco-red); }
+    .tag.winco { background:#e7f1ec; color:var(--winco-green); }
+    .tag.orange { background:#fff1df; color:#99520c; }
+
+    .insight-list { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
+    .insight {
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:12px;
+      background:linear-gradient(180deg,#fff,#f8fbfd);
+    }
+    .insight strong { display:block; color:var(--winco-navy); margin-bottom:4px; }
+    .insight span { color:var(--muted); font-size:12.5px; line-height:1.35; }
+
+    .empty {
+      border:1px dashed var(--line);
+      border-radius:14px;
+      padding:20px;
+      color:var(--muted);
+      background:#fbfdfe;
+      text-align:center;
+    }
+
+    .footer-note {
+      margin: 14px 2px 2px;
+      color: var(--muted);
+      font-size: 11.5px;
+      line-height:1.45;
+    }
+
+    @media (max-width: 1180px) {
+      .kpi { grid-column: span 4; }
+      .toolbar { grid-template-columns: repeat(6, 1fr); }
+      .span-2,.span-3,.span-4,.span-5 { grid-column: span 2; }
+      .col-3,.col-4,.col-5,.col-6,.col-7,.col-8,.col-9 { grid-column: span 12; }
+    }
+    @media (max-width: 720px) {
+      .app { padding:10px; }
+      .kpi { grid-column: span 12; }
+      .toolbar { grid-template-columns: repeat(2, 1fr); }
+      .span-2,.span-3,.span-4,.span-5 { grid-column: span 2; }
+      .hero h1 { font-size:22px; }
+      .insight-list { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <section class="hero">
+    <div class="hero-content">
+      <div>
+        <div class="brand-row">
+          <div class="logo-mark">WINCO</div>
+          <div>
+            <h1>Opportunity Lost Dashboard</h1>
+            <p class="subtitle">Commercial window project loss analytics by reason, sales owner, competitor, bid timing, RFQ type, spec status, lead source, month, week, and year-to-date performance.</p>
+          </div>
+        </div>
+      </div>
+      <div class="meta">
+        <div class="pill" id="lastRefresh">Loading...</div>
+        <div class="pill" id="recordCount">0 records</div>
+        <div class="pill" id="dateScopePill">YTD</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="toolbar">
+    <div class="control span-2">
+      <label>Date Range</label>
+      <select id="dateRange">
+        <option value="ytd" selected>Year to Date</option>
+        <option value="thisMonth">This Month</option>
+        <option value="last30">Last 30 Days</option>
+        <option value="last90">Last 90 Days</option>
+        <option value="last180">Last 180 Days</option>
+        <option value="last12">Last 12 Months</option>
+        <option value="all">All Lost Records</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+    <div class="control span-2">
+      <label>Start</label>
+      <input type="date" id="startDate" />
+    </div>
+    <div class="control span-2">
+      <label>End</label>
+      <input type="date" id="endDate" />
+    </div>
+    <div class="control span-2">
+      <label>Lost Reason</label>
+      <select id="reasonFilter"><option value="">All reasons</option></select>
+    </div>
+    <div class="control span-2">
+      <label>Sales Owner</label>
+      <select id="ownerFilter"><option value="">All owners</option></select>
+    </div>
+    <div class="control span-2">
+      <label>Competitor</label>
+      <select id="competitorFilter"><option value="">All competitors</option></select>
+    </div>
+    <div class="control span-2">
+      <label>Lead Source</label>
+      <select id="sourceFilter"><option value="">All sources</option></select>
+    </div>
+    <div class="control span-2">
+      <label>RFQ Type</label>
+      <select id="rfqFilter"><option value="">All RFQ types</option></select>
+    </div>
+    <div class="control span-2">
+      <label>Spec Position</label>
+      <select id="specFilter">
+        <option value="">All spec statuses</option>
+        <option value="basis">Basis of Design</option>
+        <option value="equal">Equal on Spec</option>
+        <option value="not-listed">Not Listed</option>
+      </select>
+    </div>
+    <div class="control span-3">
+      <label>Search Project / Customer / Contractor</label>
+      <input id="searchText" placeholder="Type to filter..." />
+    </div>
+    <div class="control span-3">
+      <label>Actions</label>
+      <div class="button-row">
+        <button id="refreshBtn">Refresh</button>
+        <button class="secondary" id="resetBtn">Reset</button>
+        <button class="warning" id="exportBtn">Export CSV</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="status-line">
+    <span class="status-dot" id="connectionDot"></span>
+    <span id="connectionText">Connecting to Dynamics 365...</span>
+  </div>
+
+  <section class="kpi-grid" id="kpiGrid"></section>
+
+  <section class="grid">
+    <article class="card col-5">
+      <h2>Lost by Reason <span class="tag lost" id="topReasonTag">Top reason</span></h2>
+      <p class="hint">Uses Winco custom field <strong>new_lostreason</strong>, with fallback to custom/OOB status reason.</p>
+      <canvas id="reasonDonut" class="short-canvas clickable-chart" title="Click a segment or legend item to drill down"></canvas>
+      <div class="reason-list" id="reasonList"></div>
+    </article>
+
+    <article class="card col-7">
+      <h2>Lost Revenue Per Month</h2>
+      <p class="hint">Monthly trend based on actual close date, Opportunity Close date, or modified date fallback.</p>
+      <canvas id="monthTrend" class="clickable-chart" title="Click a month bar to drill down"></canvas>
+    </article>
+
+    <article class="card col-6">
+      <h2>Lost Revenue Per Week</h2>
+      <p class="hint">Weekly lost value trend for the selected date range.</p>
+      <canvas id="weekTrend" class="clickable-chart" title="Click a week bar to drill down"></canvas>
+    </article>
+
+    <article class="card col-6">
+      <h2>Lost by Sales Owner</h2>
+      <p class="hint">Shows which sales owners need debrief focus or pricing/spec support.</p>
+      <canvas id="ownerChart" class="clickable-chart" title="Click an owner bar to drill down"></canvas>
+    </article>
+
+    <article class="card col-4">
+      <h2>Competitor Impact</h2>
+      <p class="hint">Shows only live competitors captured on <strong>Opportunity Close.competitorid</strong>, resolved through the standard <strong>competitor</strong> table and mapped to Opportunity by <strong>Opportunity_OpportunityClose</strong>.</p>
+      <canvas id="competitorChart" class="short-canvas clickable-chart" title="Click a competitor bar to drill down"></canvas>
+    </article>
+
+    <article class="card col-4">
+      <h2>Lead Source Losses</h2>
+      <p class="hint">New lead source <strong>ctp_leadsource</strong> with fallback to old lead source.</p>
+      <canvas id="sourceChart" class="short-canvas clickable-chart" title="Click a lead-source bar to drill down"></canvas>
+    </article>
+
+    <article class="card col-4">
+      <h2>RFQ / Spec Signals</h2>
+      <p class="hint">RFQ type, budget quote, Winco basis of design, and equal-on-spec signals.</p>
+      <canvas id="specChart" class="short-canvas clickable-chart" title="Click an RFQ/spec bar to drill down"></canvas>
+    </article>
+
+    <article class="card col-12">
+      <h2>Executive Insights</h2>
+      <div class="insight-list" id="insights"></div>
+    </article>
+
+    <article class="card col-12" id="detailsCard">
+      <h2><span id="detailsTitle">Top Lost Opportunities</span><span class="table-actions"><button class="secondary tiny-btn" id="clearDrillBtn" style="display:none">Clear Drilldown</button></span></h2>
+      <div class="details-summary">
+        <p class="hint" id="detailsHint">Click any KPI, chart bar, donut segment, reason row, or opportunity row to drill down. Click a row to open the Opportunity record inside Dynamics 365.</p>
+        <span class="tag" id="detailsCount">0 records</span>
+      </div>
+      <div class="table-wrap">
+        <table id="detailsTable">
+          <thead>
+            <tr>
+              <th>Project</th>
+              <th>Lost Date</th>
+              <th>Amount</th>
+              <th>Reason</th>
+              <th>Competitor</th>
+              <th>Owner</th>
+              <th>Customer / Account</th>
+              <th>RFQ</th>
+              <th>Lead Source</th>
+              <th>Spec</th>
+              <th>Sales Cycle</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </article>
+  </section>
+
+  <p class="footer-note">
+    Data source: Dynamics 365 Dataverse Web API. Configured for Winco Opportunity table fields discovered from the uploaded schema workbook: opportunity, opportunityclose, account, contact, competitor, and systemuser. Competitor logic resolves only competitors linked to lost Opportunity Close records through opportunityclose.competitorid, the standard competitor table, competitor_opportunity_activities, and Opportunity_OpportunityClose. No external libraries are required.
+  </p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const CONFIG = {
+    companyName: "Winco Window",
+    entity: {
+      opportunity: "opportunity",
+      opportunityClose: "opportunityclose",
+      competitor: "competitor"
+    },
+    fields: {
+      id: "opportunityid",
+      name: "name",
+      createdOn: "createdon",
+      modifiedOn: "modifiedon",
+      actualCloseDate: "actualclosedate",
+      estimatedCloseDate: "estimatedclosedate",
+      bidDate: "new_biddate",
+      estimatedValue: "estimatedvalue",
+      actualValue: "actualvalue",
+      quoteAmount: "new_quoteamount",
+      proposalTotal: "new_proposaltotal",
+      quoteProposalTotal: "new_quoteproposaltotal",
+      lostReason: "new_lostreason",
+      customStatus: "new_status",
+      oobStatus: "statuscode",
+      state: "statecode",
+      competitor: "new_competitor",
+      bodCompetitor: "new_bodcompetitor",
+      leadSource: "ctp_leadsource",
+      oldLeadSource: "new_leadsource",
+      rfqType: "new_typeofrfq",
+      budgetQuote: "new_isthisabudget",
+      specEqual: "new_iswincolistedasequalonspec",
+      specBasis: "new_wincobasisofdesign",
+      closeProbability: "closeprobability",
+      salesStage: "salesstage",
+      stepName: "stepname",
+      owner: "_ownerid_value",
+      customer: "_customerid_value",
+      parentAccount: "_parentaccountid_value",
+      parentContact: "_parentcontactid_value",
+      projectOwner: "_new_projectowner_value",
+      generalContractor: "_new_generalcontractor_value",
+      glazingContractor: "_new_glazingcontractornew_value",
+      architect: "_new_architectnew_value",
+      dodgeProject: "_dodge_dodgeprojectid_value"
+    },
+    closeFields: {
+      id: "activityid",
+      opportunity: "_opportunityid_value",
+      actualEnd: "actualend",
+      actualRevenue: "actualrevenue",
+      statusReason: "opportunitystatuscode",
+      state: "opportunitystatecode",
+      competitor: "_competitorid_value",
+      owner: "_ownerid_value",
+      subject: "subject",
+      description: "description",
+      createdOn: "createdon"
+    },
+    competitorFields: {
+      id: "competitorid",
+      name: "name",
+      // Authoritative competitor path provided by Winco:
+      // Opportunity -> Opportunity_OpportunityClose -> opportunityclose.competitorid -> competitor.
+      opportunityCloseRelationship: "Opportunity_OpportunityClose",
+      competitorCloseRelationship: "competitor_opportunity_activities",
+      competitorLookupNavigation: "competitorid",
+      opportunityRelationship: "opportunitycompetitors_association"
+    },
+    labels: {
+      lostReason: {
+        118290005: "Lost - Competitor",
+        118290002: "Lost - Late to bid",
+        118290001: "Lost - Not Pursuing",
+        118290006: "Lost - Other",
+        118290003: "Lost - Pricing",
+        118290004: "Lost - Specifiable differences unable to meet",
+        100000002: "Sales Rep Rejected",
+        100000001: "Winco Not Approved",
+        100000000: "Wrong Type Of Window"
+      },
+      customStatus: {
+        1: "Assigned to Rep",
+        100000003: "Draft RFQ",
+        100000006: "Engineering Review",
+        100000009: "Lead",
+        100000000: "Lost",
+        118290005: "Lost - Competitor",
+        118290002: "Lost - Late to bid",
+        118290001: "Lost - Not Pursuing",
+        118290006: "Lost - Other",
+        118290003: "Lost - Pricing",
+        118290004: "Lost - Specifiable differences unable to meet",
+        4: "Not Pursuing",
+        2: "On Hold",
+        100000014: "Plans & Spec Review",
+        100000012: "Pre-Quote Review",
+        100000001: "Processing Proposal",
+        100000007: "Questions - Issues",
+        100000008: "Quoted",
+        100000004: "Ready for Quote",
+        100000002: "Returned to Rep",
+        100000005: "Revisions",
+        100000011: "Sq. Ft. $ Budget"
+      },
+      oobStatus: {
+        961490004: "Competitor",
+        1: "In Progress",
+        961490001: "Late to bid",
+        100000002: "Not Pursuing",
+        2: "On Hold",
+        961490005: "Other",
+        961490002: "Pricing",
+        961490003: "Specifiable differences unable to meet",
+        3: "Won"
+      },
+      opportunityCloseStatus: {
+        100000000: "Wrong type of window",
+        100000001: "Winco not approved",
+        100000002: "Rep rejected",
+        1: "In Progress",
+        2: "On Hold",
+        3: "Won",
+        4: "Canceled",
+        5: "Out-Sold"
+      },
+      // Competitors are resolved only from live Opportunity Close.competitorid lookups.
+      // No hardcoded competitor labels are retained in the production build.
+      competitor: {},
+      leadSource: {
+        100000000: "Dodge",
+        100000001: "Vitro",
+        100000002: "BSD SpecLink",
+        100000003: "Guardian",
+        100000004: "Website Submission/Contact Us Form",
+        100000005: "Lead Generation Downloadable - Website",
+        100000006: "Consultation Request - Website",
+        100000007: "Trade Show/Networking",
+        100000008: "Presentation/Lunch & Learn",
+        961490000: "Search Engines",
+        961490001: "Other"
+      },
+      oldLeadSource: {
+        100000013: "4specs.com",
+        100000011: "AIA DC",
+        100000010: "AIA St. Louis",
+        100000012: "Archello",
+        100000024: "ASBO Conference 2023",
+        100000007: "Consultation Request",
+        100000014: "Deltek Specpoint",
+        100000015: "Dodge: Sweets Brochure",
+        100000016: "Email marketing/EBlast",
+        100000022: "Existing Customer",
+        100000021: "General Networking",
+        100000023: "Item",
+        100000006: "Lead Generation Downloadable",
+        100000009: "Presentation/Lunch and Learn",
+        100000017: "Press Release",
+        100000020: "Referral",
+        100000018: "Search Engines",
+        100000019: "Social Media",
+        100000008: "Trade Show",
+        100000000: "Dodge",
+        100000002: "Vitro",
+        100000001: "BSD SpecLink",
+        100000003: "Guardian",
+        100000004: "Website",
+        100000005: "Other"
+      },
+      rfqType: {
+        100000000: "Standard",
+        100000001: "Engineering/Blast",
+        100000002: "Plans/Spec"
+      },
+      yesNo: {
+        true: "Yes",
+        false: "No"
+      },
+      salesStage: {
+        0: "Qualify",
+        1: "Develop",
+        2: "Propose",
+        3: "Close"
+      }
+    },
+    chartColors: ["#1f6d93", "#d97b28", "#2f7d64", "#b94435", "#f2b25b", "#687888", "#153d5a", "#7f5f9c", "#2b9aa0", "#be6b35"],
+    maxTableRows: 50
+  };
+
+  const state = {
+    raw: [],
+    closed: [],
+    open: [],
+    lost: [],
+    closesByOpp: new Map(),
+    competitorsById: new Map(),
+    competitorLinksByOpp: new Map(),
+    closeCompetitorsByOpp: new Map(),
+    competitorRecords: [],
+    competitorLoadWarning: "",
+    filteredLost: [],
+    filteredClosed: [],
+    filteredOpen: [],
+    drilldownTitle: "",
+    drilldownRows: null,
+    drilldownMode: "",
+    kpiDrills: [],
+    lastError: null
+  };
+
+  const chartDrillRegions = new WeakMap();
+
+  const $ = (id) => document.getElementById(id);
+  const fmtCurrency = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  const fmtNumber = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+  const fmtPct = new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: 1 });
+
+  function safeXrm() {
+    try {
+      if (window.Xrm && window.Xrm.WebApi) return window.Xrm;
+      if (window.parent && window.parent.Xrm && window.parent.Xrm.WebApi) return window.parent.Xrm;
+      if (window.top && window.top.Xrm && window.top.Xrm.WebApi) return window.top.Xrm;
+    } catch (e) {}
+    return null;
+  }
+
+  function formatted(row, logicalName) {
+    return row[logicalName + "@OData.Community.Display.V1.FormattedValue"] ||
+           row[logicalName + "@Microsoft.Dynamics.CRM.lookuplogicalname"] ||
+           row[logicalName + "name"] ||
+           null;
+  }
+
+  function lookupLabel(row, lookupValueField) {
+    return row[lookupValueField + "@OData.Community.Display.V1.FormattedValue"] || "";
+  }
+
+  function optionLabel(row, field, mapName) {
+    const annotated = formatted(row, field);
+    if (annotated && !/^[0-9a-f-]{20,}$/i.test(annotated)) return annotated;
+    const value = row[field];
+    if (value === null || value === undefined || value === "") return "";
+    const map = CONFIG.labels[mapName] || {};
+    return map[value] || String(value);
+  }
+
+  function boolLabel(value) {
+    if (value === null || value === undefined || value === "") return "";
+    if (value === true || value === "true" || value === 1) return "Yes";
+    if (value === false || value === "false" || value === 0) return "No";
+    return String(value);
+  }
+
+  function toDate(v) {
+    if (!v) return null;
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function dateOnly(d) {
+    if (!d) return "";
+    return d.toISOString().slice(0, 10);
+  }
+
+  function startOfDay(d) {
+    const out = new Date(d);
+    out.setHours(0, 0, 0, 0);
+    return out;
+  }
+
+  function endOfDay(d) {
+    const out = new Date(d);
+    out.setHours(23, 59, 59, 999);
+    return out;
+  }
+
+  function daysBetween(a, b) {
+    if (!a || !b) return null;
+    return Math.max(0, Math.round((startOfDay(b) - startOfDay(a)) / 86400000));
+  }
+
+  function getDateRange() {
+    const now = new Date();
+    let start = null, end = endOfDay(now);
+    const val = $("dateRange").value;
+
+    if (val === "ytd") start = new Date(now.getFullYear(), 0, 1);
+    if (val === "thisMonth") start = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (val === "last30") start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
+    if (val === "last90") start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90);
+    if (val === "last180") start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 180);
+    if (val === "last12") start = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+    if (val === "all") { start = null; end = null; }
+    if (val === "custom") {
+      start = $("startDate").value ? startOfDay(new Date($("startDate").value + "T00:00:00")) : null;
+      end = $("endDate").value ? endOfDay(new Date($("endDate").value + "T00:00:00")) : null;
+    }
+    return { start: start ? startOfDay(start) : null, end };
+  }
+
+  function setDefaultDates() {
+    const now = new Date();
+    $("startDate").value = dateOnly(new Date(now.getFullYear(), 0, 1));
+    $("endDate").value = dateOnly(now);
+  }
+
+  function getLossReason(opp, close) {
+    const customReason = optionLabel(opp, CONFIG.fields.lostReason, "lostReason");
+    if (customReason) return customReason;
+    const customStatus = optionLabel(opp, CONFIG.fields.customStatus, "customStatus");
+    if (/lost|not pursuing|pricing|competitor|late|wrong|approved|rejected|specifiable/i.test(customStatus || "")) return customStatus;
+    const closeStatus = close ? optionLabel(close, CONFIG.closeFields.statusReason, "opportunityCloseStatus") : "";
+    if (closeStatus && !/won|in progress|on hold/i.test(closeStatus)) return closeStatus;
+    const oob = optionLabel(opp, CONFIG.fields.oobStatus, "oobStatus");
+    return oob || "Unspecified";
+  }
+
+  function getOpportunityExpandedCompetitors(opp) {
+    const rel = CONFIG.competitorFields.opportunityRelationship;
+    const rows = opp && opp[rel];
+    if (!Array.isArray(rows) || !rows.length) return "";
+
+    const names = [];
+    rows.forEach(c => {
+      const rawName = c[CONFIG.competitorFields.name] ||
+        c[CONFIG.competitorFields.name + "@OData.Community.Display.V1.FormattedValue"] ||
+        lookupLabel(c, CONFIG.competitorFields.id) ||
+        (c[CONFIG.competitorFields.id] ? state.competitorsById.get(String(c[CONFIG.competitorFields.id]).toLowerCase()) : "");
+
+      const name = rawName ? String(rawName).trim() : "";
+      if (name && !names.includes(name)) names.push(name);
+    });
+
+    return names.join(", ");
+  }
+
+  function getCompetitor(opp, close) {
+    // Authoritative Winco path:
+    // Opportunity -> Opportunity_OpportunityClose -> opportunityclose.competitorid -> competitor.
+    // This is the first source checked because competitor is captured on the Opportunity Close activity.
+    if (close) {
+      const closeLookupName = lookupLabel(close, CONFIG.closeFields.competitor);
+      if (closeLookupName) return closeLookupName;
+
+      const closeLookupId = close[CONFIG.closeFields.competitor];
+      if (closeLookupId) {
+        const competitorName = state.competitorsById.get(String(closeLookupId).toLowerCase());
+        if (competitorName) return competitorName;
+      }
+
+      const closeNav = close[CONFIG.competitorFields.competitorLookupNavigation];
+      if (closeNav) {
+        const navName = closeNav[CONFIG.competitorFields.name] ||
+          closeNav[CONFIG.competitorFields.name + "@OData.Community.Display.V1.FormattedValue"] ||
+          lookupLabel(closeNav, CONFIG.competitorFields.id);
+        if (navName) return String(navName).trim();
+      }
+    }
+
+    const oppId = (opp[CONFIG.fields.id] || "").toLowerCase();
+    const closeMappedCompetitors = oppId ? state.closeCompetitorsByOpp.get(oppId) : "";
+    if (closeMappedCompetitors) return closeMappedCompetitors;
+
+    // Production rule: do not infer competitor from Opportunity-level fields,
+    // option sets, unrelated Competitor records, or Opportunity competitor subgrids.
+    // Only the competitor captured on the related Opportunity Close is displayed.
+    return "";
+  }
+
+  function getLeadSource(opp) {
+    return optionLabel(opp, CONFIG.fields.leadSource, "leadSource") ||
+           optionLabel(opp, CONFIG.fields.oldLeadSource, "oldLeadSource") ||
+           "Unspecified";
+  }
+
+  function getAmount(opp, close) {
+    const candidates = [
+      opp[CONFIG.fields.quoteProposalTotal],
+      opp[CONFIG.fields.proposalTotal],
+      opp[CONFIG.fields.quoteAmount],
+      opp[CONFIG.fields.estimatedValue],
+      opp[CONFIG.fields.actualValue],
+      close ? close[CONFIG.closeFields.actualRevenue] : null
+    ];
+    for (const c of candidates) {
+      const n = Number(c);
+      if (!isNaN(n) && n !== 0) return n;
+    }
+    return 0;
+  }
+
+  function getCloseDate(opp, close) {
+    return toDate(opp[CONFIG.fields.actualCloseDate]) ||
+           (close ? toDate(close[CONFIG.closeFields.actualEnd]) : null) ||
+           toDate(opp[CONFIG.fields.modifiedOn]) ||
+           toDate(opp[CONFIG.fields.createdOn]);
+  }
+
+  function getSpecStatus(opp) {
+    const basis = opp[CONFIG.fields.specBasis] === true;
+    const equal = opp[CONFIG.fields.specEqual] === true;
+    if (basis) return "Basis of Design";
+    if (equal) return "Equal on Spec";
+    return "Not Listed";
+  }
+
+  function normalizeOpportunity(opp) {
+    const close = state.closesByOpp.get((opp[CONFIG.fields.id] || "").toLowerCase());
+    const lossDate = getCloseDate(opp, close);
+    const created = toDate(opp[CONFIG.fields.createdOn]);
+    const amount = getAmount(opp, close);
+    const customStatusText = optionLabel(opp, CONFIG.fields.customStatus, "customStatus");
+    const lostReasonText = optionLabel(opp, CONFIG.fields.lostReason, "lostReason");
+    const oobStatusText = optionLabel(opp, CONFIG.fields.oobStatus, "oobStatus");
+    const closeStatusText = close ? optionLabel(close, CONFIG.closeFields.statusReason, "opportunityCloseStatus") : "";
+    const lostSignalText = [customStatusText, lostReasonText, oobStatusText, closeStatusText].join(" ");
+    const isLost = Number(opp[CONFIG.fields.state]) === 2 ||
+      Boolean(lostReasonText) ||
+      /lost|not pursuing|pricing|competitor|late to bid|wrong type|not approved|rejected|specifiable|out-sold|canceled/i.test(lostSignalText);
+    const isWon = Number(opp[CONFIG.fields.state]) === 1 || /\bwon\b/i.test(lostSignalText);
+    return {
+      id: opp[CONFIG.fields.id],
+      name: opp[CONFIG.fields.name] || "(No project name)",
+      createdOn: created,
+      modifiedOn: toDate(opp[CONFIG.fields.modifiedOn]),
+      closeDate: lossDate,
+      estimatedCloseDate: toDate(opp[CONFIG.fields.estimatedCloseDate]),
+      bidDate: toDate(opp[CONFIG.fields.bidDate]),
+      amount,
+      state: Number(opp[CONFIG.fields.state]),
+      isLost,
+      isWon,
+      reason: getLossReason(opp, close),
+      competitor: getCompetitor(opp, close) || "Unspecified",
+      owner: lookupLabel(opp, CONFIG.fields.owner) || lookupLabel(close || {}, CONFIG.closeFields.owner) || "Unassigned",
+      customer: lookupLabel(opp, CONFIG.fields.customer) || lookupLabel(opp, CONFIG.fields.parentAccount) || lookupLabel(opp, CONFIG.fields.parentContact) || "Unspecified",
+      projectOwner: lookupLabel(opp, CONFIG.fields.projectOwner),
+      generalContractor: lookupLabel(opp, CONFIG.fields.generalContractor),
+      glazingContractor: lookupLabel(opp, CONFIG.fields.glazingContractor),
+      architect: lookupLabel(opp, CONFIG.fields.architect),
+      leadSource: getLeadSource(opp),
+      rfqType: optionLabel(opp, CONFIG.fields.rfqType, "rfqType") || "Unspecified",
+      budgetQuote: optionLabel(opp, CONFIG.fields.budgetQuote, "yesNo") || boolLabel(opp[CONFIG.fields.budgetQuote]),
+      specStatus: getSpecStatus(opp),
+      specBasis: opp[CONFIG.fields.specBasis] === true,
+      specEqual: opp[CONFIG.fields.specEqual] === true,
+      closeProbability: Number(opp[CONFIG.fields.closeProbability] || 0),
+      salesStage: optionLabel(opp, CONFIG.fields.salesStage, "salesStage"),
+      stepName: opp[CONFIG.fields.stepName] || "",
+      raw: opp,
+      closeRaw: close || null,
+      salesCycleDays: daysBetween(created, lossDate)
+    };
+  }
+
+  function normalizeWebApiOptions(options) {
+    if (!options) return "";
+    let normalized = String(options).trim();
+
+    // Dynamics returns a full @odata.nextLink URL for paging in some tenants.
+    // Xrm.WebApi.retrieveMultipleRecords requires the options parameter to begin with "?".
+    const queryIndex = normalized.indexOf("?");
+    if (queryIndex >= 0) {
+      normalized = normalized.substring(queryIndex);
+    }
+
+    if (normalized && !normalized.startsWith("?")) {
+      normalized = "?" + normalized.replace(/^&+/, "");
+    }
+
+    return normalized;
+  }
+
+  async function retrieveAll(entityName, query, pageSize) {
+    const xrm = safeXrm();
+    if (!xrm) throw new Error("Dynamics 365 Xrm.WebApi was not found. Open this HTML as a Dynamics 365 web resource/dashboard to load live data.");
+    const all = [];
+    let options = normalizeWebApiOptions(query);
+    let keepGoing = true;
+    let guard = 0;
+    while (keepGoing && guard < 25) {
+      const result = await xrm.WebApi.retrieveMultipleRecords(entityName, options, pageSize || 5000);
+      all.push.apply(all, result.entities || []);
+      if (result.nextLink) {
+        options = normalizeWebApiOptions(result.nextLink);
+        keepGoing = true;
+      } else {
+        keepGoing = false;
+      }
+      guard++;
+    }
+    return all;
+  }
+
+  function buildSelect(fields) {
+    return fields.filter(Boolean).join(",");
+  }
+
+  async function loadCompetitorRecordsAndLinks() {
+    const comp = CONFIG.competitorFields;
+    state.competitorsById = new Map();
+    state.competitorLinksByOpp = new Map();
+    state.closeCompetitorsByOpp = new Map();
+    state.competitorRecords = [];
+    state.competitorLoadWarning = "";
+
+    // First load the standard Competitor table so opportunityclose._competitorid_value can be resolved.
+    try {
+      const plainQuery = `?$select=${comp.id},${comp.name}&$orderby=${comp.name} asc`;
+      const competitors = await retrieveAll(CONFIG.entity.competitor, plainQuery, 5000);
+      registerCompetitorRecords(competitors);
+    } catch (plainError) {
+      state.competitorLoadWarning = " Competitor records could not be loaded: " + cleanError(plainError);
+    }
+
+    // Optional fallback: if the tenant supports the relationship expansion from Competitor -> Opportunity Close,
+    // use it to build a direct OpportunityId -> CompetitorName map.
+    // The dashboard does not depend on this succeeding because it also reads opportunityclose directly.
+    try {
+      const relQuery = `?$select=${comp.id},${comp.name}&$expand=${comp.competitorCloseRelationship}($select=activityid,_opportunityid_value,actualend)&$orderby=${comp.name} asc`;
+      const competitorsWithCloses = await retrieveAll(CONFIG.entity.competitor, relQuery, 5000);
+      registerCompetitorOpportunityCloseLinks(competitorsWithCloses);
+    } catch (relError) {
+      state.competitorLoadWarning = (state.competitorLoadWarning || "") + " Competitor-close relationship expansion was skipped: " + cleanError(relError);
+    }
+  }
+
+  function cleanError(e) {
+    return String((e && (e.message || e.errorCode)) || e || "unknown error").replace(/\s+/g, " ").slice(0, 260);
+  }
+
+  function registerCompetitorRecords(competitors) {
+    const comp = CONFIG.competitorFields;
+    (competitors || []).forEach(c => {
+      const id = c[comp.id];
+      const name = c[comp.name] || lookupLabel(c, comp.id) || c[comp.id + "@OData.Community.Display.V1.FormattedValue"];
+      if (!id || !name) return;
+      const normalizedId = String(id).toLowerCase();
+      if (!state.competitorsById.has(normalizedId)) {
+        state.competitorsById.set(normalizedId, String(name));
+        state.competitorRecords.push({ id: normalizedId, name: String(name) });
+      }
+    });
+  }
+
+  function registerCompetitorOpportunityLinks(competitors) {
+    const comp = CONFIG.competitorFields;
+    const links = new Map();
+    (competitors || []).forEach(c => {
+      const competitorName = c[comp.name] || (c[comp.id] ? state.competitorsById.get(String(c[comp.id]).toLowerCase()) : "");
+      if (!competitorName) return;
+      const opportunities = c[comp.opportunityRelationship];
+      if (!Array.isArray(opportunities)) return;
+      opportunities.forEach(o => {
+        const oppId = (o.opportunityid || o["opportunityid"] || "").toLowerCase();
+        if (!oppId) return;
+        if (!links.has(oppId)) links.set(oppId, []);
+        if (!links.get(oppId).includes(competitorName)) links.get(oppId).push(competitorName);
+      });
+    });
+    links.forEach((names, oppId) => state.competitorLinksByOpp.set(oppId, names.join(", ")));
+  }
+
+
+  function resolveCloseCompetitorName(closeActivity, competitorNameFromRelationship) {
+    if (competitorNameFromRelationship) return String(competitorNameFromRelationship).trim();
+    const closeLookupName = lookupLabel(closeActivity, CONFIG.closeFields.competitor);
+    if (closeLookupName) return closeLookupName;
+    const closeLookupId = closeActivity[CONFIG.closeFields.competitor];
+    if (closeLookupId) {
+      const mapped = state.competitorsById.get(String(closeLookupId).toLowerCase());
+      if (mapped) return mapped;
+    }
+    const closeNav = closeActivity[CONFIG.competitorFields.competitorLookupNavigation];
+    if (closeNav) {
+      const navName = closeNav[CONFIG.competitorFields.name] || lookupLabel(closeNav, CONFIG.competitorFields.id);
+      if (navName) return String(navName).trim();
+    }
+    return "";
+  }
+
+  function registerCloseCompetitorForOpportunity(oppId, competitorName, closeDateValue) {
+    const normalizedOppId = String(oppId || "").toLowerCase();
+    const cleanName = String(competitorName || "").trim();
+    if (!normalizedOppId || !cleanName) return;
+
+    const closeDate = toDate(closeDateValue) || new Date(0);
+    const existing = state.closeCompetitorsByOpp.get(normalizedOppId);
+    if (!existing) {
+      state.closeCompetitorsByOpp.set(normalizedOppId, { names: [cleanName], date: closeDate });
+      return;
+    }
+
+    // Prefer the latest close activity. If same opportunity has multiple competitors on the same latest close,
+    // keep unique names and display them comma-separated.
+    if (closeDate > existing.date) {
+      state.closeCompetitorsByOpp.set(normalizedOppId, { names: [cleanName], date: closeDate });
+      return;
+    }
+
+    if (+closeDate === +existing.date && !existing.names.includes(cleanName)) {
+      existing.names.push(cleanName);
+    }
+  }
+
+  function registerCompetitorOpportunityCloseLinks(competitors) {
+    const comp = CONFIG.competitorFields;
+    (competitors || []).forEach(c => {
+      const competitorName = c[comp.name] || (c[comp.id] ? state.competitorsById.get(String(c[comp.id]).toLowerCase()) : "");
+      if (!competitorName) return;
+      const closeActivities = c[comp.competitorCloseRelationship];
+      if (!Array.isArray(closeActivities)) return;
+      closeActivities.forEach(closeActivity => {
+        const oppId = closeActivity[CONFIG.closeFields.opportunity] || closeActivity._opportunityid_value || "";
+        registerCloseCompetitorForOpportunity(oppId, competitorName, closeActivity[CONFIG.closeFields.actualEnd] || closeActivity.actualend);
+      });
+    });
+    // Convert temporary objects to display strings for simple lookup during normalization.
+    state.closeCompetitorsByOpp.forEach((value, key) => {
+      if (value && Array.isArray(value.names)) state.closeCompetitorsByOpp.set(key, value.names.join(", "));
+    });
+  }
+
+  function registerCompetitorsFromCloseRecords(closes) {
+    (closes || []).forEach(closeActivity => {
+      const oppId = closeActivity[CONFIG.closeFields.opportunity];
+      const name = resolveCloseCompetitorName(closeActivity, "");
+      registerCloseCompetitorForOpportunity(oppId, name, closeActivity[CONFIG.closeFields.actualEnd] || closeActivity[CONFIG.closeFields.createdOn]);
+    });
+    state.closeCompetitorsByOpp.forEach((value, key) => {
+      if (value && Array.isArray(value.names)) state.closeCompetitorsByOpp.set(key, value.names.join(", "));
+    });
+  }
+
+  /* v10: only live Opportunity Close.competitorid values are displayed; no hardcoded or unrelated competitor names. */
+  async function loadLiveData() {
+    const f = CONFIG.fields;
+    const cf = CONFIG.closeFields;
+    const oppSelect = buildSelect([
+      f.id, f.name, f.createdOn, f.modifiedOn, f.actualCloseDate, f.estimatedCloseDate, f.bidDate,
+      f.estimatedValue, f.actualValue, f.quoteAmount, f.proposalTotal, f.quoteProposalTotal,
+      f.lostReason, f.customStatus, f.oobStatus, f.state, f.competitor, f.bodCompetitor, f.leadSource, f.oldLeadSource,
+      f.rfqType, f.budgetQuote, f.specEqual, f.specBasis, f.closeProbability, f.salesStage, f.stepName,
+      f.owner, f.customer, f.parentAccount, f.parentContact, f.projectOwner, f.generalContractor,
+      f.glazingContractor, f.architect, f.dodgeProject
+    ]);
+    const closeSelect = buildSelect([
+      cf.id, cf.opportunity, cf.actualEnd, cf.actualRevenue, cf.statusReason, cf.state,
+      cf.competitor, cf.owner, cf.subject, cf.description, cf.createdOn
+    ]);
+    const closedQuery = `?$select=${oppSelect}&$filter=(statecode eq 1 or statecode eq 2)&$orderby=modifiedon desc`;
+    const openQuery = `?$select=${oppSelect}&$filter=statecode eq 0&$orderby=modifiedon desc`;
+
+    // Do not filter Opportunity Close by opportunitystatecode here. In some environments that value is not
+    // populated consistently, and that can hide the competitorid lookup from the dashboard.
+    // Lost/won filtering is still controlled by the related Opportunity state.
+    const closeQuery = `?$select=${closeSelect}&$orderby=actualend desc`;
+
+    const [closed, open, closes] = await Promise.all([
+      retrieveAll(CONFIG.entity.opportunity, closedQuery, 5000),
+      retrieveAll(CONFIG.entity.opportunity, openQuery, 5000),
+      retrieveAll(CONFIG.entity.opportunityClose, closeQuery, 5000)
+    ]);
+
+    await loadCompetitorRecordsAndLinks();
+    registerCompetitorsFromCloseRecords(closes);
+
+    state.closesByOpp = new Map();
+    closes.forEach(c => {
+      const id = (c[cf.opportunity] || "").toLowerCase();
+      if (!id) return;
+      const existing = state.closesByOpp.get(id);
+      const existingDate = existing ? toDate(existing[cf.actualEnd]) : null;
+      const thisDate = toDate(c[cf.actualEnd]);
+      if (!existing || (thisDate && (!existingDate || thisDate > existingDate))) {
+        state.closesByOpp.set(id, c);
+      }
+    });
+
+    state.closed = closed.map(normalizeOpportunity);
+    state.open = open.map(normalizeOpportunity);
+    state.raw = state.closed.concat(state.open);
+    state.lost = state.closed.filter(r => r.isLost);
+    state.lastError = null;
+  }
+
+  function setConnectionStatus() {
+    const dot = $("connectionDot");
+    const text = $("connectionText");
+    dot.className = "status-dot";
+    if (state.lastError) {
+      dot.classList.add("error");
+      text.textContent = "Live data error: " + state.lastError;
+      return;
+    }
+    text.textContent = "Connected to Dynamics 365 live Dataverse data." + (state.competitorLoadWarning || "");
+  }
+
+  function uniqueSorted(data, key) {
+    return Array.from(new Set(data.map(x => x[key]).filter(Boolean))).sort((a,b) => String(a).localeCompare(String(b)));
+  }
+
+  function fillSelect(id, values, allText) {
+    const el = $(id);
+    const old = el.value;
+    el.innerHTML = `<option value="">${allText}</option>` + values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    if (values.includes(old)) el.value = old;
+  }
+
+  function mergeUnique() {
+    const all = [];
+    Array.from(arguments).forEach(arr => (arr || []).forEach(v => {
+      if (v !== null && v !== undefined && v !== "" && !all.includes(v)) all.push(v);
+    }));
+    return all.sort((a,b) => String(a).localeCompare(String(b)));
+  }
+
+  function applyFilterOptions() {
+    // Data-driven values first, configured option-set labels as fallback.
+    // This prevents empty dropdowns when the current period has no matching records
+    // or when the dashboard is still being validated against a new environment.
+    fillSelect("reasonFilter", mergeUnique(uniqueSorted(state.lost, "reason"), Object.values(CONFIG.labels.lostReason)), "All reasons");
+    fillSelect("ownerFilter", uniqueSorted(state.raw, "owner"), "All owners");
+    fillSelect("competitorFilter", uniqueSorted(state.lost, "competitor"), "All competitors");
+    fillSelect("sourceFilter", mergeUnique(uniqueSorted(state.raw, "leadSource"), Object.values(CONFIG.labels.leadSource), Object.values(CONFIG.labels.oldLeadSource), ["Unspecified"]), "All sources");
+    fillSelect("rfqFilter", mergeUnique(uniqueSorted(state.raw, "rfqType"), Object.values(CONFIG.labels.rfqType), ["Unspecified"]), "All RFQ types");
+  }
+
+  function inRange(d, start, end) {
+    if (!d) return false;
+    if (start && d < start) return false;
+    if (end && d > end) return false;
+    return true;
+  }
+
+  function applyFilters() {
+    const { start, end } = getDateRange();
+    const reason = $("reasonFilter").value;
+    const owner = $("ownerFilter").value;
+    const comp = $("competitorFilter").value;
+    const source = $("sourceFilter").value;
+    const rfq = $("rfqFilter").value;
+    const spec = $("specFilter").value;
+    const search = ($("searchText").value || "").toLowerCase().trim();
+
+    function textMatch(r) {
+      if (!search) return true;
+      const hay = [r.name, r.customer, r.projectOwner, r.generalContractor, r.glazingContractor, r.architect, r.owner, r.reason, r.competitor].join(" ").toLowerCase();
+      return hay.includes(search);
+    }
+    function common(r) {
+      if (owner && r.owner !== owner) return false;
+      if (source && r.leadSource !== source) return false;
+      if (rfq && r.rfqType !== rfq) return false;
+      if (spec === "basis" && !r.specBasis) return false;
+      if (spec === "equal" && !r.specEqual) return false;
+      if (spec === "not-listed" && r.specBasis === true) return false;
+      if (spec === "not-listed" && r.specEqual === true) return false;
+      return textMatch(r);
+    }
+
+    state.filteredLost = state.lost.filter(r =>
+      inRange(r.closeDate, start, end) &&
+      (!reason || r.reason === reason) &&
+      (!comp || r.competitor === comp) &&
+      common(r)
+    );
+    state.filteredClosed = state.closed.filter(r => inRange(r.closeDate, start, end) && common(r));
+    state.filteredOpen = state.open.filter(r => common(r));
+    $("dateScopePill").textContent = rangeLabel();
+    $("recordCount").textContent = `${fmtNumber.format(state.filteredLost.length)} lost / ${fmtNumber.format(state.filteredClosed.length)} closed`;
+  }
+
+  function rangeLabel() {
+    const val = $("dateRange").value;
+    const map = { ytd: "YTD", thisMonth: "This month", last30: "Last 30 days", last90: "Last 90 days", last180: "Last 180 days", last12: "Last 12 months", all: "All time", custom: "Custom" };
+    return map[val] || "Filtered";
+  }
+
+  function sum(data, selector) {
+    return data.reduce((a, r) => a + (Number(selector(r)) || 0), 0);
+  }
+
+  function avg(data, selector) {
+    if (!data.length) return 0;
+    return sum(data, selector) / data.length;
+  }
+
+  function groupBy(data, keySelector, valueSelector) {
+    const m = new Map();
+    data.forEach(r => {
+      const k = keySelector(r) || "Unspecified";
+      const v = valueSelector ? valueSelector(r) : 1;
+      if (!m.has(k)) m.set(k, { key: k, count: 0, value: 0, records: [] });
+      const x = m.get(k);
+      x.count += 1;
+      x.value += Number(v) || 0;
+      x.records.push(r);
+    });
+    return Array.from(m.values()).sort((a,b) => b.value - a.value || b.count - a.count);
+  }
+
+  function monthKey(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  }
+
+  function weekKey(d) {
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+    const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+    return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2,"0")}`;
+  }
+
+  function bucketByDate(data, type) {
+    const m = new Map();
+    data.forEach(r => {
+      if (!r.closeDate) return;
+      const k = type === "week" ? weekKey(r.closeDate) : monthKey(r.closeDate);
+      if (!m.has(k)) m.set(k, { key:k, count:0, value:0, records: [] });
+      const x = m.get(k);
+      x.count += 1;
+      x.value += r.amount || 0;
+      x.records.push(r);
+    });
+    return Array.from(m.values()).sort((a,b) => a.key.localeCompare(b.key));
+  }
+
+  function setDrilldown(title, rows, mode) {
+    state.drilldownTitle = title || "Selected Records";
+    state.drilldownRows = Array.isArray(rows) ? rows.slice() : [];
+    state.drilldownMode = mode || "drilldown";
+    renderTable();
+    const card = $("detailsCard");
+    if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function clearDrilldown() {
+    state.drilldownTitle = "";
+    state.drilldownRows = null;
+    state.drilldownMode = "";
+    renderTable();
+  }
+
+  function resetDrilldownOnFilterChange() {
+    state.drilldownTitle = "";
+    state.drilldownRows = null;
+    state.drilldownMode = "";
+  }
+
+  function renderAll() {
+    resetDrilldownOnFilterChange();
+    applyFilters();
+    renderKpis();
+    renderReasonPanel();
+    drawCharts();
+    renderInsights();
+    renderTable();
+    setConnectionStatus();
+    $("lastRefresh").textContent = "Updated " + new Date().toLocaleString();
+  }
+
+  function renderKpis() {
+    const lost = state.filteredLost;
+    const closed = state.filteredClosed;
+    const open = state.filteredOpen;
+    const won = closed.filter(r => r.isWon);
+    const lostValue = sum(lost, r => r.amount);
+    const closedValue = sum(closed, r => r.amount);
+    const wonValue = sum(won, r => r.amount);
+    const avgLost = avg(lost, r => r.amount);
+    const lossRate = closed.length ? lost.length / closed.length : 0;
+    const valueLossRate = (lostValue + wonValue) ? lostValue / (lostValue + wonValue) : 0;
+    const salesCycleRows = lost.filter(r => r.salesCycleDays !== null);
+    const avgCycle = avg(salesCycleRows, r => r.salesCycleDays);
+    const thisWeek = weekKey(new Date());
+    const thisWeekLost = lost.filter(r => r.closeDate && weekKey(r.closeDate) === thisWeek);
+    const atRisk = open.filter(r => {
+      const today = startOfDay(new Date());
+      return (r.estimatedCloseDate && r.estimatedCloseDate < today) ||
+             (r.bidDate && r.bidDate < today && r.closeProbability < 50) ||
+             r.closeProbability <= 25;
+    });
+    const topReason = groupBy(lost, r => r.reason, r => r.amount)[0];
+
+    const kpis = [
+      { title:"Lost Revenue", value:fmtCurrency.format(lostValue), sub:`${fmtNumber.format(lost.length)} lost opportunities in ${rangeLabel()}`, color:"red", rows:lost, mode:"lost revenue" },
+      { title:"Average Lost Deal", value:fmtCurrency.format(avgLost), sub:"Average project value lost in the selected period", color:"orange", rows:lost, mode:"average lost deal" },
+      { title:"Loss Rate", value:fmtPct.format(lossRate), sub:`${fmtNumber.format(lost.length)} lost of ${fmtNumber.format(closed.length)} closed opportunities`, color:"red", rows:lost, mode:"lost opportunities" },
+      { title:"Value Loss Rate", value:fmtPct.format(valueLossRate), sub:`${fmtCurrency.format(lostValue)} lost vs ${fmtCurrency.format(wonValue)} won`, color:"orange", rows:lost, mode:"value loss rate" },
+      { title:"Top Lost Reason", value:topReason ? topReason.key : "None", sub:topReason ? `${fmtCurrency.format(topReason.value)} across ${fmtNumber.format(topReason.count)} opportunities` : "No lost reason data", color:"red", rows:topReason ? topReason.records : [], mode:"top lost reason" },
+      { title:"Avg Sales Cycle", value:avgCycle ? `${Math.round(avgCycle)} days` : "N/A", sub:"Created date to close/lost date", color:"green", rows:salesCycleRows, mode:"sales cycle records" },
+      { title:"This Week Lost", value:fmtCurrency.format(sum(thisWeekLost, r => r.amount)), sub:`${fmtNumber.format(thisWeekLost.length)} opportunities lost this ISO week`, color:"orange", rows:thisWeekLost, mode:"this week lost" },
+      { title:"At-Risk Open Pipeline", value:fmtCurrency.format(sum(atRisk, r => r.amount)), sub:`${fmtNumber.format(atRisk.length)} open opportunities with overdue/low-probability signals`, color:"green", rows:atRisk, mode:"at-risk open pipeline" }
+    ];
+
+    state.kpiDrills = kpis;
+    $("kpiGrid").innerHTML = kpis.map((k, i) => `
+      <div class="kpi clickable ${k.color}" data-kpi-index="${i}" title="Click to drill down to ${escapeHtml(k.title)} records">
+        <div class="label">${escapeHtml(k.title)}</div>
+        <div class="value">${escapeHtml(k.value)}</div>
+        <div class="sub">${escapeHtml(k.sub)}</div>
+        <div class="click-hint">Click to view records →</div>
+      </div>`).join("");
+    $("kpiGrid").querySelectorAll("[data-kpi-index]").forEach(card => {
+      card.addEventListener("click", () => {
+        const k = state.kpiDrills[Number(card.getAttribute("data-kpi-index"))];
+        setDrilldown(k.title, k.rows, k.mode);
+      });
+    });
+  }
+
+  function renderReasonPanel() {
+    const byReason = groupBy(state.filteredLost, r => r.reason, r => r.amount).slice(0, 8);
+    const total = sum(byReason, r => r.value) || 1;
+    $("topReasonTag").textContent = byReason[0] ? byReason[0].key : "No data";
+    $("reasonList").innerHTML = byReason.length ? byReason.map((r, i) => `
+      <div class="reason-item clickable" data-reason-index="${i}" title="Click to view ${escapeHtml(r.key)} lost opportunities">
+        <span><strong>${escapeHtml(r.key)}</strong> <span style="color:var(--muted)">(${fmtNumber.format(r.count)})</span></span>
+        <span>${fmtCurrency.format(r.value)}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(3, r.value / total * 100)}%; background:${CONFIG.chartColors[i % CONFIG.chartColors.length]}"></div></div>
+      </div>`).join("") : `<div class="empty">No lost reason data found for the selected filter.</div>`;
+    $("reasonList").querySelectorAll("[data-reason-index]").forEach(el => {
+      el.addEventListener("click", () => {
+        const r = byReason[Number(el.getAttribute("data-reason-index"))];
+        setDrilldown("Lost Reason: " + r.key, r.records, "lost reason");
+      });
+    });
+  }
+
+  function drawCharts() {
+    const lost = state.filteredLost;
+    drawDoughnut($("reasonDonut"), groupBy(lost, r => r.reason, r => r.amount).slice(0, 8), "value", "Lost Reason");
+    drawVerticalBar($("monthTrend"), bucketByDate(lost, "month"), { valueKey:"value", valueFormat:fmtCurrency, rotateLabels:true, drillLabel:"Month" });
+    drawVerticalBar($("weekTrend"), bucketByDate(lost, "week").slice(-18), { valueKey:"value", valueFormat:fmtCurrency, rotateLabels:true, drillLabel:"Week" });
+    drawHorizontalBar($("ownerChart"), groupBy(lost, r => r.owner, r => r.amount).slice(0, 8), { valueKey:"value", valueFormat:fmtCurrency, drillLabel:"Sales Owner" });
+    drawHorizontalBar($("competitorChart"), groupBy(lost, r => r.competitor, r => r.amount).slice(0, 7), { valueKey:"value", valueFormat:fmtCurrency, drillLabel:"Competitor" });
+    drawHorizontalBar($("sourceChart"), groupBy(lost, r => r.leadSource, r => r.amount).slice(0, 7), { valueKey:"value", valueFormat:fmtCurrency, drillLabel:"Lead Source" });
+    const basisRows = lost.filter(r => r.specBasis);
+    const equalRows = lost.filter(r => r.specEqual);
+    const notListedRows = lost.filter(r => !r.specBasis && !r.specEqual);
+    const budgetRows = lost.filter(r => /^yes$/i.test(r.budgetQuote));
+    const specData = [
+      { key: "Basis of Design", count: basisRows.length, value: sum(basisRows, r => r.amount), records: basisRows },
+      { key: "Equal on Spec", count: equalRows.length, value: sum(equalRows, r => r.amount), records: equalRows },
+      { key: "Not Listed", count: notListedRows.length, value: sum(notListedRows, r => r.amount), records: notListedRows },
+      { key: "Budget Quote", count: budgetRows.length, value: sum(budgetRows, r => r.amount), records: budgetRows }
+    ].sort((a,b) => b.value-a.value);
+    drawHorizontalBar($("specChart"), specData, { valueKey:"value", valueFormat:fmtCurrency, drillLabel:"RFQ / Spec Signal" });
+  }
+
+  function setupCanvas(canvas) {
+    const rect = canvas.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.max(300, Math.floor(rect.width * ratio));
+    canvas.height = Math.max(180, Math.floor(rect.height * ratio));
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    return { ctx, w: rect.width, h: rect.height };
+  }
+
+  function drawNoData(ctx, w, h, text) {
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle = "#6f7d88";
+    ctx.font = "13px Segoe UI, Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(text || "No data for selected filter", w/2, h/2);
+  }
+
+  function drawDoughnut(canvas, data, valueKey, drillLabel) {
+    const {ctx, w, h} = setupCanvas(canvas);
+    const regions = [];
+    ctx.clearRect(0,0,w,h);
+    const total = data.reduce((a,b)=>a+(Number(b[valueKey])||0),0);
+    if (!data.length || total <= 0) {
+      chartDrillRegions.set(canvas, []);
+      return drawNoData(ctx,w,h);
+    }
+    const cx = w * .35, cy = h * .50;
+    const radius = Math.min(w*.26, h*.36);
+    const inner = radius * .62;
+    let start = -Math.PI / 2;
+    data.forEach((d, i) => {
+      const angle = (d[valueKey] / total) * Math.PI * 2;
+      const end = start + angle;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, radius, start, end);
+      ctx.closePath();
+      ctx.fillStyle = CONFIG.chartColors[i % CONFIG.chartColors.length];
+      ctx.fill();
+      regions.push({ type:"arc", cx, cy, inner, radius, start, end, title:`${drillLabel || "Segment"}: ${d.key}`, records:d.records || [] });
+      start = end;
+    });
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.beginPath(); ctx.arc(cx, cy, inner, 0, Math.PI*2); ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "#153d5a";
+    ctx.textAlign = "center";
+    ctx.font = "800 18px Segoe UI, Arial";
+    ctx.fillText(fmtCurrency.format(total), cx, cy - 2);
+    ctx.font = "12px Segoe UI, Arial";
+    ctx.fillStyle = "#6f7d88";
+    ctx.fillText("Lost value", cx, cy + 18);
+
+    const lx = w * .64;
+    let ly = 25;
+    data.slice(0,7).forEach((d,i) => {
+      ctx.fillStyle = CONFIG.chartColors[i % CONFIG.chartColors.length];
+      ctx.fillRect(lx, ly - 10, 10, 10);
+      ctx.fillStyle = "#26323d";
+      ctx.textAlign = "left";
+      ctx.font = "12px Segoe UI, Arial";
+      ctx.fillText(truncate(d.key, 25), lx + 16, ly);
+      ctx.fillStyle = "#6f7d88";
+      ctx.fillText(fmtPct.format(d[valueKey]/total), lx + 16, ly + 15);
+      regions.push({ type:"rect", x:lx, y:ly-14, w:Math.max(120, w-lx-10), h:30, title:`${drillLabel || "Segment"}: ${d.key}`, records:d.records || [] });
+      ly += 34;
+    });
+    chartDrillRegions.set(canvas, regions);
+  }
+
+  function drawVerticalBar(canvas, data, opts) {
+    const {ctx, w, h} = setupCanvas(canvas);
+    const regions = [];
+    ctx.clearRect(0,0,w,h);
+    const max = Math.max(...data.map(d => Number(d[opts.valueKey]) || 0), 0);
+    if (!data.length || max <= 0) {
+      chartDrillRegions.set(canvas, []);
+      return drawNoData(ctx,w,h);
+    }
+    const pad = { l: 58, r: 18, t: 18, b: 58 };
+    const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+    ctx.strokeStyle = "#dbe4ea";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t+ch); ctx.lineTo(pad.l+cw, pad.t+ch); ctx.stroke();
+    for (let i=0;i<4;i++) {
+      const y = pad.t + ch - (ch * i / 3);
+      ctx.strokeStyle = "#edf2f5"; ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+cw, y); ctx.stroke();
+      const val = max * i / 3;
+      ctx.fillStyle = "#6f7d88"; ctx.font = "11px Segoe UI, Arial"; ctx.textAlign = "right";
+      ctx.fillText(shortCurrency(val), pad.l - 8, y + 4);
+    }
+    const gap = 6;
+    const bw = Math.max(7, (cw - gap * (data.length-1)) / data.length);
+    data.forEach((d,i) => {
+      const x = pad.l + i * (bw + gap);
+      const bh = ch * ((Number(d[opts.valueKey]) || 0) / max);
+      const y = pad.t + ch - bh;
+      ctx.fillStyle = CONFIG.chartColors[i % CONFIG.chartColors.length];
+      roundRect(ctx, x, y, bw, bh, 5, true, false);
+      regions.push({ type:"rect", x:x, y:y, w:bw, h:Math.max(6, bh), title:`${opts.drillLabel || "Bucket"}: ${d.key}`, records:d.records || [] });
+      ctx.save();
+      ctx.translate(x + bw/2, pad.t + ch + 18);
+      if (opts.rotateLabels) ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = "#6f7d88"; ctx.font = "11px Segoe UI, Arial"; ctx.textAlign = opts.rotateLabels ? "right" : "center";
+      ctx.fillText(String(d.key).replace(/^20/, ""), 0, 0);
+      ctx.restore();
+    });
+    chartDrillRegions.set(canvas, regions);
+  }
+
+  function drawHorizontalBar(canvas, data, opts) {
+    const {ctx, w, h} = setupCanvas(canvas);
+    const regions = [];
+    ctx.clearRect(0,0,w,h);
+    const max = Math.max(...data.map(d => Number(d[opts.valueKey]) || 0), 0);
+    if (!data.length || max <= 0) {
+      chartDrillRegions.set(canvas, []);
+      return drawNoData(ctx,w,h);
+    }
+    const pad = { l: 148, r: 74, t: 16, b: 16 };
+    const ch = h - pad.t - pad.b;
+    const rowH = Math.max(22, ch / data.length);
+    const barMax = w - pad.l - pad.r;
+    data.forEach((d,i) => {
+      const y = pad.t + i*rowH + 5;
+      const val = Number(d[opts.valueKey]) || 0;
+      const bw = Math.max(2, barMax * val / max);
+      ctx.fillStyle = "#26323d";
+      ctx.font = "12px Segoe UI, Arial";
+      ctx.textAlign = "right";
+      ctx.fillText(truncate(d.key, 22), pad.l - 10, y + 14);
+      ctx.fillStyle = "#edf2f5";
+      roundRect(ctx, pad.l, y, barMax, 12, 6, true, false);
+      ctx.fillStyle = CONFIG.chartColors[i % CONFIG.chartColors.length];
+      roundRect(ctx, pad.l, y, bw, 12, 6, true, false);
+      regions.push({ type:"rect", x:0, y:y-5, w:w, h:Math.max(20, rowH), title:`${opts.drillLabel || "Bucket"}: ${d.key}`, records:d.records || [] });
+      ctx.fillStyle = "#6f7d88";
+      ctx.textAlign = "left";
+      ctx.fillText(shortCurrency(val), pad.l + bw + 8, y + 12);
+    });
+    chartDrillRegions.set(canvas, regions);
+  }
+
+  function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+    if (height < 0) { y += height; height = Math.abs(height); }
+    if (width < 0) { x += width; width = Math.abs(width); }
+    radius = Math.min(radius || 4, width / 2, height / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + width, y, x + width, y + height, radius);
+    ctx.arcTo(x + width, y + height, x, y + height, radius);
+    ctx.arcTo(x, y + height, x, y, radius);
+    ctx.arcTo(x, y, x + width, y, radius);
+    ctx.closePath();
+    if (fill) ctx.fill();
+    if (stroke) ctx.stroke();
+  }
+
+  function shortCurrency(v) {
+    const n = Number(v) || 0;
+    if (Math.abs(n) >= 1000000) return "$" + (n/1000000).toFixed(n >= 10000000 ? 0 : 1) + "M";
+    if (Math.abs(n) >= 1000) return "$" + (n/1000).toFixed(n >= 100000 ? 0 : 1) + "K";
+    return "$" + Math.round(n);
+  }
+
+  function renderInsights() {
+    const lost = state.filteredLost;
+    const closed = state.filteredClosed;
+    const open = state.filteredOpen;
+    const byReason = groupBy(lost, r => r.reason, r => r.amount);
+    const byComp = groupBy(lost.filter(r => r.competitor && r.competitor !== "Unspecified"), r => r.competitor, r => r.amount);
+    const bySource = groupBy(lost, r => r.leadSource, r => r.amount);
+    const lateBid = lost.filter(r => /late to bid/i.test(r.reason));
+    const pricing = lost.filter(r => /pricing/i.test(r.reason));
+    const competitorLoss = lost.filter(r => /competitor/i.test(r.reason));
+    const basisLoss = lost.filter(r => r.specBasis);
+    const atRisk = open.filter(r => {
+      const today = startOfDay(new Date());
+      return (r.estimatedCloseDate && r.estimatedCloseDate < today) ||
+             (r.bidDate && r.bidDate < today && r.closeProbability < 50) ||
+             r.closeProbability <= 25;
+    });
+    const lossRate = closed.length ? lost.length / closed.length : 0;
+
+    const insightData = [
+      ["Largest loss driver", byReason[0] ? `${byReason[0].key} represents ${fmtCurrency.format(byReason[0].value)} and ${fmtNumber.format(byReason[0].count)} opportunities.` : "No lost opportunity reason has been captured for this filter."],
+      ["Competitor pressure", byComp[0] ? `${byComp[0].key} is the largest named competitor impact at ${fmtCurrency.format(byComp[0].value)}.` : "Competitor values are mostly blank or not captured."],
+      ["Pricing exposure", `${fmtCurrency.format(sum(pricing, r => r.amount))} was lost to pricing-related reasons. Review margin flexibility, discount guardrails, and value messaging.`],
+      ["Bid timing", `${fmtNumber.format(lateBid.length)} losses are tagged Late to bid. Compare Bid Date against Quote Needed By and sales handoff timing.`],
+      ["Spec strategy", `${fmtCurrency.format(sum(basisLoss, r => r.amount))} was lost even when Winco was listed as Basis of Design. Review spec compliance gaps and bidder influence.`],
+      ["Lead source quality", bySource[0] ? `${bySource[0].key} created the highest selected-period lost value at ${fmtCurrency.format(bySource[0].value)}.` : "No source data available."],
+      ["Open pipeline risk", `${fmtCurrency.format(sum(atRisk, r => r.amount))} in open pipeline has overdue or low-probability signals. Prioritize sales manager review.`],
+      ["Executive loss rate", `Selected-period count loss rate is ${fmtPct.format(lossRate)}. Use this with won-value comparison to avoid overreacting to low-value losses.`]
+    ];
+    $("insights").innerHTML = insightData.map(x => `<div class="insight"><strong>${escapeHtml(x[0])}</strong><span>${escapeHtml(x[1])}</span></div>`).join("");
+  }
+
+  function renderTable() {
+    const tbody = $("detailsTable").querySelector("tbody");
+    const usingDrill = Array.isArray(state.drilldownRows);
+    const baseRows = usingDrill ? state.drilldownRows : state.filteredLost;
+    const rows = baseRows.slice().sort((a,b) => (b.amount || 0) - (a.amount || 0)).slice(0, CONFIG.maxTableRows);
+    const title = usingDrill ? state.drilldownTitle : "Top Lost Opportunities";
+    $("detailsTitle").textContent = title || "Selected Records";
+    $("detailsCount").textContent = `${fmtNumber.format(baseRows.length)} record${baseRows.length === 1 ? "" : "s"}`;
+    $("clearDrillBtn").style.display = usingDrill ? "inline-flex" : "none";
+    $("detailsHint").textContent = usingDrill
+      ? `Showing ${baseRows.length} opportunity record${baseRows.length === 1 ? "" : "s"} for this drilldown. Click any row to open the Opportunity record.`
+      : "Click any KPI, chart bar, donut segment, reason row, or opportunity row to drill down. Click a row to open the Opportunity record inside Dynamics 365.";
+
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="11"><div class="empty">No opportunities match this drilldown or selected filter.</div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map(r => {
+      const spec = r.specStatus === "Basis of Design" ? "winco" : (r.specStatus === "Equal on Spec" ? "orange" : "");
+      return `<tr class="clickable-row" data-id="${escapeHtml(r.id)}" title="Open Opportunity record">
+        <td><a class="link" data-id="${escapeHtml(r.id)}">${escapeHtml(r.name)}</a></td>
+        <td>${escapeHtml(formatDate(r.closeDate || r.estimatedCloseDate))}</td>
+        <td>${fmtCurrency.format(r.amount)}</td>
+        <td><span class="tag lost">${escapeHtml(r.reason || (r.isLost ? "Lost" : "Open"))}</span></td>
+        <td>${escapeHtml(r.competitor)}</td>
+        <td>${escapeHtml(r.owner)}</td>
+        <td>${escapeHtml(r.customer)}</td>
+        <td>${escapeHtml(r.rfqType)}</td>
+        <td>${escapeHtml(r.leadSource)}</td>
+        <td><span class="tag ${spec}">${escapeHtml(r.specStatus)}</span></td>
+        <td>${r.salesCycleDays !== null ? fmtNumber.format(r.salesCycleDays) + " days" : "N/A"}</td>
+      </tr>`;
+    }).join("");
+    tbody.querySelectorAll("tr[data-id]").forEach(row => row.addEventListener("click", (evt) => {
+      evt.preventDefault();
+      openRecord(row.getAttribute("data-id"));
+    }));
+  }
+
+  function openRecord(id) {
+    if (!id) return;
+    const xrm = safeXrm();
+    if (xrm && xrm.Navigation && xrm.Navigation.openForm) {
+      xrm.Navigation.openForm({ entityName: CONFIG.entity.opportunity, entityId: id });
+    }
+  }
+
+  function handleChartClick(canvas, evt) {
+    const rect = canvas.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+    const regions = chartDrillRegions.get(canvas) || [];
+    const hit = regions.find(r => {
+      if (r.type === "rect") return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+      if (r.type === "arc") {
+        const dx = x - r.cx, dy = y - r.cy;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < r.inner || dist > r.radius) return false;
+        let angle = Math.atan2(dy, dx);
+        if (angle < -Math.PI / 2) angle += Math.PI * 2;
+        let start = r.start, end = r.end;
+        if (start < -Math.PI / 2) start += Math.PI * 2;
+        if (end < start) end += Math.PI * 2;
+        return angle >= start && angle <= end;
+      }
+      return false;
+    });
+    if (hit) setDrilldown(hit.title, hit.records, "chart");
+  }
+
+  function handleChartMove(canvas, evt) {
+    const rect = canvas.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+    const regions = chartDrillRegions.get(canvas) || [];
+    const hit = regions.find(r => r.type === "rect" ? x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h : false);
+    canvas.style.cursor = hit ? "pointer" : "pointer";
+  }
+
+  function formatDate(d) {
+    if (!d) return "";
+    return d.toLocaleDateString(undefined, { year:"numeric", month:"short", day:"2-digit" });
+  }
+
+  function escapeHtml(v) {
+    return String(v === null || v === undefined ? "" : v).replace(/[&<>"']/g, s => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[s]));
+  }
+
+  function truncate(v, max) {
+    v = String(v || "");
+    return v.length > max ? v.slice(0, max - 1) + "…" : v;
+  }
+
+  function exportCsv() {
+    const headers = ["Project","Lost Date","Amount","Reason","Competitor","Owner","Customer","Project Owner","General Contractor","Glazing Contractor","Architect","RFQ Type","Lead Source","Spec Status","Budget Quote","Sales Cycle Days","Opportunity ID"];
+    const body = state.filteredLost.map(r => [
+      r.name, formatDate(r.closeDate), r.amount, r.reason, r.competitor, r.owner, r.customer, r.projectOwner, r.generalContractor, r.glazingContractor, r.architect, r.rfqType, r.leadSource, r.specStatus, r.budgetQuote, r.salesCycleDays, r.id
+    ]);
+    const csv = [headers].concat(body).map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `winco_lost_opportunities_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(link.href), 2500);
+  }
+
+  async function refresh() {
+    try {
+      $("connectionText").textContent = "Loading live Dynamics 365 opportunity data...";
+      await loadLiveData();
+    } catch (e) {
+      // Keep the dashboard empty and surface the Dataverse error.
+      state.lastError = e.message || String(e);
+        state.raw = [];
+      state.closed = [];
+      state.open = [];
+      state.lost = [];
+      state.filteredLost = [];
+      state.filteredClosed = [];
+      state.filteredOpen = [];
+      state.closesByOpp = new Map();
+    }
+    applyFilterOptions();
+    renderAll();
+  }
+
+  function resetFilters() {
+    $("dateRange").value = "ytd";
+    setDefaultDates();
+    ["reasonFilter","ownerFilter","competitorFilter","sourceFilter","rfqFilter","specFilter"].forEach(id => $(id).value = "");
+    $("searchText").value = "";
+    renderAll();
+  }
+
+  function bindEvents() {
+    ["dateRange","startDate","endDate","reasonFilter","ownerFilter","competitorFilter","sourceFilter","rfqFilter","specFilter","searchText"].forEach(id => {
+      $(id).addEventListener(id === "searchText" ? "input" : "change", renderAll);
+    });
+    $("refreshBtn").addEventListener("click", refresh);
+    $("resetBtn").addEventListener("click", resetFilters);
+    $("exportBtn").addEventListener("click", exportCsv);
+    $("clearDrillBtn").addEventListener("click", clearDrilldown);
+    ["reasonDonut","monthTrend","weekTrend","ownerChart","competitorChart","sourceChart","specChart"].forEach(id => {
+      const c = $(id);
+      c.addEventListener("click", evt => handleChartClick(c, evt));
+      c.addEventListener("mousemove", evt => handleChartMove(c, evt));
+    });
+    window.addEventListener("resize", debounce(() => { drawCharts(); renderTable(); }, 150));
+  }
+
+  function debounce(fn, ms) {
+    let t;
+    return function () {
+      clearTimeout(t);
+      t = setTimeout(fn, ms);
+    };
+  }
+
+  setDefaultDates();
+  bindEvents();
+  refresh();
+
+})();
+</script>
+</body>
+</html>
