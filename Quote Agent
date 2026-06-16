@@ -1,264 +1,32 @@
-AI Agent reads vendor quote document
-→ extracts product line details
-→ creates Opportunity Product Lines
-→ associates them to the existing Opportunity
-→ user can later generate Quote from the Opportunity
-
-//////////////////////////////
-
-PHASE 1 — FOUNDATION (Dataverse + Storage)
-✅ Step 1 — Create Supporting Tables (Dataverse)
-You need a staging layer (don’t skip this).
-Create table: Vendor Quote Staging
-Columns:
-
-Name (Auto)
-Opportunity (Lookup)
-File URL
-Status (Pending / Processed / Requires Review / Approved)
-JSON Payload (Multiline text)
-
-
-Create table: Vendor Quote Line Staging
-Columns:
-
-Parent Staging (Lookup)
-Product Name (Text)
-Quantity (Decimal)
-Cost (Currency)
-Matched Product (Lookup to Product)
-Match Status (Matched / Unmatched / Low Confidence)
-
-
-✅ This gives you:
-
-traceability
-idempotency control (you care about this)
-easier debugging
-
-
-✅ Step 2 — SharePoint Integration
-
-Create document library: Vendor Quotes
-Store uploaded files here
-
-✅ Recommended:
-
-Folder per Opportunity → Opportunity Name / VendorQuotes
-
-
-🔧 PHASE 2 — AI BUILDER (Document Extraction)
-✅ Step 3 — Create AI Builder Model
-Use:
-
-Document Processing model
-
-Train with:
-
-Sample vendor quote (Excel first for POC)
-
-Extract fields:
-
-Product / Description
-Quantity
-Cost
-
-✅ Output should be:
-
-Line-level table
-
-
-🔧 PHASE 3 — POWER AUTOMATE (CORE FLOW)
-✅ Step 4 — Create Flow: Process Vendor Quote
-Trigger:
-Power Apps OR Copilot Studio
-
-Inputs:
-
-File
-Opportunity ID
-
-
-✅ Step 5 — Store File
-Actions:
-
-Create File (SharePoint)
-Create Vendor Quote Staging record
-
-
-✅ Step 6 — Run AI Builder
-Action:
-AI Builder → Extract information from documents
-
-Output:
-
-Raw extracted data
-
-
-✅ Step 7 — Parse Results (IMPORTANT)
-Action:
-Parse JSON
-
-👉 You will:
-
-Loop through each line item
-
-
-✅ Step 8 — Create Staging Line Records
-Loop:
-Apply to each Line
-
-Inside loop:
-
-Create Vendor Quote Line Staging
-Populate:
-
-Description
-Quantity
-Cost
-
-
-
-
-✅ Step 9 — Product Matching Logic
-Inside same loop:
-Option A (POC):
-List Rows (Product table)
-Filter: contains(Name, description)
-
-Option B (better for you):
-
-Move to plugin later
-Or use custom mapping table
-
-
-Update:
-Matched Product
-Match Status
-
-
-✅ Step 10 — Mark Staging as “Requires Review”
-Update:
-Vendor Quote Staging.Status = Requires Review
-
-✅ This is your handoff back to Copilot
-
-🤖 PHASE 4 — COPILOT STUDIO (AGENT)
-✅ Step 11 — Create Agent
-Topic: Upload Vendor Quote
-Steps:
-
-Ask user for file
-Ask for Opportunity
-Call Power Automate
-
-
-✅ Step 12 — Topic: Review Extracted Quote
-Trigger condition:
-
-Staging Status = Requires Review
-
-Actions:
-
-Retrieve staging lines
-Show summary:
-
-Total lines
-Unmatched count
-
-
-
-
-✅ Step 13 — Review Loop
-For each unmatched item:
-
-Ask:
-
-"Select correct product"
-OR "Keep as write-in"
-
-
-
-Update Dataverse record
-
-✅ Step 14 — Approval Step
-Prompt:
-"Do you want to create the quote now?"
-
-If YES → call Flow
-
-🔧 PHASE 5 — FINAL FLOW (QUOTE CREATION)
-✅ Step 15 — Create Flow: Create Quote from Staging
-Trigger:
-From Copilot
-
-Input:
-
-Staging Record ID
-
-
-✅ Step 16 — Create Quote
-Action:
-Add Row → Quote
-
-Populate:
-
-Opportunity
-Customer
-Currency
-
-
-✅ Step 17 — Create Quote Lines
-Loop:
-Get related staging lines
-
-Inside loop:
-Add Quote Line
-
-Populate:
-
-Product (if matched)
-Description
-Quantity
-Cost
-
-
-✅ Step 18 — Mark Process Complete
-Update:
-
-Staging Status = Approved
-Store Quote ID
-
-
-✅ Step 19 — Return Response
-Return to Copilot:
-Quote Created Successfully
-
-
-🔒 IMPORTANT (based on your experience — don’t skip)
-🔐 Idempotency (YOU WILL NEED THIS)
-Before creating Quote:
-
-Check if Quote already exists for staging record
-
-
-⚠️ Error Handling
-In Flow:
-
-Scope: Try / Catch
-Log errors in staging table
-
-
-🔁 Retry Safe Design
-
-Never overwrite existing quote lines
-Use staging ID as reference
-
-
-🚀 WHAT YOU WILL HAVE AFTER BUILD
-You will have:
-✅ Copilot-driven intake
-✅ AI-based document extraction
-✅ Staging + validation layer
-✅ Guided review experience
-✅ Controlled quote creation
+| Order | Build Item                               |
+| ----: | ---------------------------------------- |
+|     1 | Create solution                          |
+|     2 | Create choices                           |
+|     3 | Create Vendor Quote Staging table        |
+|     4 | Create Vendor Quote Line Staging table   |
+|     5 | Create Vendor Product Mapping table      |
+|     6 | Add Opportunity Product custom fields    |
+|     7 | Create SharePoint library                |
+|     8 | Build file intake/extraction flow        |
+|     9 | Build Excel extraction                   |
+|    10 | Build PDF extraction                     |
+|    11 | Build staging line creation              |
+|    12 | Build product matching                   |
+|    13 | Build review summary flow                |
+|    14 | Build exception resolution flows         |
+|    15 | Create Custom API                        |
+|    16 | Build C# plugin                          |
+|    17 | Register plugin                          |
+|    18 | Associate plugin to Custom API           |
+|    19 | Build Custom API caller flow             |
+|    20 | Build Copilot Studio agent               |
+|    21 | Add agent topics                         |
+|    22 | Add Opportunity command button           |
+|    23 | Configure security                       |
+|    24 | Test Excel path                          |
+|    25 | Test PDF path                            |
+|    26 | Test plugin Opportunity Product creation |
+|    27 | Test duplicate prevention                |
+|    28 | Package managed solution                 |
+|    29 | Deploy to UAT                            |
+|    30 | Deploy to PROD                           |
