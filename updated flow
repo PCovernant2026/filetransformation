@@ -1,3 +1,16 @@
+
+@outputs('Get_a_row_by_ID_2')?['body/documentbody']
+
+@base64ToBinary(variables('varFileContentBase64'))
+
+
+
+
+
+
+
+
+
 {
   "type": "OpenApiConnectionWebhook",
   "inputs": {
