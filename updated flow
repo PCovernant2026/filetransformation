@@ -1,4 +1,6 @@
 
+@outputs('Get_a_row_by_ID')?['body/body']
+
 @outputs('Get_a_row_by_ID_2')?['body/documentbody']
 
 @base64ToBinary(variables('varFileContentBase64'))
