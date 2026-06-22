@@ -1,0 +1,24 @@
+| Order | Build Item                                      | Status                 |
+| ----: | ----------------------------------------------- | ---------------------- |
+|     1 | Create publisher/solution/choices/tables/fields | Done                   |
+|     2 | Publish all customizations                      | Next                   |
+|     3 | Create forms                                    | Next                   |
+|     4 | Create views                                    | Next                   |
+|     5 | Add tables to app                               | Next                   |
+|     6 | Configure security                              | Next                   |
+|     7 | Create SharePoint library                       | Next                   |
+|     8 | Build Excel sample template                     | Next                   |
+|     9 | Build file intake flow                          | Next                   |
+|    10 | Build Excel extraction                          | Next                   |
+|    11 | Create staging lines                            | Next                   |
+|    12 | Build product matching                          | Next                   |
+|    13 | Build review experience                         | After matching         |
+|    14 | Build approval process                          | After review           |
+|    15 | Build Opportunity Product creation flow/plugin  | After approval         |
+|    16 | Add duplicate prevention                        | With creation logic    |
+|    17 | Build Copilot Agent                             | After backend works    |
+|    18 | Add Opportunity command button                  | After agent/flow works |
+|    19 | Build PDF extraction                            | After Excel MVP        |
+|    20 | Package managed solution                        | After testing          |
+|    21 | Deploy to UAT                                   | After DEV complete     |
+|    22 | Deploy to PROD                                  | After UAT signoff      |
