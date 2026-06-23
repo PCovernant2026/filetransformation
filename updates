@@ -1,1 +1,1 @@
-5/1/2026	5/2/2026	0408	CAPITAL ONE MOBILE PYMT	Payment/Credit		19429.84
+CCSubcategory ne 'Capital One Payment' and (CCCategory ne 'Payment/Credit' or Description ne 'CAPITAL ONE MOBILE PYMT')
