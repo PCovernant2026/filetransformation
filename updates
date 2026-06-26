@@ -1,1 +1,44 @@
-CCSubcategory ne 'Capital One Payment' and (CCCategory ne 'Payment/Credit' or Description ne 'CAPITAL ONE MOBILE PYMT')
+Here’s what was discussed in the CC App Backlog meeting about handling split expenses:
+Core Requirement
+
+They want the ability to take one credit card transaction (e.g., $200) and split it across multiple categories or clients (e.g., $100 + $100). [CC App Bac...Recording | Video]
+Today, the app does NOT support this, so users:
+
+Put instructions in the notes
+Then Sarah manually adjusts it after upload [CC App Bac...Recording | Video]
+
+
+
+Proposed Approach
+
+A potential solution discussed:
+
+Split the single transaction into multiple rows (transactions) before upload
+Example: turn $200 into two $100 entries, each categorized correctly [CC App Bac...Recording | Video]
+
+
+
+Key Considerations / Challenges
+
+Upload compatibility:
+
+The approach depends on what the Business Importer tool supports [CC App Bac...Recording | Video]
+
+
+Traceability / reconciliation:
+
+If a $200 transaction becomes two $100 entries:
+
+The system needs a way to flag or track that they originated from one transaction
+Otherwise, reconciliation could be confusing because the original $200 never exists in the uploaded data [CC App Bac...Recording | Video]
+
+
+
+
+
+Backup / Interim Solution
+
+Even if full logic isn’t implemented:
+
+They acknowledged that splitting into multiple rows and uploading them separately would work as a fallback
+
