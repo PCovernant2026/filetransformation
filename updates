@@ -42,3 +42,18 @@ Even if full logic isn’t implemented:
 
 They acknowledged that splitting into multiple rows and uploading them separately would work as a fallback
 
+//////////////////////////////
+
+
+Automated ability to verify
+     that the uploaded file = the statement amount.
+For example, enter the new
+      charges total from the statement, then upload the file and the system
+      checks that the data in the file = the amount of the new charges on the
+      statement.
+If it does not, the error
+      notification is pushed to Cindy and David (needs to be configurable)
+      telling us that the file does not balance to the statement
+Some means to restart the
+      upload once the out of balance is corrected
+
