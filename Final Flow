@@ -1,0 +1,8 @@
+Step 1: HTML sends file reference + Opportunity ID to agent
+Step 2: Agent reads/extracts file directly
+Step 3: Agent generates normalized payload
+Step 4: Agent calls CTP_MatchVendorQuoteLines
+Step 5: Agent returns mapped payload to HTML
+Step 6: User edits and approves lines
+Step 7: Agent calls CTP_ApproveAndCreateOpportunityProducts
+Step 8: Tool creates staging + Opportunity Product Lines
