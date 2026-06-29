@@ -1,0 +1,210 @@
+{
+    "kind": "PowerAppV2",
+    "inputs": {
+        "schema": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "title": "inputExtractedJson",
+                    "type": "string",
+                    "x-ms-dynamically-added": true,
+                    "description": "Please enter your input",
+                    "x-ms-content-hint": "TEXT"
+                },
+                "text_1": {
+                    "title": "inputOpportunityId",
+                    "type": "string",
+                    "x-ms-dynamically-added": true,
+                    "description": "Please enter your input",
+                    "x-ms-content-hint": "TEXT"
+                },
+                "text_2": {
+                    "title": "inputFileUrl",
+                    "type": "string",
+                    "x-ms-dynamically-added": true,
+                    "description": "Please enter your input",
+                    "x-ms-content-hint": "TEXT"
+                },
+                "text_3": {
+                    "title": "inputFileName",
+                    "type": "string",
+                    "x-ms-dynamically-added": true,
+                    "description": "Please enter your input",
+                    "x-ms-content-hint": "TEXT"
+                }
+            },
+            "required": [
+                "text",
+                "text_1",
+                "text_2",
+                "text_3"
+            ]
+        }
+    },
+    "metadata": {
+        "operationMetadataId": "bc08e695-2fe9-43fc-8b9d-136b6213a765"
+    }
+}
+
+{
+    "inputs": {
+        "content": "@triggerBody()['text']",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "ctp_vendorquotestaging": {
+                    "type": "object",
+                    "properties": {
+                        "ctp_filename": {
+                            "type": "string"
+                        },
+                        "ctp_filetype": {
+                            "type": "string"
+                        },
+                        "ctp_fileurl": {
+                            "type": "string"
+                        },
+                        "ctp_opportunity": {},
+                        "ctp_status": {
+                            "type": "string"
+                        },
+                        "ctp_processingrunid": {
+                            "type": "string"
+                        },
+                        "ctp_processedon": {
+                            "type": "string"
+                        },
+                        "ctp_totallines": {
+                            "type": "integer"
+                        },
+                        "ctp_matchedlines": {
+                            "type": "integer"
+                        },
+                        "ctp_unmatchedlines": {
+                            "type": "integer"
+                        },
+                        "ctp_errormessage": {},
+                        "ctp_jsonpayload": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "ctp_vendorquotelinestaging": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "ctp_linenumber": {
+                                "type": "integer"
+                            },
+                            "ctp_productidsku": {
+                                "type": "string"
+                            },
+                            "ctp_productname": {
+                                "type": "string"
+                            },
+                            "ctp_description": {
+                                "type": "string"
+                            },
+                            "ctp_finaldescription": {
+                                "type": "string"
+                            },
+                            "ctp_quantity": {
+                                "type": "number"
+                            },
+                            "ctp_vendorunitcost": {
+                                "type": "number"
+                            },
+                            "ctp_vendorextendedcost": {
+                                "type": "number"
+                            },
+                            "ctp_matchedproduct": {},
+                            "ctp_matchstatus": {
+                                "type": "string"
+                            },
+                            "ctp_matchconfidence": {},
+                            "ctp_usewriteinproduct": {
+                                "type": "boolean"
+                            },
+                            "ctp_errormessage": {}
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "metadata": {
+        "operationMetadataId": "237ac3f6-829e-4276-9d39-ec3213fc83a9"
+    }
+}
+
+{
+    "inputs": {
+        "host": {
+            "connectionName": "shared_commondataserviceforapps",
+            "operationId": "CreateRecord",
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+        },
+        "parameters": {
+            "entityName": "ctp_vendorquotestagings",
+            "item/ctp_errormessage": "@body('Parse_Extracted_Vendor_Quote_JSON')?['ctp_vendorquotestaging']?['ctp_errormessage']",
+            "item/ctp_filename": "@coalesce(\r\n  triggerBody()?['text_3'],\r\n  body('Parse_Extracted_Vendor_Quote_JSON')?['ctp_vendorquotestaging']?['ctp_filename']\r\n)\r\n",
+            "item/ctp_filetype": "@body('Parse_Extracted_Vendor_Quote_JSON')?['ctp_vendorquotestaging']?['ctp_filetype']",
+            "item/ctp_fileurl": "@coalesce(\r\n  triggerBody()?['text_2'],\r\n  body('Parse_Extracted_Vendor_Quote_JSON')?['ctp_vendorquotestaging']?['ctp_fileurl']\r\n)",
+            "item/ctp_jsonpayload": "@triggerBody()?['text']",
+            "item/ctp_matchedlines": "@body('Parse_Extracted_Vendor_Quote_JSON')?['ctp_vendorquotestaging']?['ctp_matchedlines']",
+            "item/ctp_Opportunity@odata.bind": "@concat('/opportunities(', triggerBody()?['text_1'], ')')",
+            "item/ctp_processingrunid": "@body('Parse_Extracted_Vendor_Quote_JSON')?['ctp_vendorquotestaging']?['ctp_processingrunid']",
+            "item/overriddencreatedon": "@utcNow()",
+            "item/ctp_status": 961490001,
+            "item/ctp_totallines": "@body('Parse_Extracted_Vendor_Quote_JSON')?['ctp_vendorquotestaging']?['ctp_totallines']",
+            "item/ctp_unmatchedlines": "@body('Parse_Extracted_Vendor_Quote_JSON')?['ctp_vendorquotestaging']?['ctp_unmatchedlines']"
+        },
+        "authentication": "@parameters('$authentication')"
+    },
+    "metadata": {
+        "operationMetadataId": "abe89eed-8764-458b-a259-a26b349161f6"
+    }
+}
+
+{
+  "type": "Foreach",
+  "foreach": "@body('Parse_Extracted_Vendor_Quote_JSON')?['ctp_vendorquotelinestaging']",
+  "actions": {
+    "Create_Vendor_Quote_Line_Staging": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "entityName": "ctp_vendorquotelinestagings",
+          "item/ctp_description": "@items('Apply_to_each')?['ctp_description']",
+          "item/ctp_errormessage": "@items('Apply_to_each')?['ctp_errormessage']",
+          "item/ctp_linenumber": "@items('Apply_to_each')?['ctp_linenumber']",
+          "item/ctp_matchstatus": "@items('Apply_to_each')?['ctp_matchstatus']",
+          "item/ctp_ParentStaging@odata.bind": "@concat(\r\n  '/ctp_vendorquotestagings(',\r\n  outputs('Create_Vendor_Quote_Staging_Header')?['body/ctp_vendorquotestagingid'],\r\n  ')'\r\n)\r\n",
+          "item/ctp_productidsku": "@items('Apply_to_each')?['ctp_productidsku']",
+          "item/ctp_productname": "@items('Apply_to_each')?['ctp_productname']",
+          "item/ctp_quantity": "@items('Apply_to_each')?['ctp_quantity']\r\n",
+          "item/ctp_usewriteinproduct": "@items('Apply_to_each')?['ctp_usewriteinproduct']",
+          "item/ctp_vendorextendedcost": "@items('Apply_to_each')?['ctp_vendorextendedcost']",
+          "item/ctp_vendorunitcost": "@items('Apply_to_each')?['ctp_vendorunitcost']"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+          "connection": "shared_commondataserviceforapps",
+          "operationId": "CreateRecord"
+        }
+      },
+      "metadata": {
+        "operationMetadataId": "95c5ad62-8d82-43ff-8064-96edbf3e71fa"
+      }
+    }
+  },
+  "runAfter": {
+    "Create_Vendor_Quote_Staging_Header": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "fa085501-4f37-4d4d-b77f-5d5dc8822134"
+  }
+}
