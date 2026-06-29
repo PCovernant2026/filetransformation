@@ -1,33 +1,6 @@
 
-file type 
 if(
-  equals(toLower(body('Parse_Extracted_Vendor_Quote_JSON')?['ctp_vendorquotestaging']?['ctp_filetype']), 'excel'),
-  961490001,
-  if(
-    equals(toLower(body('Parse_Extracted_Vendor_Quote_JSON')?['ctp_vendorquotestaging']?['ctp_filetype']), 'pdf'),
-    961490002,
-    961490004
-  )
-)
-
-
-
-line match status 
-
-if(
-  equals(toLower(items('Apply_to_each')?['ctp_matchstatus']), 'matched'),
-  961490000,
-  if(
-    equals(toLower(items('Apply_to_each')?['ctp_matchstatus']), 'low confidence'),
-    961490002,
-    if(
-      equals(toLower(items('Apply_to_each')?['ctp_matchstatus']), 'write-in'),
-      961490003,
-      if(
-        equals(toLower(items('Apply_to_each')?['ctp_matchstatus']), 'skipped'),
-        961490004,
-        961490001
-      )
-    )
-  )
+  equals(toLower(items('Apply_to_each')?['ctp_matchstatus']), 'write-in'),
+  true,
+  false
 )
