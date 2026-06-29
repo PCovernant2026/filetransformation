@@ -1,0 +1,1758 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CTP Vendor Quote Agent</title>
+
+  <!--
+    CTP Vendor Quote Agent - Clean Modern Single-File Dataverse HTML Web Resource
+    ---------------------------------------------------------------------------
+    Embed in: Dynamics 365 / Dataverse model-driven app Opportunity form tab.
+
+    Design goal:
+      Clean, quiet, modern agent workspace. HTML is only the UI; Copilot Agent
+      reads the file, generates the payload, maps products, and orchestrates actions.
+
+    Production rule:
+      Do NOT place Copilot/Direct Line secrets in this file. Use a secure proxy,
+      Dataverse Custom API, Azure Function, or another server-side bridge.
+
+    Configure in CTP_CONFIG below:
+      mode: "mock" | "agentProxy" | "dataverseCustomApi"
+  -->
+
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --surface: #ffffff;
+      --surface-subtle: #fbfcfd;
+      --text: #20242a;
+      --muted: #667085;
+      --line: #e4e7ec;
+      --line-strong: #d0d5dd;
+      --brand: #315cbb;
+      --brand-hover: #254a98;
+      --brand-soft: #eef4ff;
+      --success: #067647;
+      --success-soft: #ecfdf3;
+      --warn: #b54708;
+      --warn-soft: #fffaeb;
+      --danger: #b42318;
+      --danger-soft: #fef3f2;
+      --radius: 14px;
+      --shadow: 0 10px 28px rgba(16,24,40,.06);
+      --font: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+    }
+
+    button, input, textarea { font-family: inherit; }
+
+    .app {
+      min-height: 100vh;
+      padding: 18px;
+    }
+
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+
+    .topbar {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 11px;
+      display: grid;
+      place-items: center;
+      background: var(--brand);
+      color: white;
+      font-weight: 800;
+      letter-spacing: .4px;
+      flex: 0 0 auto;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      font-size: 19px;
+      line-height: 1.25;
+      font-weight: 700;
+    }
+
+    h2 {
+      font-size: 16px;
+      line-height: 1.25;
+      font-weight: 700;
+    }
+
+    h3 {
+      font-size: 13px;
+      line-height: 1.25;
+      font-weight: 700;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      margin-top: 3px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .badge.warn { background: var(--warn-soft); color: var(--warn); }
+    .badge.success { background: var(--success-soft); color: var(--success); }
+    .badge.danger { background: var(--danger-soft); color: var(--danger); }
+
+    .content {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-pad { padding: 16px; }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border-bottom: 1px solid var(--line);
+      background: var(--surface-subtle);
+    }
+
+    .step {
+      padding: 12px 14px;
+      border-right: 1px solid var(--line);
+    }
+
+    .step:last-child { border-right: 0; }
+
+    .step .label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      color: var(--muted);
+      font-size: 11px;
+      background: white;
+      flex: 0 0 auto;
+    }
+
+    .step.done .dot {
+      background: var(--success);
+      border-color: var(--success);
+      color: white;
+    }
+
+    .step.active .dot {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: white;
+    }
+
+    .step.done .label, .step.active .label, .step.processing .label { color: var(--text); }
+
+    .step.active, .step.processing {
+      background: #fff;
+    }
+
+    .step.processing .dot {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: white;
+      position: relative;
+    }
+
+    .step.processing .dot::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px solid rgba(72, 86, 190, .22);
+      border-top-color: var(--brand);
+      animation: spin .85s linear infinite;
+    }
+
+    .progress-caption {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #ffffff;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .progress-caption strong { color: var(--text); }
+
+    .progress-pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--brand);
+      box-shadow: 0 0 0 0 rgba(72, 86, 190, .36);
+      animation: pulse 1.25s ease-out infinite;
+      flex: 0 0 auto;
+    }
+
+    .progress-caption.idle .progress-pulse {
+      background: var(--muted);
+      box-shadow: none;
+      animation: none;
+      opacity: .45;
+    }
+
+    .progress-caption.done .progress-pulse {
+      background: var(--success);
+      box-shadow: none;
+      animation: none;
+    }
+
+    .progress-caption.error .progress-pulse {
+      background: var(--danger);
+      box-shadow: none;
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(72, 86, 190, .36); }
+      70% { box-shadow: 0 0 0 9px rgba(72, 86, 190, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(72, 86, 190, 0); }
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .input, .textarea {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      background: white;
+      color: var(--text);
+      padding: 9px 10px;
+      outline: none;
+      font-size: 13px;
+    }
+
+    .input:focus, .textarea:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(49, 92, 187, .10);
+    }
+
+    .textarea {
+      min-height: 80px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    .filebox {
+      border: 1px dashed var(--line-strong);
+      border-radius: 12px;
+      padding: 14px;
+      background: var(--surface-subtle);
+      margin-bottom: 14px;
+    }
+
+    .filebox-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+
+    .dropzone {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      min-height: 112px;
+      padding: 18px;
+      border: 1.5px dashed var(--line-strong);
+      border-radius: 14px;
+      background: white;
+      cursor: pointer;
+      transition: border-color .15s ease, background .15s ease, box-shadow .15s ease, transform .15s ease;
+      outline: none;
+    }
+
+    .dropzone:hover, .dropzone:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(49, 92, 187, .08);
+      background: #fbfdff;
+    }
+
+    .dropzone.dragging {
+      border-color: var(--brand);
+      background: #f3f7ff;
+      box-shadow: 0 0 0 4px rgba(49, 92, 187, .12);
+      transform: translateY(-1px);
+    }
+
+    .dropzone.has-file {
+      border-style: solid;
+      border-color: #b7c7ee;
+      background: #fbfdff;
+    }
+
+    .drop-content {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      min-width: 0;
+    }
+
+    .drop-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      color: var(--brand);
+      background: rgba(49, 92, 187, .09);
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .drop-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 520px;
+    }
+
+    .drop-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .file-input-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .btn.mini {
+      min-height: 32px;
+      padding: 6px 10px;
+      font-size: 12px;
+      flex: 0 0 auto;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      min-height: 36px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      background: var(--brand);
+      color: white;
+      font-weight: 700;
+      font-size: 13px;
+      transition: .15s ease;
+    }
+
+    .btn:hover { background: var(--brand-hover); }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+
+    .btn.secondary {
+      background: white;
+      color: var(--text);
+      border-color: var(--line-strong);
+    }
+
+    .btn.secondary:hover { background: var(--surface-subtle); }
+
+    .btn.ghost {
+      background: transparent;
+      color: var(--brand);
+      border-color: transparent;
+    }
+
+    .btn.danger {
+      background: white;
+      color: var(--danger);
+      border-color: #fecdca;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.55);
+      border-top-color: white;
+      animation: spin .85s linear infinite;
+      vertical-align: -3px;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .agent-message {
+      border: 1px solid #d9e5ff;
+      border-radius: 12px;
+      background: #f8fbff;
+      padding: 13px;
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: var(--brand);
+      color: white;
+      font-weight: 800;
+      font-size: 12px;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+      background: white;
+    }
+
+    .tab {
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      padding: 12px 9px 10px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .tab.active {
+      color: var(--brand);
+      border-bottom-color: var(--brand);
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      min-width: 820px;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      padding: 11px 12px;
+      font-size: 13px;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--surface-subtle);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+    .chip {
+      display: inline-flex;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--brand-soft);
+      color: var(--brand);
+      white-space: nowrap;
+    }
+
+    .chip.matched { background: var(--success-soft); color: var(--success); }
+    .chip.unmatched { background: var(--warn-soft); color: var(--warn); }
+    .chip.low { background: #f4f3ff; color: #5925dc; }
+    .chip.failed { background: var(--danger-soft); color: var(--danger); }
+
+
+    .table-actionbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: white;
+      flex-wrap: wrap;
+    }
+
+    .review-summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .review-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-weight: 800;
+      background: var(--surface-subtle);
+      border: 1px solid var(--line);
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .review-pill.good {
+      background: var(--success-soft);
+      border-color: #abefc6;
+      color: var(--success);
+    }
+
+    .review-pill.warn {
+      background: var(--warn-soft);
+      border-color: #fedf89;
+      color: var(--warn);
+    }
+
+    .edit-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      padding: 10px 14px 0;
+    }
+
+    .editable-table {
+      min-width: 1280px;
+    }
+
+    .editable-table th,
+    .editable-table td {
+      padding: 10px 9px;
+    }
+
+    .line-approval {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 32px;
+    }
+
+    .line-approval input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--brand);
+    }
+
+    .cell-input, .cell-select, .cell-textarea {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: white;
+      color: var(--text);
+      padding: 7px 8px;
+      outline: none;
+      font-size: 12px;
+    }
+
+    .cell-input:focus, .cell-select:focus, .cell-textarea:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(49, 92, 187, .09);
+    }
+
+    .cell-textarea {
+      min-height: 54px;
+      resize: vertical;
+      line-height: 1.35;
+    }
+
+    .sku-field { margin-top: 6px; }
+
+    .line-dirty-message {
+      display: none;
+      color: var(--warn);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .line-dirty-message.show {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .edited-mark {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 2px 6px;
+      margin-top: 5px;
+      background: #f2f4f7;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .side-card {
+      padding: 15px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .kv {
+      display: grid;
+      gap: 8px;
+    }
+
+    .kv-row {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 8px;
+    }
+
+    .kv-label { color: var(--muted); font-size: 12px; }
+    .kv-value { font-weight: 700; font-size: 13px; word-break: break-word; }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 9px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px;
+      background: var(--surface-subtle);
+    }
+
+    .metric-value {
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 800;
+    }
+
+    .metric-label {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .approval {
+      border-top: 1px solid var(--line);
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      background: var(--surface-subtle);
+    }
+
+    .checkline {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .alert {
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      padding: 12px;
+      line-height: 1.45;
+      font-size: 13px;
+      margin-top: 12px;
+    }
+
+    .alert.info { background: #f8fbff; border-color: #d9e5ff; color: #1849a9; }
+    .alert.warn { background: var(--warn-soft); border-color: #fedf89; color: var(--warn); }
+    .alert.danger { background: var(--danger-soft); border-color: #fecdca; color: var(--danger); }
+    .alert.success { background: var(--success-soft); border-color: #abefc6; color: var(--success); }
+
+    .code {
+      background: #101828;
+      color: #e4e7ec;
+      border-radius: 12px;
+      padding: 13px;
+      max-height: 420px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .toast {
+      display: none;
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      max-width: 420px;
+      z-index: 9999;
+      background: #101828;
+      color: white;
+      padding: 12px 14px;
+      border-radius: 12px;
+      box-shadow: 0 18px 40px rgba(16,24,40,.25);
+      line-height: 1.4;
+      font-size: 13px;
+    }
+
+    .toast.show { display: block; }
+
+    @media (max-width: 980px) {
+      .content { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: repeat(2, 1fr); }
+      .step:nth-child(2) { border-right: 0; }
+      .side { order: -1; }
+    }
+
+    @media (max-width: 640px) {
+      .app { padding: 10px; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .form-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; }
+      .step { border-right: 0; }
+      .approval { align-items: flex-start; flex-direction: column; }
+      .dropzone { align-items: flex-start; flex-direction: column; }
+      .drop-title { max-width: 100%; white-space: normal; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    "use strict";
+
+    const CTP_CONFIG = {
+      runtime: {
+        mode: "mock", // "mock" | "agentProxy" | "dataverseCustomApi"
+        agentProxyUrl: "",
+        dataverseCustomApiName: "ctp_InvokeVendorQuoteAgent",
+        dataverseRequestParamName: "ctp_RequestJson",
+        dataverseResponseParamName: "ctp_ResponseJson",
+        timeoutMs: 120000
+      },
+      agent: {
+        name: "CTP Vendor Quote Agent",
+        version: "2.2.0-editable-lines"
+      },
+      file: {
+        allowLocalFileBase64: true,
+        maxLocalFileBytes: 4 * 1024 * 1024,
+        acceptedExtensions: ["pdf", "xlsx", "xls", "csv", "docx", "doc", "png", "jpg", "jpeg", "txt"]
+      },
+      dataverse: {
+        stagingEntityLogicalName: "ctp_vendorquotestaging"
+      }
+    };
+
+    const sampleResponse = {
+      success: true,
+      status: "Requires Review",
+      message: "I mapped the vendor quote into the standard CTP payload. Five lines need review before Opportunity Products are created.",
+      payload: {
+        header: {
+          opportunityId: "00000000-0000-0000-0000-000000000000",
+          opportunityName: "UMC Discovery Ridge - 100kW UPS",
+          vendorName: "Schneider Electric IT Corporation",
+          quoteNumber: "ISX0002642109-0007",
+          fileName: "UMC Discovery Ridge 100kW UPS 5-28-26 1.docx",
+          fileUrl: "SharePoint or Dataverse file reference",
+          currency: "USD",
+          confidence: 0.72
+        },
+        lines: [
+          { lineNumber: 1, vendorSku: null, productName: "Galaxy VS UPS 100kW 480V", description: "Galaxy VS UPS 100kW 480V for External Batteries, Start-up 5x8", quantity: 1, unitOfMeasure: "Each", vendorUnitCost: null, matchStatus: "Unmatched", matchConfidence: 0.46, reason: "No SKU found. Description match requires review." },
+          { lineNumber: 2, vendorSku: null, productName: "Galaxy VS Air Filter Kit", description: "Galaxy VS Air Filter Kit for 521mm wide UPS", quantity: 1, unitOfMeasure: "Each", vendorUnitCost: null, matchStatus: "Unmatched", matchConfidence: 0.42, reason: "No SKU found. Awaiting product mapping." },
+          { lineNumber: 3, vendorSku: null, productName: "Galaxy VS Seismic Kit", description: "Galaxy VS Seismic Kit for Modular Battery Cabinet or 521mm wide UPS", quantity: 2, unitOfMeasure: "Each", vendorUnitCost: null, matchStatus: "Low Confidence", matchConfidence: 0.61, reason: "Possible match found but confidence is below threshold." },
+          { lineNumber: 4, vendorSku: null, productName: "Galaxy VS Maintenance Bypass Cabinet", description: "Maintenance Bypass Cabinet, UL, Single-Unit 50-75kW 208V, 100-150kW 480V", quantity: 1, unitOfMeasure: "Each", vendorUnitCost: null, matchStatus: "Low Confidence", matchConfidence: 0.58, reason: "Model found similar products; human review recommended." },
+          { lineNumber: 5, vendorSku: null, productName: "1 Year 4HR 7X24 Response Upgrade", description: "Service Contract for 41 to 150 kVA", quantity: 1, unitOfMeasure: "Each", vendorUnitCost: null, matchStatus: "Unmatched", matchConfidence: 0.35, reason: "Service line needs manual mapping or write-in approval." }
+        ]
+      }
+    };
+
+    const state = {
+      opportunity: null,
+      selectedFile: null,
+      fileBase64: null,
+      fileReference: "",
+      vendorHint: "",
+      instruction: "",
+      activeTab: "lines",
+      response: null,
+      approved: false,
+      busy: false,
+      error: "",
+      toast: "",
+      isDragging: false,
+      unsavedLineChanges: false,
+      progressStage: "quote",
+      progressText: "Waiting for quote file or file reference."
+    };
+
+    const root = document.getElementById("root");
+    const byId = (id) => document.getElementById(id);
+
+    function esc(v) {
+      return String(v ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function pretty(v) {
+      try { return JSON.stringify(v, null, 2); } catch { return String(v ?? ""); }
+    }
+
+    function normalizeGuid(v) {
+      return String(v || "").replace(/[{}]/g, "").trim();
+    }
+
+    function getXrm() {
+      try { return window.parent && window.parent.Xrm ? window.parent.Xrm : window.Xrm || null; }
+      catch { return null; }
+    }
+
+    function readOpportunityContext() {
+      const xrm = getXrm();
+      let id = "", name = "Current Opportunity", entityName = "opportunity", clientUrl = "";
+      try {
+        if (xrm?.Utility?.getGlobalContext) clientUrl = xrm.Utility.getGlobalContext().getClientUrl();
+        if (xrm?.Page?.data?.entity) {
+          id = normalizeGuid(xrm.Page.data.entity.getId());
+          entityName = xrm.Page.data.entity.getEntityName?.() || entityName;
+          const nameAttr = xrm.Page.getAttribute?.("name");
+          name = nameAttr?.getValue?.() || name;
+        }
+      } catch { }
+
+      const params = new URLSearchParams(window.location.search || "");
+      id = id || normalizeGuid(params.get("id"));
+      name = params.get("name") || name;
+      entityName = params.get("typename") || entityName;
+
+      return { id: id || "00000000-0000-0000-0000-000000000000", name, entityName, clientUrl, source: id ? "Dynamics form" : "Preview" };
+    }
+
+    function setState(next) { Object.assign(state, next); render(); }
+
+    function showToast(msg) {
+      state.toast = msg;
+      render();
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => setState({ toast: "" }), 3800);
+    }
+
+    function fmtBytes(bytes) {
+      if (!bytes && bytes !== 0) return "";
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+      return (bytes / 1024 / 1024).toFixed(1) + " MB";
+    }
+
+    function lines() { return state.response?.payload?.lines || []; }
+    function header() { return state.response?.payload?.header || {}; }
+
+    function countStatus(type) {
+      const t = type.toLowerCase();
+      return lines().filter(l => String(l.matchStatus || "").toLowerCase().includes(t)).length;
+    }
+
+    function needsReviewCount() {
+      return lines().filter(l => {
+        const s = String(l.matchStatus || "").toLowerCase();
+        return s.includes("unmatched") || s.includes("low");
+      }).length;
+    }
+
+    function statusClass(s) {
+      const v = String(s || "").toLowerCase();
+      if (v.includes("created") || v.includes("approved")) return "success";
+      if (v.includes("review") || v.includes("waiting")) return "warn";
+      if (v.includes("fail") || v.includes("error")) return "danger";
+      return "";
+    }
+
+    function chipClass(s) {
+      const v = String(s || "").toLowerCase();
+      if (v.includes("matched") && !v.includes("unmatched")) return "matched";
+      if (v.includes("unmatched")) return "unmatched";
+      if (v.includes("low")) return "low";
+      if (v.includes("fail")) return "failed";
+      return "";
+    }
+
+
+    function normalizeAgentResponse(response) {
+      if (!response || !response.payload) return response;
+      if (!Array.isArray(response.payload.lines)) response.payload.lines = [];
+      response.payload.lines = response.payload.lines.map((line, index) => ({
+        lineNumber: line.lineNumber ?? index + 1,
+        vendorSku: line.vendorSku ?? line.sku ?? null,
+        productName: line.productName ?? "",
+        description: line.description ?? line.productName ?? "",
+        quantity: line.quantity ?? 1,
+        unitOfMeasure: line.unitOfMeasure ?? line.uom ?? "Each",
+        vendorUnitCost: line.vendorUnitCost ?? null,
+        vendorExtendedCost: line.vendorExtendedCost ?? null,
+        matchStatus: line.matchStatus ?? "Unmatched",
+        matchConfidence: line.matchConfidence ?? null,
+        useWriteInProduct: !!line.useWriteInProduct,
+        userApproved: !!line.userApproved,
+        userModified: !!line.userModified,
+        reviewDecision: line.reviewDecision || (line.userApproved ? "Approved" : "Pending Review"),
+        reason: line.reason ?? "",
+        ...line
+      }));
+      return response;
+    }
+
+    function approvedLineCount() {
+      return lines().filter(l => !!l.userApproved).length;
+    }
+
+    function allLinesApproved() {
+      const current = lines();
+      return current.length > 0 && current.every(l => !!l.userApproved);
+    }
+
+    function toNumberOrNull(value) {
+      if (value === null || value === undefined || String(value).trim() === "") return null;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function toNumberOrZero(value) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    async function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || "").split(",")[1] || "");
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+    }
+
+    function isAcceptedFile(file) {
+      if (!file || !file.name) return false;
+      const ext = file.name.split(".").pop().toLowerCase();
+      return CTP_CONFIG.file.acceptedExtensions.includes(ext);
+    }
+
+    async function handleSelectedFile(file) {
+      if (!file) return;
+      if (!isAcceptedFile(file)) {
+        showToast("Unsupported file type. Use PDF, Excel, CSV, DOCX, image, or TXT files.");
+        return;
+      }
+
+      state.selectedFile = file;
+      state.fileBase64 = null;
+      state.error = "";
+      state.response = null;
+      state.approved = false;
+      state.unsavedLineChanges = false;
+      state.isDragging = false;
+      state.progressStage = "quote";
+      state.progressText = "Quote selected. Agent is ready to extract and map.";
+
+      if (CTP_CONFIG.file.allowLocalFileBase64 && file.size <= CTP_CONFIG.file.maxLocalFileBytes) {
+        try { state.fileBase64 = await fileToBase64(file); } catch { }
+      }
+
+      render();
+      showToast(`Selected ${file.name}. Ask the agent to process it when ready.`);
+    }
+
+    async function onFileChange(e) {
+      const file = e.target.files?.[0];
+      await handleSelectedFile(file);
+    }
+
+    function setDropVisual(isDragging) {
+      state.isDragging = isDragging;
+      const zone = byId("dropzone");
+      if (zone) zone.classList.toggle("dragging", isDragging);
+    }
+
+    function onDropZoneClick(e) {
+      if (e.target && e.target.id === "fileInput") return;
+      byId("fileInput")?.click();
+    }
+
+    function onDropZoneKeydown(e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        byId("fileInput")?.click();
+      }
+    }
+
+    function onDropZoneDragOver(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      setDropVisual(true);
+    }
+
+    function onDropZoneDragLeave(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const zone = byId("dropzone");
+      if (zone && e.relatedTarget && zone.contains(e.relatedTarget)) return;
+      setDropVisual(false);
+    }
+
+    async function onDropZoneDrop(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      setDropVisual(false);
+      const file = e.dataTransfer?.files?.[0];
+      await handleSelectedFile(file);
+    }
+
+    function buildRequest(operation) {
+      return {
+        operation,
+        source: "Dynamics 365 Opportunity HTML Web Resource",
+        agentName: CTP_CONFIG.agent.name,
+        timestampUtc: new Date().toISOString(),
+        opportunity: state.opportunity,
+        file: {
+          fileName: state.selectedFile?.name || "",
+          mimeType: state.selectedFile?.type || "",
+          sizeBytes: state.selectedFile?.size || 0,
+          fileReference: state.fileReference,
+          localFileBase64: state.fileBase64
+        },
+        hints: { vendorName: state.vendorHint, instruction: state.instruction },
+        currentPayload: state.response?.payload || null,
+        approval: {
+          approved: state.approved,
+          approvedOnUtc: state.approved ? new Date().toISOString() : null,
+          approvedLineCount: approvedLineCount(),
+          totalLineCount: lines().length,
+          allLinesApproved: allLinesApproved()
+        }
+      };
+    }
+
+    function validate(operation) {
+      if (operation === "extract_map_preview" && !state.selectedFile && !state.fileReference) {
+        throw new Error("Select a quote file or provide a file reference before asking the agent to process it.");
+      }
+      if (operation === "approve_create_products" && !state.response?.payload) {
+        throw new Error("Ask the agent to extract and map the quote first.");
+      }
+      if (operation === "approve_create_products" && state.unsavedLineChanges) {
+        throw new Error("Save the line-item edits before creating Opportunity Product Lines.");
+      }
+      if (operation === "approve_create_products" && !allLinesApproved()) {
+        throw new Error("Approve each line item before creating Opportunity Product Lines. Use Approve all lines if every line is correct.");
+      }
+      if (operation === "approve_create_products" && !state.approved) {
+        throw new Error("Confirm that you reviewed and approve the mapped quote before creating Opportunity Product Lines.");
+      }
+    }
+
+    function startProgress(operation) {
+      if (operation === "approve_create_products") {
+        return { stage: "creating", text: "Agent is creating the staging audit snapshot and Opportunity Product Lines." };
+      }
+      if (operation === "refresh_mapping") {
+        return { stage: "mapping", text: "Agent is refreshing product mapping and validation." };
+      }
+      return { stage: "mapping", text: "Agent is reading the quote, extracting content, and generating the mapped payload." };
+    }
+
+    function finishProgress(operation, response) {
+      const status = String(response?.status || "").toLowerCase();
+      if (operation === "approve_create_products" || status.includes("created")) {
+        return { stage: "created", text: "Opportunity Product Lines were created and linked to the staging audit snapshot." };
+      }
+      return { stage: "review", text: "Agent mapping is ready. Review the mapped lines before approval." };
+    }
+
+    function inferredStage(hasPayload, isCreated) {
+      if (state.busy) return state.progressStage;
+      if (isCreated) return "created";
+      if (state.approved) return "approved";
+      if (hasPayload) return "review";
+      if (state.selectedFile || state.fileReference) return "quote";
+      return state.progressStage || "quote";
+    }
+
+    function stepClass(step, hasPayload, isCreated) {
+      const stage = inferredStage(hasPayload, isCreated);
+      const hasQuote = !!state.selectedFile || !!state.fileReference;
+      const isBusy = !!state.busy;
+      let cls = "step";
+
+      if (step === 1) {
+        if (hasQuote || hasPayload || isCreated) cls += " done";
+        else cls += " active";
+      }
+
+      if (step === 2) {
+        if (stage === "mapping") cls += isBusy ? " processing" : " active";
+        else if (hasPayload || stage === "review" || stage === "approved" || stage === "creating" || stage === "created") cls += " done";
+        else if (hasQuote) cls += " active";
+      }
+
+      if (step === 3) {
+        if (stage === "review") cls += " active";
+        if (state.approved || stage === "approved" || stage === "creating" || stage === "created") cls += " done";
+      }
+
+      if (step === 4) {
+        if (stage === "creating") cls += isBusy ? " processing" : " active";
+        else if (isCreated || stage === "created") cls += " done";
+      }
+
+      return cls;
+    }
+
+    function progressCaptionClass(hasPayload, isCreated) {
+      if (state.error) return "error";
+      if (isCreated) return "done";
+      if (!state.busy && !hasPayload && !state.selectedFile && !state.fileReference) return "idle";
+      return "";
+    }
+
+    function progressCaptionText(hasPayload, isCreated) {
+      if (state.error) return "Processing stopped. Fix the error and try again.";
+      if (state.progressText) return state.progressText;
+      if (isCreated) return "Opportunity Product Lines created.";
+      if (state.approved) return "Approved. Ready to create Opportunity Product Lines.";
+      if (hasPayload) return "Review mapped quote lines before approval.";
+      if (state.selectedFile || state.fileReference) return "Quote selected. Agent is ready to process.";
+      return "Waiting for quote file or file reference.";
+    }
+
+    async function askAgent(operation) {
+      try {
+        validate(operation);
+        const progress = startProgress(operation);
+        setState({ busy: true, error: "", progressStage: progress.stage, progressText: progress.text });
+        const request = buildRequest(operation);
+        let response;
+        if (CTP_CONFIG.runtime.mode === "mock") response = await mockAgent(operation, request);
+        else if (CTP_CONFIG.runtime.mode === "agentProxy") response = await callAgentProxy(request);
+        else if (CTP_CONFIG.runtime.mode === "dataverseCustomApi") response = await callCustomApi(request);
+        else throw new Error("Unsupported runtime mode: " + CTP_CONFIG.runtime.mode);
+        if (!response || response.success === false) throw new Error(response?.message || "Agent returned an unsuccessful response.");
+        response = normalizeAgentResponse(response);
+        const doneProgress = finishProgress(operation, response);
+        setState({
+          busy: false,
+          response,
+          approved: operation === "approve_create_products" ? state.approved : false,
+          unsavedLineChanges: false,
+          activeTab: operation === "approve_create_products" ? "result" : "lines",
+          progressStage: doneProgress.stage,
+          progressText: doneProgress.text
+        });
+        showToast(response.message || "Agent completed the request.");
+      } catch (err) {
+        setState({ busy: false, error: err.message || String(err), progressStage: "error", progressText: "Processing stopped. Fix the error and try again." });
+      }
+    }
+
+    async function mockAgent(operation, request) {
+      await new Promise(r => setTimeout(r, 750));
+      if (operation === "approve_create_products") {
+        return {
+          success: true,
+          status: "Opportunity Products Created",
+          message: "Approved. I created the staging audit snapshot and Opportunity Product Lines. This is mock mode.",
+          payload: state.response.payload,
+          result: {
+            vendorQuoteStagingId: "9db6b7d2-8ac0-4a24-9be7-1fcfbd1a5c9f",
+            stagingLinesCreated: lines().length,
+            opportunityProductLinesCreated: lines().length,
+            approvedOnUtc: new Date().toISOString()
+          }
+        };
+      }
+      const res = JSON.parse(JSON.stringify(sampleResponse));
+      res.payload.header.opportunityId = request.opportunity.id;
+      res.payload.header.opportunityName = request.opportunity.name;
+      res.payload.header.fileName = request.file.fileName || res.payload.header.fileName;
+      res.payload.header.fileUrl = request.file.fileReference || res.payload.header.fileUrl;
+      if (request.hints.vendorName) res.payload.header.vendorName = request.hints.vendorName;
+      return res;
+    }
+
+    async function callAgentProxy(request) {
+      if (!CTP_CONFIG.runtime.agentProxyUrl) throw new Error("Agent proxy URL is not configured.");
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), CTP_CONFIG.runtime.timeoutMs);
+      try {
+        const res = await fetch(CTP_CONFIG.runtime.agentProxyUrl, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+          signal: controller.signal
+        });
+        const text = await res.text();
+        const json = text ? JSON.parse(text) : {};
+        if (!res.ok) throw new Error(json.message || "Agent proxy HTTP " + res.status);
+        return json;
+      } finally { clearTimeout(timer); }
+    }
+
+    async function callCustomApi(request) {
+      const xrm = getXrm();
+      if (!xrm?.WebApi?.online?.execute) throw new Error("Xrm.WebApi.online.execute is not available. Open this inside Dynamics 365.");
+      const p = CTP_CONFIG.runtime.dataverseRequestParamName;
+      const out = CTP_CONFIG.runtime.dataverseResponseParamName;
+      const apiRequest = { [p]: JSON.stringify(request) };
+      apiRequest.getMetadata = () => ({
+        boundParameter: null,
+        parameterTypes: { [p]: { typeName: "Edm.String", structuralProperty: 1 } },
+        operationType: 0,
+        operationName: CTP_CONFIG.runtime.dataverseCustomApiName
+      });
+      const response = await xrm.WebApi.online.execute(apiRequest);
+      if (!response.ok) throw new Error("Dataverse Custom API failed with status " + response.status);
+      const json = await response.json();
+      const raw = json[out] || json.ctp_responsejson || json.response;
+      return typeof raw === "string" ? JSON.parse(raw) : (raw || json);
+    }
+
+    function openStaging() {
+      const id = state.response?.result?.vendorQuoteStagingId;
+      const xrm = getXrm();
+      if (!id) return showToast("No staging record ID was returned yet.");
+      if (xrm?.Navigation?.openForm) {
+        xrm.Navigation.openForm({ entityName: CTP_CONFIG.dataverse.stagingEntityLogicalName, entityId: id });
+      } else showToast("Open this inside Dynamics 365 to navigate to the staging record.");
+    }
+
+    function copyPayload() {
+      const payload = state.response?.payload;
+      if (!payload) return showToast("No payload to copy yet.");
+      navigator.clipboard?.writeText(pretty(payload)).then(() => showToast("Payload copied."), () => showToast("Could not copy payload."));
+    }
+
+
+
+    function markLineChangesDirty() {
+      state.unsavedLineChanges = true;
+      state.approved = false;
+      const msg = byId("lineDirtyMessage");
+      if (msg) msg.classList.add("show");
+      const save = byId("saveLineEdits");
+      if (save) save.disabled = false;
+      const approved = byId("approved");
+      if (approved) {
+        approved.checked = false;
+        approved.disabled = true;
+      }
+      const approveCreate = byId("approveCreate");
+      if (approveCreate) approveCreate.disabled = true;
+    }
+
+    function saveLineEdits() {
+      if (!state.response?.payload?.lines) return showToast("No line items to save.");
+      const updated = state.response.payload.lines.map((line, index) => {
+        const get = (field) => document.querySelector(`[data-line-index="${index}"][data-field="${field}"]`);
+        const approvedEl = get("userApproved");
+        const useWriteInEl = get("useWriteInProduct");
+        const vendorSku = get("vendorSku")?.value?.trim() || null;
+        const productName = get("productName")?.value?.trim() || "";
+        const description = get("description")?.value?.trim() || productName;
+        const quantity = toNumberOrZero(get("quantity")?.value);
+        const unitOfMeasure = get("unitOfMeasure")?.value?.trim() || "Each";
+        const vendorUnitCost = toNumberOrNull(get("vendorUnitCost")?.value);
+        const vendorExtendedCost = vendorUnitCost == null ? null : Number((vendorUnitCost * quantity).toFixed(2));
+        const matchStatus = get("matchStatus")?.value || line.matchStatus || "Unmatched";
+        const userApproved = !!approvedEl?.checked;
+        const useWriteInProduct = !!useWriteInEl?.checked;
+
+        const changed = vendorSku !== (line.vendorSku ?? null)
+          || productName !== (line.productName ?? "")
+          || description !== (line.description ?? "")
+          || quantity !== Number(line.quantity ?? 0)
+          || unitOfMeasure !== (line.unitOfMeasure ?? "Each")
+          || vendorUnitCost !== (line.vendorUnitCost ?? null)
+          || matchStatus !== (line.matchStatus ?? "Unmatched")
+          || useWriteInProduct !== !!line.useWriteInProduct
+          || userApproved !== !!line.userApproved;
+
+        return {
+          ...line,
+          vendorSku,
+          productName,
+          description,
+          quantity,
+          unitOfMeasure,
+          vendorUnitCost,
+          vendorExtendedCost,
+          matchStatus,
+          useWriteInProduct,
+          userApproved,
+          reviewDecision: userApproved ? "Approved" : "Pending Review",
+          userModified: changed || !!line.userModified,
+          lastEditedOnUtc: changed ? new Date().toISOString() : line.lastEditedOnUtc
+        };
+      });
+
+      state.response.payload.lines = updated;
+      state.response.payload.review = {
+        approvedLineCount: updated.filter(l => !!l.userApproved).length,
+        totalLineCount: updated.length,
+        allLinesApproved: updated.length > 0 && updated.every(l => !!l.userApproved),
+        savedOnUtc: new Date().toISOString()
+      };
+      state.unsavedLineChanges = false;
+      state.approved = false;
+      state.progressStage = allLinesApproved() ? "review" : "review";
+      state.progressText = allLinesApproved()
+        ? "All line edits were saved. Confirm final quote approval to create Opportunity Product Lines."
+        : "Line edits were saved. Approve each line before final creation.";
+      render();
+      showToast("Line changes saved into the payload.");
+    }
+
+    function approveAllLines() {
+      if (!state.response?.payload?.lines?.length) return showToast("No line items to approve.");
+      state.response.payload.lines = state.response.payload.lines.map(line => ({
+        ...line,
+        userApproved: true,
+        reviewDecision: "Approved",
+        reviewedOnUtc: new Date().toISOString()
+      }));
+      state.response.payload.review = {
+        approvedLineCount: state.response.payload.lines.length,
+        totalLineCount: state.response.payload.lines.length,
+        allLinesApproved: true,
+        savedOnUtc: new Date().toISOString()
+      };
+      state.unsavedLineChanges = false;
+      state.approved = false;
+      state.progressStage = "review";
+      state.progressText = "All lines are approved. Confirm final quote approval to create Opportunity Product Lines.";
+      render();
+      showToast("All line items approved in the payload.");
+    }
+
+    function clearLineApprovals() {
+      if (!state.response?.payload?.lines?.length) return showToast("No line items to update.");
+      state.response.payload.lines = state.response.payload.lines.map(line => ({
+        ...line,
+        userApproved: false,
+        reviewDecision: "Pending Review",
+        reviewedOnUtc: null
+      }));
+      state.response.payload.review = {
+        approvedLineCount: 0,
+        totalLineCount: state.response.payload.lines.length,
+        allLinesApproved: false,
+        savedOnUtc: new Date().toISOString()
+      };
+      state.unsavedLineChanges = false;
+      state.approved = false;
+      state.progressStage = "review";
+      state.progressText = "Line approvals were cleared. Review and approve each line before final creation.";
+      render();
+      showToast("Line approvals cleared.");
+    }
+
+    function render() {
+      if (!state.opportunity) state.opportunity = readOpportunityContext();
+      const hasPayload = !!state.response?.payload;
+      const isCreated = String(state.response?.status || "").toLowerCase().includes("created");
+
+      root.innerHTML = `
+        <div class="app">
+          <div class="wrap">
+            <header class="topbar">
+              <div class="brand">
+                <div class="mark">CTP</div>
+                <div>
+                  <h1>Vendor Quote Agent</h1>
+                  <p class="sub">Agent-led quote extraction, mapping, review, and Opportunity Product creation.</p>
+                </div>
+              </div>
+              <span class="badge ${CTP_CONFIG.runtime.mode === "mock" ? "warn" : "success"}">${CTP_CONFIG.runtime.mode === "mock" ? "Preview mode" : "Connected"}</span>
+            </header>
+
+            <div class="content">
+              <div class="main">
+                <section class="panel">
+                  <div class="steps">
+                    <div class="${stepClass(1, hasPayload, isCreated)}"><div class="label"><span class="dot">1</span>Quote</div></div>
+                    <div class="${stepClass(2, hasPayload, isCreated)}"><div class="label"><span class="dot">2</span>Agent mapping</div></div>
+                    <div class="${stepClass(3, hasPayload, isCreated)}"><div class="label"><span class="dot">3</span>Review</div></div>
+                    <div class="${stepClass(4, hasPayload, isCreated)}"><div class="label"><span class="dot">4</span>Create lines</div></div>
+                  </div>
+                  <div class="progress-caption ${progressCaptionClass(hasPayload, isCreated)}" role="status" aria-live="polite">
+                    <span class="progress-pulse"></span>
+                    <span><strong>Progress:</strong> ${esc(progressCaptionText(hasPayload, isCreated))}</span>
+                  </div>
+
+                  <div class="panel-pad">
+                    <div class="section-head">
+                      <div>
+                        <h2>Quote intake</h2>
+                        <p class="sub">Give the agent a quote file or file reference. The agent generates the payload and mapping.</p>
+                      </div>
+                    </div>
+
+                    ${CTP_CONFIG.runtime.mode === "mock" ? `<div class="alert warn"><strong>Preview mode:</strong> update <strong>CTP_CONFIG.runtime.mode</strong> to <strong>agentProxy</strong> or <strong>dataverseCustomApi</strong> when your backend bridge is ready.</div>` : ""}
+                    ${state.error ? `<div class="alert danger"><strong>Error:</strong> ${esc(state.error)}</div>` : ""}
+
+                    <div class="filebox">
+                      <div class="filebox-row">
+                        <div>
+                          <h3>Vendor quote document</h3>
+                          <p class="sub">${state.selectedFile ? `${esc(state.selectedFile.name)} · ${fmtBytes(state.selectedFile.size)}` : "No local file selected"}</p>
+                        </div>
+                        <span class="badge">PDF · Excel · DOCX</span>
+                      </div>
+
+                      <div class="form-grid">
+                        <div class="field full">
+                          <label for="fileInput">Upload quote file</label>
+                          <div id="dropzone" class="dropzone ${state.isDragging ? "dragging" : ""} ${state.selectedFile ? "has-file" : ""}" role="button" tabindex="0" aria-label="Drag and drop a vendor quote file here or click to browse">
+                            <input class="file-input-hidden" id="fileInput" type="file" accept=".pdf,.xlsx,.xls,.csv,.docx,.doc,.png,.jpg,.jpeg,.txt" />
+                            <div class="drop-content">
+                              <div class="drop-icon">↑</div>
+                              <div style="min-width:0;">
+                                <div class="drop-title">${state.selectedFile ? esc(state.selectedFile.name) : "Drag and drop quote file here"}</div>
+                                <div class="drop-meta">${state.selectedFile ? `${fmtBytes(state.selectedFile.size)} · ${esc(state.selectedFile.type || "file")}` : "or click to browse · PDF, Excel, CSV, DOCX, images, TXT"}</div>
+                              </div>
+                            </div>
+                            <button class="btn secondary mini" id="browseFile" type="button">Browse</button>
+                          </div>
+                        </div>
+                        <div class="field">
+                          <label for="fileRef">SharePoint / Dataverse file reference</label>
+                          <input class="input" id="fileRef" value="${esc(state.fileReference)}" placeholder="Paste file URL or attachment reference" />
+                        </div>
+                        <div class="field">
+                          <label for="vendorHint">Vendor hint</label>
+                          <input class="input" id="vendorHint" value="${esc(state.vendorHint)}" placeholder="Optional, example: Schneider Electric" />
+                        </div>
+                        <div class="field">
+                          <label for="instruction">Instruction to agent</label>
+                          <input class="input" id="instruction" value="${esc(state.instruction)}" placeholder="Optional mapping/review instruction" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="actions">
+                      <button class="btn" id="askAgent" ${state.busy ? "disabled" : ""}>${state.busy ? `<span class="spinner"></span>` : ""}Ask Agent to Process Quote</button>
+                      <button class="btn secondary" id="refreshMapping" ${state.busy || !hasPayload ? "disabled" : ""}>Refresh Mapping</button>
+                      <button class="btn ghost" id="copyPayload" ${!hasPayload ? "disabled" : ""}>Copy Payload</button>
+                    </div>
+
+                    <div class="agent-message">
+                      <div class="avatar">AI</div>
+                      <div>
+                        <h3>${esc(CTP_CONFIG.agent.name)}</h3>
+                        <p class="sub">${esc(state.response?.message || "I will read the selected quote, generate a vendor-neutral payload, map lines to products where possible, and return a review preview.")}</p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="panel">
+                  <div class="tabs">
+                    <button class="tab ${state.activeTab === "lines" ? "active" : ""}" data-tab="lines">Mapped lines</button>
+                    <button class="tab ${state.activeTab === "header" ? "active" : ""}" data-tab="header">Header</button>
+                    <button class="tab ${state.activeTab === "payload" ? "active" : ""}" data-tab="payload">Payload JSON</button>
+                    <button class="tab ${state.activeTab === "result" ? "active" : ""}" data-tab="result">Result</button>
+                  </div>
+                  ${renderTab()}
+                  <div class="approval">
+                    <div>
+                      <label class="checkline"><input id="approved" type="checkbox" ${state.approved ? "checked" : ""} ${hasPayload && allLinesApproved() && !state.unsavedLineChanges ? "" : "disabled"} /> I reviewed and approve the saved line-item payload</label>
+                      <div class="small" style="margin-top:4px;">Final creation is enabled only after each line is approved and all edits are saved.</div>
+                    </div>
+                    <div class="actions">
+                      <button class="btn" id="approveCreate" ${state.busy || !hasPayload || !state.approved || !allLinesApproved() || state.unsavedLineChanges ? "disabled" : ""}>${state.busy ? `<span class="spinner"></span>` : ""}Approve + Create Opportunity Lines</button>
+                      <button class="btn secondary" id="openStaging" ${!state.response?.result?.vendorQuoteStagingId ? "disabled" : ""}>Open staging</button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <aside class="panel side side-card">
+                <div>
+                  <h2>Context</h2>
+                  <p class="sub">Current record and mapping summary.</p>
+                </div>
+                <div class="kv">
+                  <div class="kv-row"><div class="kv-label">Opportunity</div><div class="kv-value">${esc(state.opportunity.name)}</div></div>
+                  <div class="kv-row"><div class="kv-label">Record ID</div><div class="kv-value">${esc(state.opportunity.id)}</div></div>
+                  <div class="kv-row"><div class="kv-label">Source</div><div class="kv-value">${esc(state.opportunity.source)}</div></div>
+                  <div class="kv-row"><div class="kv-label">Status</div><div class="kv-value"><span class="badge ${statusClass(state.response?.status || "Waiting")}">${esc(state.response?.status || "Waiting")}</span></div></div>
+                </div>
+
+                <div class="metric-grid">
+                  <div class="metric"><div class="metric-value">${lines().length}</div><div class="metric-label">Lines</div></div>
+                  <div class="metric"><div class="metric-value">${countStatus("matched") - countStatus("unmatched")}</div><div class="metric-label">Matched</div></div>
+                  <div class="metric"><div class="metric-value">${needsReviewCount()}</div><div class="metric-label">Review</div></div>
+                  <div class="metric"><div class="metric-value">${countStatus("low")}</div><div class="metric-label">Low confidence</div></div>
+                </div>
+
+                <div class="alert info">
+                  <strong>Design rule:</strong> HTML is the interaction surface. Copilot Agent performs file reading, payload generation, mapping, and tool orchestration.
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+        <div class="toast ${state.toast ? "show" : ""}">${esc(state.toast)}</div>
+      `;
+      wire();
+    }
+
+    function renderTab() {
+      if (state.activeTab === "header") return renderHeader();
+      if (state.activeTab === "payload") return renderPayload();
+      if (state.activeTab === "result") return renderResult();
+      return renderLines();
+    }
+
+    function renderLines() {
+      if (!lines().length) return `<div class="panel-pad"><div class="alert info">No mapped quote lines yet. Ask the agent to process a quote.</div></div>`;
+
+      const approved = approvedLineCount();
+      const total = lines().length;
+      const rows = lines().map((l, index) => `
+        <tr>
+          <td>
+            <div class="line-approval">
+              <input type="checkbox" data-edit="line" data-line-index="${index}" data-field="userApproved" ${l.userApproved ? "checked" : ""} title="Approve this line" />
+            </div>
+          </td>
+          <td>${esc(l.lineNumber)}</td>
+          <td style="min-width:230px;">
+            <input class="cell-input" data-edit="line" data-line-index="${index}" data-field="productName" value="${esc(l.productName || "")}" placeholder="Product name" />
+            <input class="cell-input sku-field" data-edit="line" data-line-index="${index}" data-field="vendorSku" value="${esc(l.vendorSku || "")}" placeholder="Vendor SKU / product code" />
+            ${l.userModified ? `<span class="edited-mark">Edited</span>` : ""}
+          </td>
+          <td style="min-width:260px;"><textarea class="cell-textarea" data-edit="line" data-line-index="${index}" data-field="description" placeholder="Description">${esc(l.description || "")}</textarea></td>
+          <td style="min-width:88px;"><input class="cell-input" type="number" step="0.01" min="0" data-edit="line" data-line-index="${index}" data-field="quantity" value="${esc(l.quantity ?? "")}" /></td>
+          <td style="min-width:95px;"><input class="cell-input" data-edit="line" data-line-index="${index}" data-field="unitOfMeasure" value="${esc(l.unitOfMeasure || "Each")}" /></td>
+          <td style="min-width:115px;"><input class="cell-input" type="number" step="0.01" min="0" data-edit="line" data-line-index="${index}" data-field="vendorUnitCost" value="${l.vendorUnitCost == null ? "" : esc(l.vendorUnitCost)}" placeholder="Missing" /></td>
+          <td style="min-width:150px;">
+            <select class="cell-select" data-edit="line" data-line-index="${index}" data-field="matchStatus">
+              ${["Matched", "Unmatched", "Low Confidence", "Write-In", "Skipped"].map(s => `<option value="${esc(s)}" ${String(l.matchStatus || "").toLowerCase() === s.toLowerCase() ? "selected" : ""}>${esc(s)}</option>`).join("")}
+            </select>
+            <label class="small" style="display:flex;align-items:center;gap:6px;margin-top:7px;">
+              <input type="checkbox" data-edit="line" data-line-index="${index}" data-field="useWriteInProduct" ${l.useWriteInProduct ? "checked" : ""} /> Write-in
+            </label>
+          </td>
+          <td style="min-width:200px;"><div class="small">${esc(l.reason || "")}</div>${l.matchConfidence != null ? `<div class="small">Confidence: ${esc(l.matchConfidence)}</div>` : ""}</td>
+        </tr>
+      `).join("");
+
+      return `
+        <div class="table-actionbar">
+          <div class="review-summary">
+            <span class="review-pill ${allLinesApproved() ? "good" : "warn"}">${approved}/${total} lines approved</span>
+            <span id="lineDirtyMessage" class="line-dirty-message ${state.unsavedLineChanges ? "show" : ""}">Unsaved line changes</span>
+            <span>Edits saved here update the payload used by the agent to create records.</span>
+          </div>
+          <div class="actions">
+            <button class="btn secondary" id="approveAllLines" ${state.busy ? "disabled" : ""}>Approve all lines</button>
+            <button class="btn secondary" id="clearLineApprovals" ${state.busy ? "disabled" : ""}>Clear approvals</button>
+            <button class="btn" id="saveLineEdits" ${state.busy || !state.unsavedLineChanges ? "disabled" : ""}>Save line changes</button>
+          </div>
+        </div>
+        <div class="edit-note">Review each line, edit values as needed, approve the line, then save. The Payload JSON tab updates from these saved edits.</div>
+        <div class="table-wrap"><table class="editable-table"><thead><tr><th>Approve</th><th>Line</th><th>Product / SKU</th><th>Description</th><th>Qty</th><th>UOM</th><th>Unit cost</th><th>Status</th><th>Agent reason</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+
+    function renderHeader() {
+      if (!state.response?.payload) return `<div class="panel-pad"><div class="alert info">No header payload yet.</div></div>`;
+      const h = header();
+      return `<div class="panel-pad"><div class="form-grid">
+        ${readonly("Vendor", h.vendorName)}
+        ${readonly("Quote number", h.quoteNumber)}
+        ${readonly("File name", h.fileName)}
+        ${readonly("File reference", h.fileUrl)}
+        ${readonly("Currency", h.currency)}
+        ${readonly("Confidence", h.confidence)}
+      </div></div>`;
+    }
+
+    function readonly(label, value) {
+      return `<div class="field"><label>${esc(label)}</label><input class="input" value="${esc(value ?? "N/A")}" readonly /></div>`;
+    }
+
+    function renderPayload() {
+      if (!state.response?.payload) return `<div class="panel-pad"><div class="alert info">No payload yet.</div></div>`;
+      return `<div class="panel-pad"><div class="code">${esc(pretty(state.response.payload))}</div></div>`;
+    }
+
+    function renderResult() {
+      if (!state.response) return `<div class="panel-pad"><div class="alert info">No result yet.</div></div>`;
+      return `<div class="panel-pad"><div class="alert ${state.response.success ? "success" : "danger"}"><strong>${esc(state.response.status || "Result")}</strong><br>${esc(state.response.message || "")}</div><div class="code" style="margin-top:12px">${esc(pretty(state.response.result || state.response))}</div></div>`;
+    }
+
+    function wire() {
+      byId("fileInput")?.addEventListener("change", onFileChange);
+      byId("browseFile")?.addEventListener("click", e => { e.stopPropagation(); byId("fileInput")?.click(); });
+      const dropzone = byId("dropzone");
+      if (dropzone) {
+        dropzone.addEventListener("click", onDropZoneClick);
+        dropzone.addEventListener("keydown", onDropZoneKeydown);
+        dropzone.addEventListener("dragover", onDropZoneDragOver);
+        dropzone.addEventListener("dragenter", onDropZoneDragOver);
+        dropzone.addEventListener("dragleave", onDropZoneDragLeave);
+        dropzone.addEventListener("drop", onDropZoneDrop);
+      }
+      byId("fileRef")?.addEventListener("input", e => state.fileReference = e.target.value);
+      byId("vendorHint")?.addEventListener("input", e => state.vendorHint = e.target.value);
+      byId("instruction")?.addEventListener("input", e => state.instruction = e.target.value);
+      byId("askAgent")?.addEventListener("click", () => askAgent("extract_map_preview"));
+      byId("refreshMapping")?.addEventListener("click", () => askAgent("refresh_mapping"));
+      byId("copyPayload")?.addEventListener("click", copyPayload);
+      byId("approved")?.addEventListener("change", e => { const checked = !!e.target.checked; setState({ approved: checked, progressStage: checked ? "approved" : "review", progressText: checked ? "Quote reviewed and approved. Ready to create Opportunity Product Lines." : "Review mapped quote lines before approval." }); });
+      byId("approveCreate")?.addEventListener("click", () => askAgent("approve_create_products"));
+      byId("openStaging")?.addEventListener("click", openStaging);
+      byId("saveLineEdits")?.addEventListener("click", saveLineEdits);
+      byId("approveAllLines")?.addEventListener("click", approveAllLines);
+      byId("clearLineApprovals")?.addEventListener("click", clearLineApprovals);
+      document.querySelectorAll("[data-edit='line']").forEach(el => {
+        el.addEventListener("input", markLineChangesDirty);
+        el.addEventListener("change", markLineChangesDirty);
+      });
+      document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => setState({ activeTab: t.getAttribute("data-tab") || "lines" })));
+    }
+
+    document.addEventListener("DOMContentLoaded", render);
+  </script>
+</body>
+</html>
