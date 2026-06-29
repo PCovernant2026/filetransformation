@@ -4,3 +4,6 @@ if(
   true,
   false
 )
+
+
+items('Apply_to_each')?['ctp_finaldescription']
