@@ -1,59 +1,188 @@
-Here’s what was discussed in the CC App Backlog meeting about handling split expenses:
-Core Requirement
+{
+  "ctp_vendorquotestaging": {
+    "ctp_filename": "UMC Discovery Ridge 100kW UPS 5-28-26 1.docx",
+    "ctp_filetype": "docx",
+    "ctp_fileurl": "104a28ae-9cdc-41ad-908b-806a012eadc0",
+    "ctp_opportunity": "UMC Discovery Ridge - 100kW UPS",
+    "ctp_status": "Processing",
+    "ctp_processingrunid": "PRN-20260626-183000-UMC001",
+    "ctp_processedon": "2026-06-26T18:30:00Z",
+    "ctp_totallines": 10,
+    "ctp_matchedlines": 0,
+    "ctp_unmatchedlines": 10,
+    "ctp_errormessage": "No SKUs found in source document. All lines require description-based matching.",
+    "ctp_jsonpayload": {
+      "solution_name": "UMC Discovery Ridge - 100kW UPS",
+      "solution_number": "ISX0002642109-0007",
+      "status": "Open",
+      "opportunity_number": "N/A",
+      "shipping_weight_lbs": 3375.45,
+      "total_net_weight_lbs": 2965.38,
+      "total_discounted_price": 73235.12,
+      "vendor": "Schneider Electric IT Corporation"
+    }
+  },
 
-They want the ability to take one credit card transaction (e.g., $200) and split it across multiple categories or clients (e.g., $100 + $100). [CC App Bac...Recording | Video]
-Today, the app does NOT support this, so users:
-
-Put instructions in the notes
-Then Sarah manually adjusts it after upload [CC App Bac...Recording | Video]
-
-
-
-Proposed Approach
-
-A potential solution discussed:
-
-Split the single transaction into multiple rows (transactions) before upload
-Example: turn $200 into two $100 entries, each categorized correctly [CC App Bac...Recording | Video]
-
-
-
-Key Considerations / Challenges
-
-Upload compatibility:
-
-The approach depends on what the Business Importer tool supports [CC App Bac...Recording | Video]
-
-
-Traceability / reconciliation:
-
-If a $200 transaction becomes two $100 entries:
-
-The system needs a way to flag or track that they originated from one transaction
-Otherwise, reconciliation could be confusing because the original $200 never exists in the uploaded data [CC App Bac...Recording | Video]
-
-
-
-
-
-Backup / Interim Solution
-
-Even if full logic isn’t implemented:
-
-They acknowledged that splitting into multiple rows and uploading them separately would work as a fallback
-
-//////////////////////////////
-
-
-Automated ability to verify
-     that the uploaded file = the statement amount.
-For example, enter the new
-      charges total from the statement, then upload the file and the system
-      checks that the data in the file = the amount of the new charges on the
-      statement.
-If it does not, the error
-      notification is pushed to Cindy and David (needs to be configurable)
-      telling us that the file does not balance to the statement
-Some means to restart the
-      upload once the out of balance is corrected
-
+  "ctp_vendorquotelinestaging": [
+    {
+      "ctp_linenumber": 1,
+      "ctp_productidsku": null,
+      "ctp_productname": "Galaxy VS UPS 100kW 480V for External Batteries, Start-up 5x8",
+      "ctp_description": "Galaxy VS UPS 100kW 480V for External Batteries, Start-up 5x8",
+      "ctp_finaldescription": "Galaxy VS UPS 100kW 480V for External Batteries Start-up 5x8",
+      "ctp_quantity": 1,
+      "ctp_vendorunitcost": null,
+      "ctp_vendorextendedcost": null,
+      "ctp_matchedproduct": null,
+      "ctp_matchstatus": "Unmatched",
+      "ctp_matchconfidence": null,
+      "ctp_usewriteinproduct": true,
+      "ctp_category": "Uninterruptible Power Supply (UPS)",
+      "ctp_errormessage": "No SKU available. Awaiting description-based match by flow."
+    },
+    {
+      "ctp_linenumber": 2,
+      "ctp_productidsku": null,
+      "ctp_productname": "Galaxy VS Air Filter Kit for 521mm wide UPS",
+      "ctp_description": "Galaxy VS Air Filter Kit for 521mm wide UPS",
+      "ctp_finaldescription": "Galaxy VS Air Filter Kit for 521mm Wide UPS",
+      "ctp_quantity": 1,
+      "ctp_vendorunitcost": null,
+      "ctp_vendorextendedcost": null,
+      "ctp_matchedproduct": null,
+      "ctp_matchstatus": "Unmatched",
+      "ctp_matchconfidence": null,
+      "ctp_usewriteinproduct": true,
+      "ctp_category": "Uninterruptible Power Supply (UPS)",
+      "ctp_errormessage": "No SKU available. Awaiting description-based match by flow."
+    },
+    {
+      "ctp_linenumber": 3,
+      "ctp_productidsku": null,
+      "ctp_productname": "Galaxy VS Seismic Kit for Modular Battery Cabinet or 521mm wide UPS",
+      "ctp_description": "Galaxy VS Seismic Kit for Modular Battery Cabinet or 521mm wide UPS",
+      "ctp_finaldescription": "Galaxy VS Seismic Kit for Modular Battery Cabinet or 521mm Wide UPS",
+      "ctp_quantity": 2,
+      "ctp_vendorunitcost": null,
+      "ctp_vendorextendedcost": null,
+      "ctp_matchedproduct": null,
+      "ctp_matchstatus": "Unmatched",
+      "ctp_matchconfidence": null,
+      "ctp_usewriteinproduct": true,
+      "ctp_category": "Uninterruptible Power Supply (UPS)",
+      "ctp_errormessage": "No SKU available. Awaiting description-based match by flow."
+    },
+    {
+      "ctp_linenumber": 4,
+      "ctp_productidsku": null,
+      "ctp_productname": "Galaxy VS Maintenance Bypass Cabinet, UL, Single-Unit 50-75kW 208V, 100-150kW 480V",
+      "ctp_description": "Galaxy VS Maintenance Bypass Cabinet, UL, Single-Unit 50-75kW 208V, 100-150kW 480V",
+      "ctp_finaldescription": "Galaxy VS Maintenance Bypass Cabinet UL Single-Unit 50-75kW 208V 100-150kW 480V",
+      "ctp_quantity": 1,
+      "ctp_vendorunitcost": null,
+      "ctp_vendorextendedcost": null,
+      "ctp_matchedproduct": null,
+      "ctp_matchstatus": "Unmatched",
+      "ctp_matchconfidence": null,
+      "ctp_usewriteinproduct": true,
+      "ctp_category": "Uninterruptible Power Supply (UPS)",
+      "ctp_errormessage": "No SKU available. Awaiting description-based match by flow."
+    },
+    {
+      "ctp_linenumber": 5,
+      "ctp_productidsku": null,
+      "ctp_productname": "Galaxy VS Seismic Kit for Maintenance Bypass Cabinet",
+      "ctp_description": "Galaxy VS Seismic Kit for Maintenance Bypass Cabinet",
+      "ctp_finaldescription": "Galaxy VS Seismic Kit for Maintenance Bypass Cabinet",
+      "ctp_quantity": 1,
+      "ctp_vendorunitcost": null,
+      "ctp_vendorextendedcost": null,
+      "ctp_matchedproduct": null,
+      "ctp_matchstatus": "Unmatched",
+      "ctp_matchconfidence": null,
+      "ctp_usewriteinproduct": true,
+      "ctp_category": "Uninterruptible Power Supply (UPS)",
+      "ctp_errormessage": "No SKU available. Awaiting description-based match by flow."
+    },
+    {
+      "ctp_linenumber": 6,
+      "ctp_productidsku": null,
+      "ctp_productname": "Galaxy VS Smart Modular Battery String High Capacity 9Ah",
+      "ctp_description": "Galaxy VS Smart Modular Battery String High Capacity 9Ah",
+      "ctp_finaldescription": "Galaxy VS Smart Modular Battery String High Capacity 9Ah",
+      "ctp_quantity": 6,
+      "ctp_vendorunitcost": null,
+      "ctp_vendorextendedcost": null,
+      "ctp_matchedproduct": null,
+      "ctp_matchstatus": "Unmatched",
+      "ctp_matchconfidence": null,
+      "ctp_usewriteinproduct": true,
+      "ctp_category": "Uninterruptible Power Supply (UPS)",
+      "ctp_errormessage": "No SKU available. Awaiting description-based match by flow."
+    },
+    {
+      "ctp_linenumber": 7,
+      "ctp_productidsku": null,
+      "ctp_productname": "Galaxy VS Cable Kit for UPS with External Modular Battery Cabinets, adjacent installation",
+      "ctp_description": "Galaxy VS Cable Kit for UPS with External Modular Battery Cabinets, adjacent installation",
+      "ctp_finaldescription": "Galaxy VS Cable Kit for UPS with External Modular Battery Cabinets Adjacent Installation",
+      "ctp_quantity": 1,
+      "ctp_vendorunitcost": null,
+      "ctp_vendorextendedcost": null,
+      "ctp_matchedproduct": null,
+      "ctp_matchstatus": "Unmatched",
+      "ctp_matchconfidence": null,
+      "ctp_usewriteinproduct": true,
+      "ctp_category": "Uninterruptible Power Supply (UPS)",
+      "ctp_errormessage": "No SKU available. Awaiting description-based match by flow."
+    },
+    {
+      "ctp_linenumber": 8,
+      "ctp_productidsku": "5 Min @ 100kW",
+      "ctp_productname": "Galaxy VS Modular Battery Cabinet for up to 6 smart modular battery strings",
+      "ctp_description": "Galaxy VS Modular Battery Cabinet for up to 6 smart modular battery strings",
+      "ctp_finaldescription": "Galaxy VS Modular Battery Cabinet for up to 6 Smart Modular Battery Strings",
+      "ctp_quantity": 2,
+      "ctp_vendorunitcost": null,
+      "ctp_vendorextendedcost": null,
+      "ctp_matchedproduct": null,
+      "ctp_matchstatus": "Unmatched",
+      "ctp_matchconfidence": null,
+      "ctp_usewriteinproduct": true,
+      "ctp_category": "Uninterruptible Power Supply (UPS)",
+      "ctp_errormessage": "Item field value '5 Min @ 100kW' captured as SKU reference. Likely a runtime spec, not a true SKU. Awaiting flow validation."
+    },
+    {
+      "ctp_linenumber": 9,
+      "ctp_productidsku": null,
+      "ctp_productname": "1 Year 4HR 7X24 Response Upgrade to Factor Warranty or Existing Service Contract for 41 to 150 kVA",
+      "ctp_description": "1 Year 4HR 7X24 Response Upgrade to Factor Warranty or Existing Service Contract for 41 to 150 kVA",
+      "ctp_finaldescription": "1 Year 4HR 7x24 Response Upgrade to Factory Warranty or Existing Service Contract for 41 to 150 kVA",
+      "ctp_quantity": 1,
+      "ctp_vendorunitcost": null,
+      "ctp_vendorextendedcost": null,
+      "ctp_matchedproduct": null,
+      "ctp_matchstatus": "Unmatched",
+      "ctp_matchconfidence": null,
+      "ctp_usewriteinproduct": true,
+      "ctp_category": "Services",
+      "ctp_errormessage": "No SKU available. Awaiting description-based match by flow."
+    },
+    {
+      "ctp_linenumber": 10,
+      "ctp_productidsku": null,
+      "ctp_productname": "1 Yr EAA Prevent Srvc Upgrade to FW or Existing Srvc Plan for (1) 3P UPS 41 to 150kVA",
+      "ctp_description": "1 Yr EAA Prevent Srvc Upgrade to FW or Existing Srvc Plan for (1) 3P UPS 41 to 150kVA",
+      "ctp_finaldescription": "1 Year EAA Preventive Service Upgrade to Factory Warranty or Existing Service Plan for 1 3-Phase UPS 41 to 150kVA",
+      "ctp_quantity": 1,
+      "ctp_vendorunitcost": null,
+      "ctp_vendorextendedcost": null,
+      "ctp_matchedproduct": null,
+      "ctp_matchstatus": "Unmatched",
+      "ctp_matchconfidence": null,
+      "ctp_usewriteinproduct": true,
+      "ctp_category": "Services",
+      "ctp_errormessage": "No SKU available. Awaiting description-based match by flow."
+    }
+  ]
+}
