@@ -1,0 +1,271 @@
+Yes. The clean way to connect your HTML web resource to your Copilot Agent is to place a secure agent bridge between them.
+
+Do not put the Copilot/Direct Line secret inside the HTML file.
+
+Final connection architecture
+Dynamics 365 Opportunity form
+→ HTML web resource
+→ Secure Agent Bridge / API
+→ Copilot Studio Agent
+→ Agent tools/flows
+→ Dataverse staging + Opportunity Product Lines
+→ Agent returns JSON response
+→ HTML displays result
+
+Microsoft notes that Copilot Studio uses the Bot Framework Direct Line channel to connect a web page or app to an agent, and Direct Line secrets/tokens are used for secured access. That secret should be protected server-side, not exposed in browser JavaScript.
+
+Step 1 — Make sure your Copilot Agent is ready
+
+In Copilot Studio, confirm your agent has the right tools:
+
+CTP Vendor Quote Agent
+
+Minimum tools:
+
+Tool	Purpose
+CTP_ReadVendorQuoteFile	Reads PDF, Excel, DOCX, etc.
+CTP_GenerateVendorQuotePayload	Generates the normalized payload
+CTP_MatchVendorQuoteLines	Maps quote lines to Dynamics products
+CTP_CreateVendorQuoteStagingFromPayload_Agent	Creates staging records
+CTP_ApproveAndCreateOpportunityProducts	Creates final Opportunity Product Lines
+
+Agent flows used as tools must use When an agent calls the flow and Respond to the agent, and they must respond in real time, not asynchronously.
+
+Step 2 — Publish the agent to a custom app channel
+
+In Copilot Studio:
+
+CTP Vendor Quote Agent
+→ Channels
+→ Custom app / mobile app / Direct Line-based channel
+→ Enable secured access
+→ Get Direct Line configuration
+
+You need the channel details because your custom HTML UI will not use the normal Copilot chat canvas. It will communicate with the agent through a custom app connection. Microsoft’s custom app documentation says starting a conversation with a Copilot Studio agent requires a Direct Line token.
+
+Step 3 — Create a secure Agent Bridge
+
+This is the missing piece.
+
+The bridge can be one of these:
+
+Bridge option	Recommendation
+Azure Function	Best and cleanest
+Dataverse Custom API + plugin	Good Dataverse-native option
+Power Automate HTTP flow	Fast MVP, less ideal for secrets
+Small Node/.NET API	Good if you want full control
+
+For your case, I recommend:
+
+Azure Function Agent Bridge
+
+The bridge will:
+
+1. Receive request from HTML web resource
+2. Validate the Dynamics user/request
+3. Get or create Direct Line token/conversation
+4. Send structured activity to Copilot Agent
+5. Wait for agent response
+6. Return clean JSON to HTML
+Step 4 — Your HTML sends this request to the bridge
+
+When the user clicks:
+
+Ask Agent to Process Quote
+
+The HTML should send:
+
+{
+  "operation": "extract_map_preview",
+  "opportunity": {
+    "id": "CURRENT_OPPORTUNITY_GUID",
+    "name": "Current Opportunity"
+  },
+  "file": {
+    "fileName": "vendor quote.pdf",
+    "fileReference": "SharePoint or Dataverse file reference",
+    "mimeType": "application/pdf"
+  },
+  "hints": {
+    "vendorName": "optional",
+    "userInstruction": "optional"
+  }
+}
+
+Then when the user approves and creates records, HTML sends:
+
+{
+  "operation": "approve_create_products",
+  "opportunity": {
+    "id": "CURRENT_OPPORTUNITY_GUID",
+    "name": "Current Opportunity"
+  },
+  "approval": {
+    "userApproved": true
+  },
+  "currentPayload": {
+    "header": {},
+    "lines": []
+  }
+}
+
+The key point: the final payload sent back includes the user’s saved edits and per-line approvals.
+
+Step 5 — Your Copilot Agent should return structured JSON
+
+Tell the agent to return a structured response, not just a chat message.
+
+For extraction/mapping:
+
+{
+  "success": true,
+  "operation": "extract_map_preview",
+  "status": "Requires Review",
+  "message": "I extracted and mapped 10 quote lines. 4 lines require review.",
+  "payload": {
+    "header": {
+      "opportunityId": "GUID",
+      "vendorName": "Schneider Electric",
+      "quoteNumber": "ISX0002642109-0007",
+      "fileName": "quote.pdf",
+      "currency": "USD"
+    },
+    "lines": [
+      {
+        "lineNumber": 1,
+        "vendorSku": "ABC123",
+        "productName": "UPS Cabinet",
+        "description": "UPS Cabinet 480V",
+        "quantity": 2,
+        "unitOfMeasure": "Each",
+        "vendorUnitCost": 5000,
+        "vendorExtendedCost": 10000,
+        "matchStatus": "Matched",
+        "useWriteInProduct": false,
+        "userApproved": false,
+        "matchConfidence": 0.91,
+        "reason": "Matched by vendor SKU."
+      }
+    ]
+  }
+}
+
+For final creation:
+
+{
+  "success": true,
+  "operation": "approve_create_products",
+  "status": "Opportunity Products Created",
+  "message": "Created 10 staging lines and 10 Opportunity Product Lines.",
+  "result": {
+    "vendorQuoteStagingId": "GUID",
+    "stagingLinesCreated": 10,
+    "opportunityProductLinesCreated": 10
+  }
+}
+Step 6 — Update the HTML web resource config
+
+In the latest HTML file, find this section:
+
+const CTP_CONFIG = {
+  runtime: {
+    mode: "mock",
+    agentProxyUrl: ""
+  }
+}
+
+Change it to:
+
+const CTP_CONFIG = {
+  runtime: {
+    mode: "agentProxy",
+    agentProxyUrl: "https://YOUR-AZURE-FUNCTION.azurewebsites.net/api/ctp/vendorquoteagent"
+  }
+}
+
+After that, the button:
+
+Ask Agent to Process Quote
+
+will call your bridge instead of the mock response.
+
+Step 7 — Bridge calls the Copilot Agent
+
+Your bridge receives the HTML request, then sends it to the Copilot Agent as a structured message/activity.
+
+Conceptually:
+
+HTML request
+→ Agent Bridge
+→ Direct Line conversation
+→ Send activity to Copilot Agent
+→ Agent reads request
+→ Agent calls tools
+→ Agent returns JSON
+→ Bridge returns JSON to HTML
+
+Microsoft’s Direct Line security documentation specifically supports secured access through Direct Line secrets or tokens, and also mentions refreshing tokens and regenerating secrets.
+
+Step 8 — The agent topic should understand operations
+
+In Copilot Studio, create a topic like:
+
+Vendor Quote Web Resource Request
+
+The agent should understand two main operations:
+
+extract_map_preview
+approve_create_products
+
+Agent logic:
+
+If operation = extract_map_preview:
+    Read file
+    Extract content
+    Generate payload
+    Match products
+    Return payload preview
+
+If operation = approve_create_products:
+    Validate approved payload
+    Create staging snapshot
+    Create Opportunity Product Lines
+    Return final result
+Step 9 — Keep the HTML as UI only
+
+The HTML should not create records directly.
+
+Correct:
+
+HTML → Agent → Tools → Dataverse
+
+Avoid:
+
+HTML → Dataverse record creation directly
+
+Because your goal is to use the Copilot Agent’s agentic capabilities: reading documents, interpreting vendor formats, mapping products, deciding when review is needed, and orchestrating tools.
+
+Step 10 — Recommended build order
+
+Build it in this order:
+
+1. Keep HTML in mock mode and embed it in Opportunity form.
+2. Confirm Opportunity context loads correctly.
+3. Publish Copilot Agent to custom app / Direct Line channel.
+4. Create secure Azure Function Agent Bridge.
+5. Update HTML config to agentProxy mode.
+6. Test Ask Agent to Process Quote.
+7. Confirm agent returns payload to HTML.
+8. Edit line items in HTML.
+9. Approve lines.
+10. Test Approve + Create Opportunity Lines.
+11. Confirm staging and Opportunity Product Lines are created.
+My recommendation for your next step
+
+Build the Agent Bridge next. Without it, the HTML can only mock the agent. The first real milestone should be:
+
+HTML web resource
+→ Azure Function bridge
+→ Copilot Agent
+→ returns mapped payload
+→ HTML displays mapped lines
