@@ -1,0 +1,316 @@
+Create the flow
+
+Go to:
+
+Copilot Studio
+→ CTP Vendor Quote Agent
+→ Tools
+→ Add a tool
+→ New flow
+
+Name it:
+
+CTP_MatchVendorQuoteLines
+
+Trigger:
+
+When an agent calls the flow
+Trigger inputs
+
+Add these inputs:
+
+Input name	Type	Required
+inputOpportunityId	Text	Yes
+inputPayloadJson	Text	Yes
+inputVendorName	Text	No
+inputMatchThreshold	Number	No
+
+For inputMatchThreshold, use default logic of:
+
+0.80
+
+If blank.
+
+Flow actions
+1. Parse JSON
+
+Add action:
+
+Data Operations → Parse JSON
+
+Content:
+
+inputPayloadJson
+
+Power Automate data operations such as Parse JSON, Compose, Select, and Filter array are meant for transforming and working with structured data inside flows.
+
+Use this starter schema:
+
+{
+  "type": "object",
+  "properties": {
+    "header": {
+      "type": "object",
+      "properties": {
+        "opportunityId": { "type": ["string", "null"] },
+        "opportunityName": { "type": ["string", "null"] },
+        "vendorName": { "type": ["string", "null"] },
+        "quoteNumber": { "type": ["string", "null"] },
+        "fileName": { "type": ["string", "null"] },
+        "fileUrl": { "type": ["string", "null"] },
+        "currency": { "type": ["string", "null"] }
+      }
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lineNumber": { "type": ["integer", "number", "null"] },
+          "vendorSku": { "type": ["string", "null"] },
+          "productName": { "type": ["string", "null"] },
+          "description": { "type": ["string", "null"] },
+          "quantity": { "type": ["integer", "number", "null"] },
+          "unitOfMeasure": { "type": ["string", "null"] },
+          "vendorUnitCost": { "type": ["integer", "number", "null"] },
+          "vendorExtendedCost": { "type": ["integer", "number", "null"] },
+          "matchStatus": { "type": ["string", "null"] },
+          "useWriteInProduct": { "type": ["boolean", "null"] },
+          "userApproved": { "type": ["boolean", "null"] },
+          "matchConfidence": { "type": ["integer", "number", "null"] },
+          "reason": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}
+2. Initialize variables
+
+Add these variables:
+
+Variable	Type	Initial value
+varMatchedLines	Integer	0
+varUnmatchedLines	Integer	0
+varLowConfidenceLines	Integer	0
+varMatchedLinesArray	Array	[]
+varVendorName	String	vendor from payload/header or input
+
+For varVendorName, use this logic:
+
+If inputVendorName is not empty, use inputVendorName.
+Otherwise use payload.header.vendorName.
+3. Apply to each quote line
+
+Add:
+
+Apply to each
+
+Input:
+
+body('Parse_JSON')?['lines']
+
+Power Automate’s Apply to each action is used to loop through arrays and process each item.
+
+Inside the loop, create these compose actions:
+
+Compose_LineNumber
+Compose_VendorSku
+Compose_ProductName
+Compose_Description
+Compose_Quantity
+Compose_UOM
+
+For SKU, normalize it:
+
+trim(coalesce(items('Apply_to_each')?['vendorSku'], ''))
+
+For product name:
+
+trim(coalesce(items('Apply_to_each')?['productName'], ''))
+Matching logic
+
+Use this priority:
+
+1. Vendor Product Mapping table
+2. Product table by product number / SKU
+3. Product table by exact name
+4. Low Confidence / Unmatched
+4. Search Vendor Product Mapping
+
+Add Dataverse action:
+
+Microsoft Dataverse → List rows
+
+Table:
+
+ctp_vendorproductmapping
+
+Filter rows concept:
+
+Vendor Name = varVendorName
+AND Vendor SKU = current line vendorSku
+AND Active = Yes
+
+Your exact field names may differ, but conceptually this should search:
+
+ctp_vendorname
+ctp_vendorsku
+ctp_dynamicsproduct
+
+Dataverse List rows supports filtering, sorting, selecting columns, and expanding related data through its advanced options.
+
+Set Top Count:
+
+1
+
+If a mapping record is found, set the line as:
+
+{
+  "matchStatus": "Matched",
+  "matchConfidence": 1.0,
+  "reason": "Matched by Vendor Product Mapping table."
+}
+
+Also include:
+
+matchedProductId
+matchedProductName
+5. If mapping not found, search Product by SKU
+
+Add Dataverse action:
+
+List rows
+
+Table:
+
+Products
+
+Dataverse logical table:
+
+product
+
+Search by:
+
+productnumber = vendorSku
+
+Use Top Count:
+
+1
+
+If found:
+
+{
+  "matchStatus": "Matched",
+  "matchConfidence": 0.95,
+  "reason": "Matched by Dynamics Product Number/SKU."
+}
+6. If SKU not found, search Product by name
+
+Add another Dataverse List rows.
+
+Table:
+
+Products
+
+Search by exact product name:
+
+name = productName
+
+If found:
+
+{
+  "matchStatus": "Matched",
+  "matchConfidence": 0.90,
+  "reason": "Matched by exact product name."
+}
+7. If no match, return Unmatched or Low Confidence
+
+For MVP, keep this simple.
+
+If SKU is blank:
+
+{
+  "matchStatus": "Unmatched",
+  "matchConfidence": 0.0,
+  "reason": "No vendor SKU was provided and no exact product match was found."
+}
+
+If SKU exists but no product found:
+
+{
+  "matchStatus": "Unmatched",
+  "matchConfidence": 0.0,
+  "reason": "Vendor SKU was provided but no matching product or vendor mapping was found."
+}
+
+Later, you can add fuzzy matching or Dataverse search, but do deterministic matching first so the flow is reliable.
+
+Build the updated line object
+
+For each line, append an object to varMatchedLinesArray.
+
+Use:
+
+Append to array variable
+
+Variable:
+
+varMatchedLinesArray
+
+Object shape:
+
+{
+  "lineNumber": 1,
+  "vendorSku": "ABC123",
+  "productName": "Product Name",
+  "description": "Description",
+  "quantity": 1,
+  "unitOfMeasure": "Each",
+  "vendorUnitCost": 100,
+  "vendorExtendedCost": 100,
+  "matchStatus": "Matched",
+  "matchedProductId": "GUID",
+  "matchedProductName": "Dynamics Product Name",
+  "useWriteInProduct": false,
+  "userApproved": false,
+  "matchConfidence": 0.95,
+  "reason": "Matched by Dynamics Product Number/SKU."
+}
+
+Important rule:
+
+Do not set userApproved = true.
+Do not set useWriteInProduct = true automatically.
+
+Those should come from the user review screen.
+
+Return the updated payload
+
+After the loop, use a Compose action:
+
+Compose_MatchedPayload
+
+Build this object:
+
+{
+  "header": "@{body('Parse_JSON')?['header']}",
+  "lines": "@{variables('varMatchedLinesArray')}"
+}
+
+Then add:
+
+Respond to the agent
+
+Return these outputs:
+
+Output name	Type	Value
+success	Boolean	true
+matchedPayloadJson	Text	stringified matched payload
+matchedLines	Number	varMatchedLines
+unmatchedLines	Number	varUnmatchedLines
+lowConfidenceLines	Number	varLowConfidenceLines
+message	Text	summary
+
+Example message:
+
+Product matching completed. 3 lines matched, 7 lines require review.
