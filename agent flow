@@ -1,0 +1,17 @@
+1. Open Opportunity
+2. Open Vendor Quote Agent tab
+3. Upload/select vendor quote
+4. Ask agent to process quote
+5. Agent reads file
+6. Agent extracts quote content
+7. Agent maps content into standard payload
+8. Agent matches products where possible
+9. HTML displays mapped lines
+10. User edits line items
+11. User saves edits
+12. User approves each line
+13. User gives final approval
+14. Agent creates staging audit snapshot
+15. Agent creates Opportunity Product Lines
+16. Agent links created lines back to staging
+17. User sees final result
