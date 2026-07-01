@@ -1,0 +1,5 @@
+Strip out payments – these
+     transactions are already ‘known’ in QuickBooks
+let's look at the data to see how to identify
+
+Strip out all negative Line Amounts from the file and send out and email to accounting including. line transactions that were striped out
