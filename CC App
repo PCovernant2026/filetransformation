@@ -7,6 +7,40 @@ Strip out all negative Line Amounts from the file and send out and email to acco
 
 
 
+
+
+
+Get_items
+   ↓
+Apply_to_each
+   ↓
+Filter_array_-_QBO_Upload_Rows
+   ↓
+Create_CSV_table
+   ↓
+Create_file
+   ↓
+Get_file_properties
+   ↓
+Get_file_content
+   ↓
+Send_an_email_(V2)
+
+Separate branch:
+
+Apply_to_each
+   ↓
+Filter_array_-_Negative_Line_Amount_Rows
+   ↓
+Create_CSV_table_-_Negative_Line_Amount_Rows
+   ↓
+Send_email_-_Negative_Line_Amount_Rows_to_Accounting
+
+
+
+
+
+
 Get items
    ↓
 Apply to each
