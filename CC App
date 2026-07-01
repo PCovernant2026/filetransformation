@@ -3,3 +3,28 @@ Strip out payments – these
 let's look at the data to see how to identify
 
 Strip out all negative Line Amounts from the file and send out and email to accounting including. line transactions that were striped out
+
+
+
+
+Get items
+   ↓
+Apply to each
+   ↓
+Filter array - Rows to Upload to QBO
+   ↓
+Create CSV table - QBO Upload File
+   ↓
+Create file
+   ↓
+Email QBO file
+
+Also:
+
+Get items
+   ↓
+Filter array - Negative Rows Stripped Out
+   ↓
+Create HTML table or CSV table
+   ↓
+Email accounting with stripped transactions
