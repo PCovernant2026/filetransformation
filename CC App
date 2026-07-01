@@ -41,24 +41,262 @@ Send_email_-_Negative_Line_Amount_Rows_to_Accounting
 
 
 
-Get items
-   ↓
-Apply to each
-   ↓
-Filter array - Rows to Upload to QBO
-   ↓
-Create CSV table - QBO Upload File
-   ↓
-Create file
-   ↓
-Email QBO file
+1. Leave your known-payment filter separate
 
-Also:
+Your current Get_items filter is:
 
-Get items
-   ↓
-Filter array - Negative Rows Stripped Out
-   ↓
-Create HTML table or CSV table
-   ↓
-Email accounting with stripped transactions
+CCSubcategory ne 'Capital One Payment'
+
+If this is still a known QuickBooks exclusion, you can leave it there.
+
+But if accounting wants to also see those stripped rows in the negative-amount email, then you must remove it from Get_items and handle it later. Based on your correction, I would keep known-payment filtering separate from the negative amount reporting.
+
+2. Add action: Filter_array_-_QBO_Upload_Rows
+
+Add this after Apply_to_each.
+
+Action type:
+
+Data Operations → Filter array
+
+Rename it to:
+
+Filter_array_-_QBO_Upload_Rows
+
+In From, use expression:
+
+@body('Get_items')?['value']
+
+Click Edit in advanced mode and use this expression:
+
+@greaterOrEquals(
+  add(
+    if(empty(item()?['Debit']), 0, float(item()?['Debit'])),
+    if(empty(item()?['Credit']), 0, float(item()?['Credit']))
+  ),
+  0
+)
+What this does
+
+This keeps only rows where:
+
+Debit + Credit >= 0
+
+These rows will go into the QBO upload file.
+
+3. Update existing action: Create_CSV_table
+
+Open your existing Create_CSV_table.
+
+Change From.
+
+Current value:
+
+@body('Get_items')?['value']
+
+Replace it with:
+
+@body('Filter_array_-_QBO_Upload_Rows')
+4. Fix Line.Amount in existing Create_CSV_table
+
+In Create_CSV_table, find the column:
+
+Line.Amount
+
+Current value:
+
+@{item()?['Debit']}@{item()?['Credit']}
+
+Replace it with this exact expression:
+
+@{add(
+  if(empty(item()?['Debit']), 0, float(item()?['Debit'])),
+  if(empty(item()?['Credit']), 0, float(item()?['Credit']))
+)}
+
+This makes Line.Amount a real calculated value instead of concatenating Debit and Credit as text.
+
+5. Add action: Filter_array_-_Negative_Line_Amount_Rows
+
+Add another Filter array action after Apply_to_each.
+
+Action type:
+
+Data Operations → Filter array
+
+Rename it to:
+
+Filter_array_-_Negative_Line_Amount_Rows
+
+In From, use:
+
+@body('Get_items')?['value']
+
+Click Edit in advanced mode and use this expression:
+
+@less(
+  add(
+    if(empty(item()?['Debit']), 0, float(item()?['Debit'])),
+    if(empty(item()?['Credit']), 0, float(item()?['Credit']))
+  ),
+  0
+)
+What this does
+
+This captures rows where:
+
+Debit + Credit < 0
+
+These rows are stripped from the QBO upload but preserved for the accounting email.
+
+6. Add action: Create_CSV_table_-_Negative_Line_Amount_Rows
+
+Add this after:
+
+Filter_array_-_Negative_Line_Amount_Rows
+
+Action type:
+
+Data Operations → Create CSV table
+
+Rename it to:
+
+Create_CSV_table_-_Negative_Line_Amount_Rows
+
+Set From to:
+
+@body('Filter_array_-_Negative_Line_Amount_Rows')
+
+Set Columns to:
+
+Custom
+
+Add these columns:
+
+Header	Value
+SharePoint ID	@{item()?['ID']}
+Transaction Date	@{item()?['Transaction_x0020_Date']}
+Cardholder	@{item()?['Cardholder']?['DisplayName']}
+Description	@{item()?['Description']}
+Category	@{item()?['CCCategory']}
+Subcategory	@{item()?['CCSubcategory']}
+Debit	@{item()?['Debit']}
+Credit	@{item()?['Credit']}
+Calculated Line Amount	@{add(if(empty(item()?['Debit']), 0, float(item()?['Debit'])), if(empty(item()?['Credit']), 0, float(item()?['Credit'])))}
+Client Name	@{item()?['Client_x0020_Name']}
+Comments	@{item()?['Comments']}
+7. Add action: Send_email_-_Negative_Line_Amount_Rows_to_Accounting
+
+Add this after:
+
+Create_CSV_table_-_Negative_Line_Amount_Rows
+
+Action type:
+
+Office 365 Outlook → Send an email (V2)
+
+Rename it to:
+
+Send_email_-_Negative_Line_Amount_Rows_to_Accounting
+
+Use this recipient, unless accounting gives you a better distribution list:
+
+dfriedrichs@mailctp.com
+
+Subject:
+
+Capital One QBO Upload - Negative Line Amounts Stripped Out - @{body('Convert_time_zone')}
+
+Body:
+
+<p>Hello,</p>
+
+<p>The attached transactions were stripped out of the Capital One QBO upload because their calculated Line Amount was negative.</p>
+
+<p><strong>Rule used:</strong> Debit + Credit &lt; 0</p>
+
+<p>These transactions were not included in the QBO upload CSV file.</p>
+
+<p>Please review the attached CSV for the stripped-out line transactions.</p>
+
+<p>Thank you.</p>
+
+Attachment Name:
+
+Negative_Line_Amounts_Stripped_Out_@{body('Convert_time_zone')}.csv
+
+Attachment Content:
+
+@{base64(body('Create_CSV_table_-_Negative_Line_Amount_Rows'))}
+8. Important: control the run order
+
+Set these run orders:
+
+Existing QBO upload path
+
+Create_CSV_table should run after:
+
+Filter_array_-_QBO_Upload_Rows
+
+Not directly after Apply_to_each.
+
+Negative email path
+
+Create_CSV_table_-_Negative_Line_Amount_Rows should run after:
+
+Filter_array_-_Negative_Line_Amount_Rows
+
+Send_email_-_Negative_Line_Amount_Rows_to_Accounting should run after:
+
+Create_CSV_table_-_Negative_Line_Amount_Rows
+9. Optional but recommended: only send accounting email if negative rows exist
+
+Wrap the negative email branch in a Condition.
+
+Add a Condition after:
+
+Filter_array_-_Negative_Line_Amount_Rows
+
+Condition expression:
+
+@greater(length(body('Filter_array_-_Negative_Line_Amount_Rows')), 0)
+
+If Yes:
+
+Create_CSV_table_-_Negative_Line_Amount_Rows
+Send_email_-_Negative_Line_Amount_Rows_to_Accounting
+
+If No:
+
+Do nothing
+
+This prevents accounting from receiving empty emails.
+
+10. Final expressions summary
+QBO upload rows
+@greaterOrEquals(
+  add(
+    if(empty(item()?['Debit']), 0, float(item()?['Debit'])),
+    if(empty(item()?['Credit']), 0, float(item()?['Credit']))
+  ),
+  0
+)
+Negative stripped rows
+@less(
+  add(
+    if(empty(item()?['Debit']), 0, float(item()?['Debit'])),
+    if(empty(item()?['Credit']), 0, float(item()?['Credit']))
+  ),
+  0
+)
+Corrected QBO Line.Amount
+@{add(
+  if(empty(item()?['Debit']), 0, float(item()?['Debit'])),
+  if(empty(item()?['Credit']), 0, float(item()?['Credit']))
+)}
+Negative email condition
+@greater(length(body('Filter_array_-_Negative_Line_Amount_Rows')), 0)
+Negative report attachment content
+@{base64(body('Create_CSV_table_-_Negative_Line_Amount_Rows'))}
+
+This keeps the requirements clean: normal known-payment filters remain separate, while negative amount rows are stripped from the upload and sent to accounting as an exception report.
