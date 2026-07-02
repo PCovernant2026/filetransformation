@@ -1,3 +1,13 @@
+@concat(
+'/products(',
+first(body('Find_Product_By_SKU')?['value'])?['productid'],
+')'
+)
+
+
+
+
+
 {
   "type": "Request",
   "kind": "Skills",
