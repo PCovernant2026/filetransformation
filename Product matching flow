@@ -8,6 +8,28 @@ first(body('Find_Product_By_SKU')?['value'])?['productid'],
 
 
 
+@triggerBody()?['text_2']
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 {
   "type": "Request",
   "kind": "Skills",
