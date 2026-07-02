@@ -1,10 +1,4 @@
-_ctp_parentstaging_value eq @{triggerBody()?['text_2']}
-
-
-
-
-
-
+ctp_vendorsku eq '@{replace(trim(coalesce(item()?['ctp_productidsku'],'')),'''','''''')}'
 
 
 
