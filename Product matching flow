@@ -1,17 +1,4 @@
-@concat(
-'/products(',
-first(body('Find_Product_By_SKU')?['value'])?['productid'],
-')'
-)
-
-
-
-
-
-@triggerBody()?['text_2']
-
-
-
+_ctp_parentstaging_value eq @{triggerBody()?['text_2']}
 
 
 
