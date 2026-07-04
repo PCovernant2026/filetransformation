@@ -1,5 +1,32 @@
-ctp_vendorsku eq '@{replace(trim(coalesce(item()?['ctp_productidsku'],'')),'''','''''')}'
-
+{
+    "inputs": {
+        "host": {
+            "connection": {
+                "name": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$connections']['shared_sharepointonline']['connectionId']"
+            }
+        },
+        "method": "get",
+        "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://mailctp365.sharepoint.com/reporting'))}/tables/@{encodeURIComponent(encodeURIComponent('f1561c94-a2e5-4251-938e-622c879b6956'))}/items",
+        "queries": {
+            "$filter": "CCSubcategory ne 'Capital One Payment' and CCSubcategory ne 'Payment/Credit' or Description ne 'CAPITAL ONE MOBILE PYMT')"
+        },
+        "authentication": {
+            "type": "Raw",
+            "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+        }
+    },
+    "runtimeConfiguration": {
+        "paginationPolicy": {
+            "minimumItemCount": 500
+        }
+    },
+    "metadata": {
+        "flowSystemMetadata": {
+            "swaggerOperationId": "GetItems"
+        },
+        "operationMetadataId": "ffeddafe-df8f-41a2-8132-b60a327a5151"
+    }
+}
 
 
 
