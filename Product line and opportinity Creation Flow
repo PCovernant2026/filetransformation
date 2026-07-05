@@ -5,21 +5,32 @@
     "schema": {
       "type": "object",
       "properties": {
-        "text": {
+        "text_1": {
           "description": "Please enter your input",
-          "title": "inputStagingId",
+          "title": " inputStagingId",
+          "type": "string",
+          "x-ms-content-hint": "TEXT",
+          "x-ms-dynamically-added": true
+        },
+        "text_2": {
+          "description": "Please enter your input",
+          "title": "inputOpportunityId",
           "type": "string",
           "x-ms-content-hint": "TEXT",
           "x-ms-dynamically-added": true
         }
       },
       "required": [
-        "text"
+        "text_1",
+        "text_2"
       ]
     }
   },
   "metadata": {
-    "operationMetadataId": "b8f61c18-7224-4f8a-9c5f-72fbce5df764"
+    "operationMetadataId": "b8f61c18-7224-4f8a-9c5f-72fbce5df764",
+    "flowSystemMetadata": {
+      "flowKind": "Stateless"
+    }
   }
 }
 
