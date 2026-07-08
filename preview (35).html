@@ -9,15 +9,6 @@
   <!--
     CTP Vendor Quote Agent - Embedded Portal Single-File Dataverse HTML Web Resource
     ---------------------------------------------------------------------------
-    Embed in: Dynamics 365 / Dataverse model-driven app Opportunity form tab as the Embedded Portal.
-
-    Design goal:
-      Clean, quiet, modern agent workspace. HTML is only the UI; Copilot Agent
-      reads the file, generates the payload, maps products, and orchestrates actions.
-
-    Production rule:
-      Do NOT place Copilot/Direct Line secrets in this file. Use a secure proxy,
-      Dataverse Custom API, Azure Function, or another server-side bridge.
 
     Configure in CTP_CONFIG below:
       mode: "mock" | "agentProxy" | "dataverseCustomApi"
