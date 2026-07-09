@@ -1,3 +1,33 @@
+
+When an Opportunity had the status Sq. Ft. $ Budget and gets updated to Returned to Rep, wait 3 months, then send an email every 90 days (90 days, 180 days, etc.) from the date the status was set to Returned to Rep. Stop the email when the status changes to anything else or when the status of Returned to Rep has been set for 1 year. This will use the Opportunity Status Duration table to see the status changes and the date it was set/changed. The Name is what captures the actual status value and is text. The email should be sent to the Sales Rep (Account) associated with the Opportunity. The email should also have the Opportunity set as the regarding.
+
+The message should state:
+
+ 
+
+Opportunities that were budgeted that are due to be followed up on.  Please update the status and add notes to the “Latest Update” field.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 {
   "type": "Recurrence",
   "recurrence": {
