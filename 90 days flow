@@ -1,0 +1,289 @@
+{
+  "type": "Recurrence",
+  "recurrence": {
+    "frequency": "Day",
+    "interval": 1,
+    "startTime": "2026-05-14T07:00:00.000Z"
+  },
+  "metadata": {
+    "operationMetadataId": "3fe8217d-22c1-4b6d-aab2-fb1411d1ee81"
+  }
+}
+
+
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "entityName": "ctp_opportunitystatuses",
+      "$filter": "ctp_name eq 'Returned to Rep' and ctp_datestatusend eq null\n"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+      "connection": "shared_commondataserviceforapps",
+      "operationId": "ListRecords"
+    }
+  },
+  "runAfter": {},
+  "runtimeConfiguration": {
+    "paginationPolicy": {
+      "minimumItemCount": 1
+    }
+  },
+  "metadata": {
+    "operationMetadataId": "3b8a638a-acb7-4478-b8b7-c9db8b794343"
+  }
+}
+
+{
+  "type": "Foreach",
+  "foreach": "@outputs('List_rows')?['body/value']",
+  "actions": {
+    "OppId": {
+      "type": "Compose",
+      "inputs": "@items('Apply_to_each')?['_ctp_opportunity_value']",
+      "metadata": {
+        "operationMetadataId": "96ed2bff-fd2f-42e4-a6c6-bc0de7bccac1"
+      }
+    },
+    "ReturnedToRepStart": {
+      "type": "Compose",
+      "inputs": "@items('Apply_to_each')?['ctp_datestatusset']",
+      "runAfter": {
+        "OppId": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "9a7ab004-055d-4663-ba0f-0ac7b5166f3c"
+      }
+    },
+    "List_rows_2": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "entityName": "ctp_opportunitystatuses",
+          "$filter": "_ctp_opportunity_value eq '@{outputs('OppId')}'\nand ctp_name eq 'Sq. Ft. $ Budget' \nand ctp_datestatusend lt '@{formatDateTime(outputs('ReturnedToRepStart'),'yyyy-MM-ddTHH:mm:ssZ')}'"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+          "connection": "shared_commondataserviceforapps",
+          "operationId": "ListRecords"
+        }
+      },
+      "runAfter": {
+        "ReturnedToRepStart": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "ce11a744-f131-40bf-9dbd-d656afe069a0"
+      }
+    },
+    "Condition": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greater": [
+              "@length(outputs('List_rows_2')?['body/value'])",
+              0
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "DaysInReturnedToRep": {
+          "type": "Compose",
+          "inputs": "@int(\n  div(\n    sub(ticks(utcNow()), ticks(outputs('ReturnedToRepStart'))),\n    864000000000\n  )\n)",
+          "metadata": {
+            "operationMetadataId": "38429740-2a6e-46ac-a953-453dcb8a1dba"
+          }
+        },
+        "Condition_2": {
+          "type": "If",
+          "expression": {
+            "or": [
+              {
+                "equals": [
+                  "@int(outputs('DaysInReturnedToRep'))",
+                  90
+                ]
+              },
+              {
+                "equals": [
+                  "@int(outputs('DaysInReturnedToRep'))",
+                  180
+                ]
+              },
+              {
+                "equals": [
+                  "@int(outputs('DaysInReturnedToRep'))",
+                  270
+                ]
+              },
+              {
+                "equals": [
+                  "@int(outputs('DaysInReturnedToRep'))",
+                  360
+                ]
+              }
+            ]
+          },
+          "actions": {
+            "Get_the_Opportunity": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "entityName": "opportunities",
+                  "recordId": "@outputs('OppId')"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                  "connection": "shared_commondataserviceforapps",
+                  "operationId": "GetItem"
+                }
+              },
+              "metadata": {
+                "operationMetadataId": "e15ef198-466f-4bce-a284-1cd74c1b8f88"
+              }
+            },
+            "Check_Current_Status": {
+              "type": "If",
+              "expression": {
+                "equals": [
+                  "@outputs('Get_the_Opportunity')?['body/new_status']",
+                  "Returned to Rep"
+                ]
+              },
+              "actions": {
+                "Get_a_row_by_ID": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "entityName": "accounts",
+                      "recordId": "@outputs('Get_the_Opportunity')?['body/_parentaccountid_value']"
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                      "connection": "shared_commondataserviceforapps",
+                      "operationId": "GetItem"
+                    }
+                  },
+                  "metadata": {
+                    "operationMetadataId": "cf6aa4fb-0cda-47b0-8b17-c5f7c7a7a60a"
+                  }
+                },
+                "Add_a_new_row": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "entityName": "emails",
+                      "x-ms-odata-metadata-full": true,
+                      "item/activitypointer_activity_parties": [
+                        {
+                          "participationtypemask": 1,
+                          "partyid@odata.bind": "systemusers(@{outputs('Get_the_Opportunity')?['body/_ownerid_value']})"
+                        },
+                        {
+                          "participationtypemask": 2,
+                          "partyid@odata.bind": "systemusers(@{coalesce(outputs('Get_a_row_by_ID')?['body/_salesrepid_value'], outputs('Get_the_Opportunity')?['body/_ownerid_value'])})"
+                        }
+                      ],
+                      "item/category": "Returned to Rep Follow-Up",
+                      "item/description": "Opportunities that were budgeted that are due to be followed up on.\nPlease update the status and add notes to the “Latest Update” field.\n",
+                      "item/directioncode": true,
+                      "item/ownerid_email@odata.bind": "@concat('systemusers(', outputs('Get_the_Opportunity')?['body/_ownerid_value'], ')')",
+                      "item/prioritycode": 1,
+                      "item/regardingobjectid_opportunity_email@odata.bind": "@concat('opportunities(', outputs('OppId'), ')')",
+                      "item/statuscode": 1,
+                      "item/subject": "Opportunity Follow-Up Required"
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                      "connection": "shared_commondataserviceforapps",
+                      "operationId": "CreateRecord"
+                    }
+                  },
+                  "runAfter": {
+                    "Get_a_row_by_ID": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "8737ea20-516d-4c62-bd83-234033f7864b"
+                  }
+                },
+                "Perform_a_bound_action": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "entityName": "emails",
+                      "actionName": "Microsoft.Dynamics.CRM.SendEmail",
+                      "recordId": "@outputs('Add_a_new_row')?['body/activityid']",
+                      "item/IssueSend": true
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                      "connection": "shared_commondataserviceforapps",
+                      "operationId": "PerformBoundAction"
+                    }
+                  },
+                  "runAfter": {
+                    "Add_a_new_row": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "d908ca27-c82c-4982-9dfa-482c2de2b3bc"
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              },
+              "runAfter": {
+                "Get_the_Opportunity": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "b9835bb5-5c17-4e74-bc0c-caac62600442"
+              }
+            }
+          },
+          "else": {
+            "actions": {}
+          },
+          "runAfter": {
+            "DaysInReturnedToRep": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "1aee9b23-a8fa-47b6-b574-f33cb8cbc1d2"
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "List_rows_2": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "37445f35-c104-4b55-94ce-daf157877069"
+      }
+    }
+  },
+  "runAfter": {
+    "List_rows": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "e7b73ea9-10e8-4113-9eac-3d891a41b558"
+  }
+}
