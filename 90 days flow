@@ -1,11 +1,549 @@
 
-When an Opportunity had the status Sq. Ft. $ Budget and gets updated to Returned to Rep, wait 3 months, then send an email every 90 days (90 days, 180 days, etc.) from the date the status was set to Returned to Rep. Stop the email when the status changes to anything else or when the status of Returned to Rep has been set for 1 year. This will use the Opportunity Status Duration table to see the status changes and the date it was set/changed. The Name is what captures the actual status value and is text. The email should be sent to the Sales Rep (Account) associated with the Opportunity. The email should also have the Opportunity set as the regarding.
+Power Automate / Dataverse Returned to Rep Follow-Up Flow
+================================================================
 
-The message should state:
+Purpose
+-------
+When an Opportunity had the status "Sq. Ft. $ Budget" and then gets updated to "Returned to Rep",
+wait 3 months, then send an email every 90 days from the date the status was set to Returned to Rep.
 
- 
+Emails should be sent at:
+- 90 days
+- 180 days
+- 270 days
+- 360 days
 
-Opportunities that were budgeted that are due to be followed up on.  Please update the status and add notes to the “Latest Update” field.
+Stop sending when:
+- The Opportunity is no longer actively in Returned to Rep
+- The Returned to Rep status has been set for more than 1 year
+
+The flow uses the Opportunity Status Duration table:
+- Table: ctp_opportunitystatuses
+- Status text field: ctp_name
+- Status start date: ctp_datestatusset
+- Status end date: ctp_datestatusend
+- Opportunity lookup: _ctp_opportunity_value
+
+The email should:
+- Be sent to the Sales Rep on the Account associated with the Opportunity
+- Have the Opportunity set as Regarding
+- Use this body:
+
+Opportunities that were budgeted that are due to be followed up on.
+Please update the status and add notes to the “Latest Update” field.
+
+
+IMPORTANT POWER AUTOMATE NOTE
+-----------------------------
+When pasting into the Expression tab, paste the expression WITHOUT the leading @.
+When pasting into Filter rows, paste the filter exactly as shown.
+
+
+============================================================
+1. Recurrence Trigger
+============================================================
+
+Action type:
+Recurrence
+
+Frequency:
+Day
+
+Interval:
+1
+
+Recommended start time:
+Use your preferred daily run time.
+
+Your current start time:
+2026-05-14T07:00:00.000Z
+
+
+============================================================
+2. Dataverse List rows: List_rows
+============================================================
+
+Action name:
+List_rows
+
+Table:
+ctp_opportunitystatuses
+
+Filter rows:
+ctp_name eq 'Returned to Rep' and ctp_datestatusend eq null and ctp_datestatusset ne null and _ctp_opportunity_value ne null
+
+Purpose:
+This gets only records where Returned to Rep is the current active status.
+This also satisfies the stop condition when the status changes to anything else, because ctp_datestatusend will no longer be null.
+
+
+============================================================
+3. Apply to each
+============================================================
+
+Action name:
+Apply_to_each
+
+Select an output from previous steps:
+value from List_rows
+
+Expression version:
+outputs('List_rows')?['body/value']
+
+
+============================================================
+4. Compose: OppId
+============================================================
+
+Action type:
+Compose
+
+Action name:
+OppId
+
+Expression:
+items('Apply_to_each')?['_ctp_opportunity_value']
+
+Purpose:
+Stores the related Opportunity ID from the current Opportunity Status Duration row.
+
+
+============================================================
+5. Compose: ReturnedToRepStart
+============================================================
+
+Action type:
+Compose
+
+Action name:
+ReturnedToRepStart
+
+Expression:
+items('Apply_to_each')?['ctp_datestatusset']
+
+Purpose:
+Stores the date/time when the status was set to Returned to Rep.
+
+
+============================================================
+6. Dataverse List rows: List_rows_2
+============================================================
+
+Action name:
+List_rows_2
+
+Table:
+ctp_opportunitystatuses
+
+Filter rows:
+_ctp_opportunity_value eq @{outputs('OppId')} and ctp_datestatusend ne null and ctp_datestatusend le @{formatDateTime(outputs('ReturnedToRepStart'),'yyyy-MM-ddTHH:mm:ssZ')}
+
+Order by:
+ctp_datestatusend desc
+
+Top count:
+1
+
+Purpose:
+Gets the immediate previous completed status before Returned to Rep.
+
+Important:
+Do not filter ctp_name here. This action should get the last status before Returned to Rep, then the next condition checks whether that status was Sq. Ft. $ Budget.
+
+
+============================================================
+7. Condition: Previous status equals Sq. Ft. $ Budget
+============================================================
+
+Action name:
+Condition
+
+Left side expression:
+if(greater(length(outputs('List_rows_2')?['body/value']),0),first(outputs('List_rows_2')?['body/value'])?['ctp_name'],'')
+
+Operator:
+is equal to
+
+Right side:
+Sq. Ft. $ Budget
+
+Purpose:
+This ensures the Opportunity came from Sq. Ft. $ Budget before going to Returned to Rep.
+
+Put all remaining actions below inside the YES branch.
+
+
+============================================================
+8. Compose: DaysInReturnedToRep
+============================================================
+
+Action type:
+Compose
+
+Action name:
+DaysInReturnedToRep
+
+Expression:
+int(
+  div(
+    sub(
+      ticks(startOfDay(utcNow())),
+      ticks(startOfDay(outputs('ReturnedToRepStart')))
+    ),
+    864000000000
+  )
+)
+
+Purpose:
+Calculates how many calendar days the Opportunity has been in Returned to Rep.
+
+Why this version:
+It uses startOfDay so the flow is not affected by the exact hour/minute when Returned to Rep was set.
+
+
+============================================================
+9. Compose: MilestoneDue
+============================================================
+
+Action type:
+Compose
+
+Action name:
+MilestoneDue
+
+Expression:
+if(
+  and(
+    greaterOrEquals(int(outputs('DaysInReturnedToRep')), 360),
+    lessOrEquals(int(outputs('DaysInReturnedToRep')), 365)
+  ),
+  360,
+  if(
+    and(
+      greaterOrEquals(int(outputs('DaysInReturnedToRep')), 270),
+      less(int(outputs('DaysInReturnedToRep')), 360)
+    ),
+    270,
+    if(
+      and(
+        greaterOrEquals(int(outputs('DaysInReturnedToRep')), 180),
+        less(int(outputs('DaysInReturnedToRep')), 270)
+      ),
+      180,
+      if(
+        and(
+          greaterOrEquals(int(outputs('DaysInReturnedToRep')), 90),
+          less(int(outputs('DaysInReturnedToRep')), 180)
+        ),
+        90,
+        0
+      )
+    )
+  )
+)
+
+Purpose:
+Determines which reminder milestone is currently due.
+
+Milestone behavior:
+90–179 days   = 90-day email
+180–269 days  = 180-day email
+270–359 days  = 270-day email
+360–365 days  = 360-day final email
+Over 365 days = stop
+
+
+============================================================
+10. Condition_2: MilestoneDue greater than 0
+============================================================
+
+Action name:
+Condition_2
+
+Left side expression:
+int(outputs('MilestoneDue'))
+
+Operator:
+is greater than
+
+Right side:
+0
+
+Purpose:
+Only continue when a valid milestone is due.
+
+Put the email logic inside the YES branch.
+
+
+============================================================
+11. Compose: EmailSubject
+============================================================
+
+Action type:
+Compose
+
+Action name:
+EmailSubject
+
+Expression:
+concat('Opportunity Follow-Up Required - ', outputs('MilestoneDue'), ' Days')
+
+Example output:
+Opportunity Follow-Up Required - 90 Days
+Opportunity Follow-Up Required - 180 Days
+Opportunity Follow-Up Required - 270 Days
+Opportunity Follow-Up Required - 360 Days
+
+Purpose:
+Creates a unique subject per milestone so duplicate prevention can work correctly.
+
+
+============================================================
+12. Dataverse List rows: Check_existing_milestone_email
+============================================================
+
+Action name:
+Check_existing_milestone_email
+
+Table:
+emails
+
+Filter rows:
+_regardingobjectid_value eq @{outputs('OppId')} and category eq 'Returned to Rep Follow-Up' and subject eq '@{outputs('EmailSubject')}'
+
+Top count:
+1
+
+Purpose:
+Checks whether the milestone email has already been created/sent for this Opportunity.
+
+This prevents sending the same 90, 180, 270, or 360-day email more than once.
+
+
+============================================================
+13. Condition: No_existing_milestone_email
+============================================================
+
+Action name:
+No_existing_milestone_email
+
+Left side expression:
+length(outputs('Check_existing_milestone_email')?['body/value'])
+
+Operator:
+is equal to
+
+Right side:
+0
+
+Purpose:
+Only send the email if no existing email was found for this Opportunity and milestone.
+
+Put the remaining actions inside the YES branch.
+
+
+============================================================
+14. Dataverse Get row by ID: Get_the_Opportunity
+============================================================
+
+Action name:
+Get_the_Opportunity
+
+Table:
+opportunities
+
+Row ID expression:
+outputs('OppId')
+
+Purpose:
+Gets the Opportunity record so the flow can use the Owner and Account lookup.
+
+
+============================================================
+15. Condition: Opportunity_has_Account
+============================================================
+
+Action name:
+Opportunity_has_Account
+
+Left side expression:
+empty(outputs('Get_the_Opportunity')?['body/_parentaccountid_value'])
+
+Operator:
+is equal to
+
+Right side:
+false
+
+Purpose:
+Only continue if the Opportunity has an Account.
+
+Put Get_a_row_by_ID inside the YES branch.
+
+
+============================================================
+16. Dataverse Get row by ID: Get_a_row_by_ID
+============================================================
+
+Action name:
+Get_a_row_by_ID
+
+Table:
+accounts
+
+Row ID expression:
+outputs('Get_the_Opportunity')?['body/_parentaccountid_value']
+
+Purpose:
+Gets the Account so the flow can send the email to the Account Sales Rep.
+
+
+============================================================
+17. Condition: Account_Sales_Rep_exists
+============================================================
+
+Action name:
+Account_Sales_Rep_exists
+
+Left side expression:
+empty(outputs('Get_a_row_by_ID')?['body/_salesrepid_value'])
+
+Operator:
+is equal to
+
+Right side:
+false
+
+Purpose:
+Only send the email if the Account has a Sales Rep.
+
+Put Add_a_new_row and Perform_a_bound_action inside the YES branch.
+
+
+============================================================
+18. Dataverse Add a new row: Add_a_new_row
+============================================================
+
+Action name:
+Add_a_new_row
+
+Table:
+emails
+
+
+Activity Parties
+----------------
+
+From party:
+{
+  "participationtypemask": 1,
+  "partyid@odata.bind": "systemusers(@{outputs('Get_the_Opportunity')?['body/_ownerid_value']})"
+}
+
+To party:
+{
+  "participationtypemask": 2,
+  "partyid@odata.bind": "systemusers(@{outputs('Get_a_row_by_ID')?['body/_salesrepid_value']})"
+}
+
+
+Email Fields
+------------
+
+Category:
+Returned to Rep Follow-Up
+
+Description:
+Opportunities that were budgeted that are due to be followed up on.
+Please update the status and add notes to the “Latest Update” field.
+
+Direction:
+Yes
+
+Owner:
+@concat('systemusers(', outputs('Get_the_Opportunity')?['body/_ownerid_value'], ')')
+
+Priority:
+1
+
+Regarding Opportunity:
+@concat('opportunities(', outputs('OppId'), ')')
+
+Status Reason:
+1
+
+Subject expression:
+outputs('EmailSubject')
+
+
+Purpose:
+Creates the email activity and sets the Opportunity as Regarding.
+
+
+============================================================
+19. Dataverse Perform a bound action: Perform_a_bound_action
+============================================================
+
+Action name:
+Perform_a_bound_action
+
+Table:
+emails
+
+Action name:
+Microsoft.Dynamics.CRM.SendEmail
+
+Row ID expression:
+outputs('Add_a_new_row')?['body/activityid']
+
+IssueSend:
+true
+
+Purpose:
+Sends the email created in the previous step.
+
+
+============================================================
+FINAL FLOW ORDER INSIDE APPLY_TO_EACH
+============================================================
+
+OppId
+ReturnedToRepStart
+List_rows_2
+Condition: previous status equals Sq. Ft. $ Budget
+  YES:
+    DaysInReturnedToRep
+    MilestoneDue
+    Condition_2: MilestoneDue greater than 0
+      YES:
+        EmailSubject
+        Check_existing_milestone_email
+        No_existing_milestone_email
+          YES:
+            Get_the_Opportunity
+            Opportunity_has_Account
+              YES:
+                Get_a_row_by_ID
+                Account_Sales_Rep_exists
+                  YES:
+                    Add_a_new_row
+                    Perform_a_bound_action
+
+
+============================================================
+EXPECTED RESULT
+============================================================
+
+This flow will:
+- Find Opportunities currently in Returned to Rep
+- Confirm the previous status was Sq. Ft. $ Budget
+- Count days from the Returned to Rep start date
+- Send at 90, 180, 270, and 360 days
+- Avoid duplicate milestone emails
+- Stop when the status changes away from Returned to Rep
+- Stop after the 1-year / 360-day reminder window
+- Send to the Account Sales Rep
+- Set the Opportunity as Regarding
 
 
 
@@ -15,17 +553,7 @@ Opportunities that were budgeted that are due to be followed up on.  Please upda
 
 
 
-
-
-
-
-
-
-
-
-
-
-
+/////////////////////////////////////////////////////////////////////////////////
 
 
 {
