@@ -1,19 +1,13 @@
+Option B — two chained Filter arrays if you want the description check too:
+Filter 1 (Filter_Out_Payments):
 
-{
-    "inputs": {
-        "from": "@body('Parse_JSON')",
-        "where": "@and(\n  not(equals(item()?['Category'], 'Payment/Credit')),\n  not(contains(toUpper(item()?['Description']), 'CAPITAL ONE MOBILE PYMT'))\n)"
-    }
-}
+From: body('Parse_JSON')
+Left: item()?['Category'] → is not equal to → Payment/Credit
 
+Filter 2 (Filter_Out_Mobile_Pymt):
 
-
-@and(
-  not(equals(item()?['Category'], 'Payment/Credit')),
-  not(contains(toUpper(item()?['Description']), 'CAPITAL ONE MOBILE PYMT'))
-)
-
-
+From: body('Filter_Out_Payments')
+Left: toUpper(item()?['Description']) → does not contain → CAPITAL ONE MOBILE PYMT
 
 
 
