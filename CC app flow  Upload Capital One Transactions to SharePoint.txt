@@ -1,3 +1,9 @@
+"foreach": "@body('Filter_array_2')"
+
+
+
+
+
 Option B — two chained Filter arrays if you want the description check too:
 Filter 1 (Filter_Out_Payments):
 
