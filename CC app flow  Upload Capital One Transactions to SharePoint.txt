@@ -119,6 +119,21 @@ Left: toUpper(item()?['Description']) → does not contain → CAPITAL ONE MOBIL
 }
 
 {
+    "inputs": {
+        "from": "@body('Parse_JSON')",
+        "where": "@not(equals(item()?['Category'], 'Payment/Credit'))"
+    }
+}
+
+{
+    "inputs": {
+        "from": "@body('Filter_array')",
+        "where": "@not(contains(toUpper(item()?['Description']), 'CAPITAL ONE ONLINE PYMT'))"
+    }
+}
+
+
+{
   "type": "InitializeVariable",
   "inputs": {
     "variables": [
