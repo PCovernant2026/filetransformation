@@ -1,4 +1,11 @@
 
+{
+    "inputs": {
+        "from": "@body('Parse_JSON')",
+        "where": "@and(\n  not(equals(item()?['Category'], 'Payment/Credit')),\n  not(contains(toUpper(item()?['Description']), 'CAPITAL ONE MOBILE PYMT'))\n)"
+    }
+}
+
 
 
 @and(
