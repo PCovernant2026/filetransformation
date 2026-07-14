@@ -1,3 +1,25 @@
+
+
+
+@and(
+  not(equals(item()?['Category'], 'Payment/Credit')),
+  not(contains(toUpper(item()?['Description']), 'CAPITAL ONE MOBILE PYMT'))
+)
+
+
+
+
+
+
+
+
+
+
+
+/////////////////////////////////
+
+
+
 {
   "type": "OpenApiConnection",
   "inputs": {
