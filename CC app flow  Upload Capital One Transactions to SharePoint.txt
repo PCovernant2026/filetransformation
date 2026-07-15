@@ -1,35 +1,5 @@
-Step 2: Create a new topic
-
-Create a topic named:
-
-00 - Suppress API Generative Response
-
-Change its trigger to:
-
-An AI-generated response is about to be sent
-
-This trigger exists specifically for intercepting a generative response before it reaches the user.
-
-Step 3: Add a trigger condition
-
-Set the condition to:
-
-Conversation.CTPApiMode = true
-Step 4: Set ContinueResponse to false
-
-Inside this suppression topic, add:
-
-Set a variable value
-
-Select:
-
-ContinueResponse
-
-Set it to:
-
-false
-
-
+CTP_VENDOR_QUOTE_AGENT_REQUEST
+{"operation":"test_connection","source":"Copilot Studio Manual Test","opportunity":{"id":"","name":"","entityName":"opportunity"},"file":{"fileName":"","fileReference":"","mimeType":""},"hints":{"vendorName":"","userInstruction":""},"currentPayload":{},"approval":{"userApproved":false}}
 
 
 
