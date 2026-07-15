@@ -1,3 +1,32 @@
+Trigger:
+A message is received
+
+Activity type:
+Message
+
+Condition:
+Activity.Text starts with CTP_VENDOR_QUOTE_AGENT_REQUEST
+
+        ↓
+
+Message:
+{
+  "success": true,
+  "operation": "test_connection",
+  "status": "Agent Connected",
+  "message": "CTP Vendor Quote Agent is connected and ready.",
+  "diagnosticId": "CTP-DIRECTLINE-TEST-20260715-A",
+  "payload": {
+    "header": {},
+    "lines": []
+  }
+}
+
+        ↓
+
+End current topic
+
+
 
 CTP_VENDOR_QUOTE_AGENT_REQUEST
 {"operation":"test_connection"}
