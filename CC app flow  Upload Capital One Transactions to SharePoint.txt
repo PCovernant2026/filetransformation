@@ -1,3 +1,10 @@
+
+CTP_VENDOR_QUOTE_AGENT_REQUEST
+{"operation":"test_connection"}
+
+
+
+
 {
   "success": true,
   "operation": "test_connection",
