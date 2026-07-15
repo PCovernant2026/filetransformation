@@ -1,16 +1,17 @@
-"{""success"":true,""operation"":""test_connection"",""status"":""Agent Connected"",""message"":""CTP Vendor Quote Agent is connected and ready."",""diagnosticId"":""CTP-DIRECTLINE-TEST-20260715-A"",""payload"":{""header"":{},""lines"":[]}}"
-
-
-
-Trigger:
-A message is received
-
-Activity type:
-Message
-
-Condition:
-StartsWith(System.Activity.Text, "CTP_VENDOR_QUOTE_AGENT_REQUEST")
-
+JSON(
+    {
+        success: true,
+        operation: "test_connection",
+        status: "Agent Connected",
+        message: "CTP Vendor Quote Agent is connected and ready.",
+        diagnosticId: "CTP-DIRECTLINE-TEST-20260715-A",
+        payload: {
+            header: {},
+            lines: []
+        }
+    },
+    JSONFormat.Compact
+)
         ↓
 
 Message:
