@@ -1,18 +1,4 @@
-[
-  {
-    "diagnosticResult": [
-      {
-        "$kind": "PropertyError",
-        "propertyName": "ExpressionText",
-        "errorCode": "MissingRequiredProperty",
-        "errorMessage": "Missing required property 'ExpressionText'"
-      }
-    ],
-    "componentDisplayName": "00 - CTP API Request Router (Copy)",
-    "componentId": "6a466583-7a26-4f7f-99c5-749162669caa",
-    "diagnosticErrorCount": 1
-  }
-]
+"{""success"":true,""operation"":""test_connection"",""status"":""Agent Connected"",""message"":""CTP Vendor Quote Agent is connected and ready."",""diagnosticId"":""CTP-DIRECTLINE-TEST-20260715-A"",""payload"":{""header"":{},""lines"":[]}}"
 
 
 Conversation.CTPApiMode
