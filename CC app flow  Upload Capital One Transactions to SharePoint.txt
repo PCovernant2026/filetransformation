@@ -1,10 +1,4 @@
-CTP_VENDOR_QUOTE_AGENT_REQUEST
-{"operation":"test_connection","source":"Copilot Studio Manual Test","opportunity":{"id":"","name":"","entityName":"opportunity"},"file":{"fileName":"","fileReference":"","mimeType":""},"hints":{"vendorName":"","userInstruction":""},"currentPayload":{},"approval":{"userApproved":false}}
-
-
-
-
-
+{{ "success": true, "operation": "test_connection", "status": "Agent Connected", "message": "CTP Vendor Quote Agent is connected and ready.", "diagnosticId": "CTP-DIRECTLINE-TEST-20260715-A", "payload": { "header": , "lines": [] } }}
 
 
 
