@@ -5,7 +5,7 @@ Activity type:
 Message
 
 Condition:
-Activity.Text starts with CTP_VENDOR_QUOTE_AGENT_REQUEST
+StartsWith(System.Activity.Text, "CTP_VENDOR_QUOTE_AGENT_REQUEST")
 
         ↓
 
