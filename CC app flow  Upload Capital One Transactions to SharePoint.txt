@@ -1,14 +1,4 @@
-{
-  "success": true,
-  "operation": "test_connection",
-  "status": "Agent Connected",
-  "message": "CTP Vendor Quote Agent is connected and ready.",
-  "diagnosticId": "CTP-DIRECTLINE-TEST-20260715-A",
-  "payload": {
-    "header": {},
-    "lines": []
-  }
-}
+"{""success"":true,""operation"":""test_connection"",""status"":""Agent Connected"",""message"":""CTP Vendor Quote Agent is connected and ready."",""diagnosticId"":""CTP-DIRECTLINE-TEST-20260715-A"",""payload"":{""header"":{},""lines"":[]}}"
 
 
 
