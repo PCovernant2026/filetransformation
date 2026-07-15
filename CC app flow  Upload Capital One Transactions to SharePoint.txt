@@ -1,17 +1,4 @@
-JSON(
-    {
-        success: true,
-        operation: "test_connection",
-        status: "Agent Connected",
-        message: "CTP Vendor Quote Agent is connected and ready.",
-        diagnosticId: "CTP-DIRECTLINE-TEST-20260715-A",
-        payload: {
-            header: {},
-            lines: []
-        }
-    },
-    JSONFormat.Compact
-)
+{"diagnosticId":"CTP-DIRECTLINE-TEST-20260715-A","message":"CTP Vendor Quote Agent is connected and ready.","operation":"test_connection","payload":{"header":{},"lines":[]},"status":"Agent Connected","success":true}
         ↓
 
 Message:
