@@ -1,6 +1,4 @@
-{"diagnosticId":"CTP-DIRECTLINE-TEST-20260715-A","message":"CTP Vendor Quote Agent is connected and ready.","operation":"test_connection","payload":{"header":{},"lines":[]},"status":"Agent Connected","success":true}
-        ↓
-
+Error: The agent responded with text instead of valid JSON. See rawAgentResponse for the captured response.
 Message:
 {
   "success": true,
