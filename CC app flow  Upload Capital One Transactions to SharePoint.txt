@@ -1,15 +1,14 @@
-{ "success": true, "operation": "test_connection", "status": "Agent Connected", "message": "CTP Vendor Quote Agent is connected and ready.", "diagnosticId": "CTP-DIRECTLINE-TEST-20260715-A", "payload": { "header": , "lines": [] } }
-
-
-
-Sent at July 15 at 2:43 AM
-Bot said: { "success": true, "operation": "test_connection", "status": "Agent Connected", "message": "CTP Vendor Quote Agent is connected and ready.", "diagnosticId": "CTP-DIRECTLINE-TEST-20260715-A", "payload": { "header": , "lines": [] } } Message is interactive. Click to interact.
-Bot said:
-{"success":true,"operation":"test_connection","status":"Agent Connected","message":"CTP Vendor Quote Agent is connected and ready.","payload":{"header":{},"lines":[]}}
-
-
-
-
+{
+  "success": true,
+  "operation": "test_connection",
+  "status": "Agent Connected",
+  "message": "CTP Vendor Quote Agent is connected and ready.",
+  "diagnosticId": "CTP-DIRECTLINE-TEST-20260715-A",
+  "payload": {
+    "header": {},
+    "lines": []
+  }
+}
 
 
 
