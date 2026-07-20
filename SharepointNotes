@@ -2,264 +2,660 @@ using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using System;
 using System.Linq;
-using System.Security.Principal;
 using System.ServiceModel;
 using System.Text.RegularExpressions;
 
 namespace Winco.Dynamics365.Plugins
 {
-    public class SharepointOpportunityAttachmentSync: IPlugin
+    public class SharepointOpportunityAttachmentSync : IPlugin
     {
         public void Execute(IServiceProvider serviceProvider)
         {
-            var tracingService = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
-            var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
-            var serviceFactory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+            var tracingService =
+                (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+
+            var context =
+                (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+
+            if (context == null)
+            {
+                throw new InvalidPluginExecutionException("Plugin execution context is null.");
+            }
+
+            var serviceFactory =
+                (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+
             var service = serviceFactory.CreateOrganizationService(context.UserId);
 
-            tracingService.Trace("ENTERED AnnotationToSharePointSyncTrackerPlugin");
+            Trace(tracingService, "============================================================");
+            Trace(tracingService, "ENTER SharepointOpportunityAttachmentSync");
             TraceContext(tracingService, context, "START");
 
             try
             {
-                if (context == null)
-                {
-                    throw new InvalidPluginExecutionException("Plugin execution context is null.");
-                }
+                bool isCreate = string.Equals(
+                    context.MessageName,
+                    "Create",
+                    StringComparison.OrdinalIgnoreCase);
 
-                tracingService.Trace("Validating message and entity.");
-                tracingService.Trace("MessageName: {0}", context.MessageName);
-                tracingService.Trace("PrimaryEntityName: {0}", context.PrimaryEntityName);
+                bool isUpdate = string.Equals(
+                    context.MessageName,
+                    "Update",
+                    StringComparison.OrdinalIgnoreCase);
 
-                if (!string.Equals(context.MessageName, "Create", StringComparison.OrdinalIgnoreCase))
+                Trace(
+                    tracingService,
+                    "Trigger validation. Message={0}, IsCreate={1}, IsUpdate={2}",
+                    context.MessageName,
+                    isCreate,
+                    isUpdate);
+
+                if (!isCreate && !isUpdate)
                 {
-                    tracingService.Trace("EXIT: Message is not Create.");
+                    Trace(
+                        tracingService,
+                        "EXIT: Unsupported message '{0}'. Only Create and Update are supported.",
+                        context.MessageName);
                     return;
                 }
 
-                if (!string.Equals(context.PrimaryEntityName, AnnotationEntity.LogicalName, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(
+                    context.PrimaryEntityName,
+                    AnnotationEntity.LogicalName,
+                    StringComparison.OrdinalIgnoreCase))
                 {
-                    tracingService.Trace("EXIT: Primary entity is not annotation.");
+                    Trace(
+                        tracingService,
+                        "EXIT: Primary entity '{0}' is not '{1}'.",
+                        context.PrimaryEntityName,
+                        AnnotationEntity.LogicalName);
                     return;
                 }
 
-                tracingService.Trace("Checking InputParameters for Target.");
-                tracingService.Trace("InputParameters count: {0}", context.InputParameters?.Count ?? 0);
+                Trace(
+                    tracingService,
+                    "InputParameters count: {0}",
+                    context.InputParameters?.Count ?? 0);
 
-                if (!context.InputParameters.Contains("Target") || !(context.InputParameters["Target"] is Entity target))
+                TraceParameterNames(tracingService, context);
+
+                if (!context.InputParameters.Contains("Target"))
                 {
-                    tracingService.Trace("EXIT: Target not found or not an Entity.");
+                    Trace(tracingService, "EXIT: InputParameters does not contain Target.");
                     return;
                 }
 
-                tracingService.Trace("Target found. LogicalName: {0}, Id: {1}", target.LogicalName, target.Id);
+                Entity target = context.InputParameters["Target"] as Entity;
 
-                if (!string.Equals(target.LogicalName, AnnotationEntity.LogicalName, StringComparison.OrdinalIgnoreCase))
+                if (target == null)
                 {
-                    tracingService.Trace("EXIT: Target logical name is not annotation.");
+                    Trace(
+                        tracingService,
+                        "EXIT: Target exists but is not an Entity. Actual type: {0}",
+                        context.InputParameters["Target"]?.GetType().FullName ?? "(null)");
                     return;
                 }
 
-                if (target.Id == Guid.Empty)
+                Trace(
+                    tracingService,
+                    "Target received. LogicalName={0}, Id={1}, AttributeCount={2}",
+                    target.LogicalName,
+                    target.Id,
+                    target.Attributes.Count);
+
+                TraceEntityAttributes(tracingService, target, "TARGET");
+
+                if (!string.Equals(
+                    target.LogicalName,
+                    AnnotationEntity.LogicalName,
+                    StringComparison.OrdinalIgnoreCase))
                 {
-                    tracingService.Trace("EXIT: Target Id is empty.");
+                    Trace(
+                        tracingService,
+                        "EXIT: Target logical name '{0}' is not '{1}'.",
+                        target.LogicalName,
+                        AnnotationEntity.LogicalName);
                     return;
                 }
 
-                tracingService.Trace("Retrieving full annotation row for required fields.");
+                Guid annotationId = target.Id != Guid.Empty
+                    ? target.Id
+                    : context.PrimaryEntityId;
+
+                Trace(
+                    tracingService,
+                    "Resolved Annotation ID. Target.Id={0}, PrimaryEntityId={1}, Resolved={2}",
+                    target.Id,
+                    context.PrimaryEntityId,
+                    annotationId);
+
+                if (annotationId == Guid.Empty)
+                {
+                    Trace(tracingService, "EXIT: Annotation ID could not be resolved.");
+                    return;
+                }
+
+                if (isUpdate)
+                {
+                    Trace(
+                        tracingService,
+                        "Update trigger attributes: {0}",
+                        target.Attributes.Count == 0
+                            ? "(none)"
+                            : string.Join(", ", target.Attributes.Keys.OrderBy(k => k)));
+
+                    bool relevantFieldChanged =
+                        target.Attributes.Contains(AnnotationFields.IsDocument) ||
+                        target.Attributes.Contains(AnnotationFields.FileName) ||
+                        target.Attributes.Contains(AnnotationFields.DocumentBody) ||
+                        target.Attributes.Contains(AnnotationFields.ObjectId);
+
+                    Trace(
+                        tracingService,
+                        "Relevant attachment field changed: {0}",
+                        relevantFieldChanged);
+
+                    if (!relevantFieldChanged)
+                    {
+                        Trace(
+                            tracingService,
+                            "EXIT: Update did not contain isdocument, filename, documentbody, or objectid.");
+                        return;
+                    }
+                }
+
+                Trace(
+                    tracingService,
+                    "Retrieving full annotation row {0}.",
+                    annotationId);
+
                 Entity note = service.Retrieve(
                     AnnotationEntity.LogicalName,
-                    target.Id,
+                    annotationId,
                     new ColumnSet(
                         AnnotationFields.IsDocument,
                         AnnotationFields.FileName,
                         AnnotationFields.DocumentBody,
-                        AnnotationFields.ObjectId
-                    ));
+                        AnnotationFields.ObjectId));
 
-                tracingService.Trace("Annotation retrieved successfully.");
-                tracingService.Trace("Annotation Id: {0}", note.Id);
-                tracingService.Trace("Annotation attributes present: {0}", string.Join(", ", note.Attributes.Keys));
+                Trace(
+                    tracingService,
+                    "Annotation retrieve succeeded. Id={0}, AttributeCount={1}",
+                    note.Id,
+                    note.Attributes.Count);
 
-                bool isDocument = note.GetAttributeValue<bool?>(AnnotationFields.IsDocument) ?? false;
-                string fileName = note.GetAttributeValue<string>(AnnotationFields.FileName);
-                string documentBody = note.GetAttributeValue<string>(AnnotationFields.DocumentBody);
-                EntityReference regarding = note.GetAttributeValue<EntityReference>(AnnotationFields.ObjectId);
+                TraceEntityAttributes(tracingService, note, "ANNOTATION");
 
-                tracingService.Trace("Annotation field values:");
-                tracingService.Trace(" - isdocument: {0}", isDocument);
-                tracingService.Trace(" - filename: {0}", string.IsNullOrWhiteSpace(fileName) ? "(null/empty)" : fileName);
-                tracingService.Trace(" - documentbody present: {0}", !string.IsNullOrWhiteSpace(documentBody));
-                tracingService.Trace(" - documentbody length: {0}", documentBody?.Length ?? 0);
-                tracingService.Trace(" - objectid present: {0}", regarding != null);
-                tracingService.Trace(" - objectid logical name: {0}", regarding?.LogicalName ?? "(null)");
-                tracingService.Trace(" - objectid id: {0}", regarding?.Id.ToString() ?? "(null)");
+                bool isDocument =
+                    note.GetAttributeValue<bool?>(AnnotationFields.IsDocument) ?? false;
+
+                string fileName =
+                    note.GetAttributeValue<string>(AnnotationFields.FileName);
+
+                string documentBody =
+                    note.GetAttributeValue<string>(AnnotationFields.DocumentBody);
+
+                EntityReference regarding =
+                    note.GetAttributeValue<EntityReference>(AnnotationFields.ObjectId);
+
+                Trace(tracingService, "Annotation evaluation:");
+                Trace(tracingService, " - IsDocument={0}", isDocument);
+                Trace(
+                    tracingService,
+                    " - FileName={0}",
+                    string.IsNullOrWhiteSpace(fileName) ? "(null/empty)" : fileName);
+                Trace(
+                    tracingService,
+                    " - DocumentBodyPresent={0}",
+                    !string.IsNullOrWhiteSpace(documentBody));
+                Trace(
+                    tracingService,
+                    " - DocumentBodyLength={0}",
+                    documentBody?.Length ?? 0);
+                Trace(
+                    tracingService,
+                    " - RegardingPresent={0}",
+                    regarding != null);
+                Trace(
+                    tracingService,
+                    " - RegardingLogicalName={0}",
+                    regarding?.LogicalName ?? "(null)");
+                Trace(
+                    tracingService,
+                    " - RegardingId={0}",
+                    regarding?.Id.ToString() ?? "(null)");
 
                 if (!isDocument)
                 {
-                    tracingService.Trace("SKIP: Note does not contain an attachment. No tracking row will be created.");
+                    Trace(
+                        tracingService,
+                        "SKIP: Annotation isdocument is false. Message={0}, AnnotationId={1}",
+                        context.MessageName,
+                        annotationId);
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(fileName))
+                {
+                    Trace(
+                        tracingService,
+                        "SKIP: Annotation filename is empty. Message={0}, AnnotationId={1}",
+                        context.MessageName,
+                        annotationId);
                     return;
                 }
 
                 if (string.IsNullOrWhiteSpace(documentBody))
                 {
-                    tracingService.Trace("SKIP: Attachment body is empty. No tracking row will be created.");
+                    Trace(
+                        tracingService,
+                        "SKIP: Annotation documentbody is empty. " +
+                        "For workflow-created files, confirm an Update step is registered " +
+                        "with filtering attributes documentbody,filename,isdocument,objectid. " +
+                        "Message={0}, AnnotationId={1}",
+                        context.MessageName,
+                        annotationId);
                     return;
                 }
 
                 if (regarding == null)
                 {
-                    tracingService.Trace("SKIP: Note is not regarding any record. No tracking row will be created.");
+                    Trace(
+                        tracingService,
+                        "SKIP: Annotation objectid is null. Message={0}, AnnotationId={1}",
+                        context.MessageName,
+                        annotationId);
                     return;
                 }
 
-                if (!string.Equals(regarding.LogicalName, OpportunityEntity.LogicalName, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(
+                    regarding.LogicalName,
+                    OpportunityEntity.LogicalName,
+                    StringComparison.OrdinalIgnoreCase))
                 {
-                    tracingService.Trace("SKIP: Note is regarding '{0}', not opportunity. No tracking row will be created.", regarding.LogicalName);
+                    Trace(
+                        tracingService,
+                        "SKIP: Annotation is regarding '{0}' ({1}), not opportunity.",
+                        regarding.LogicalName,
+                        regarding.Id);
                     return;
                 }
 
-                tracingService.Trace("Checking for existing tracking row to avoid duplicates.");
-                QueryExpression existingQuery = new QueryExpression(TrackingEntity.LogicalName)
-                {
-                    ColumnSet = new ColumnSet(TrackingFields.Name, TrackingFields.AnnotationId),
-                    TopCount = 1
-                };
-                existingQuery.Criteria.AddCondition(TrackingFields.AnnotationId, ConditionOperator.Equal, note.Id.ToString());
+                string annotationIdText = note.Id.ToString("D");
 
-                tracingService.Trace("Executing duplicate check query on {0}.", TrackingEntity.LogicalName);
-                tracingService.Trace("Duplicate check condition: {0} = {1}", TrackingFields.AnnotationId, note.Id);
+                Trace(
+                    tracingService,
+                    "Starting duplicate check. Table={0}, Field={1}, Value={2}",
+                    TrackingEntity.LogicalName,
+                    TrackingFields.AnnotationId,
+                    annotationIdText);
 
-                EntityCollection existingRows = service.RetrieveMultiple(existingQuery);
+                QueryExpression existingQuery =
+                    new QueryExpression(TrackingEntity.LogicalName)
+                    {
+                        ColumnSet = new ColumnSet(
+                            TrackingFields.Name,
+                            TrackingFields.AnnotationId,
+                            TrackingFields.SyncStatus),
+                        TopCount = 1
+                    };
 
-                tracingService.Trace("Duplicate check result count: {0}", existingRows.Entities.Count);
+                existingQuery.Criteria.AddCondition(
+                    TrackingFields.AnnotationId,
+                    ConditionOperator.Equal,
+                    annotationIdText);
+
+                EntityCollection existingRows =
+                    service.RetrieveMultiple(existingQuery);
+
+                Trace(
+                    tracingService,
+                    "Duplicate check completed. ResultCount={0}",
+                    existingRows.Entities.Count);
 
                 if (existingRows.Entities.Count > 0)
                 {
-                    tracingService.Trace(
-                        "EXIT: Tracking row already exists for annotation {0}. Existing tracking row Id: {1}",
-                        note.Id,
-                        existingRows.Entities[0].Id);
+                    Entity existingRow = existingRows.Entities[0];
+                    OptionSetValue existingStatus =
+                        existingRow.GetAttributeValue<OptionSetValue>(TrackingFields.SyncStatus);
+
+                    Trace(
+                        tracingService,
+                        "EXIT: Tracking row already exists. " +
+                        "TrackingId={0}, Name={1}, AnnotationId={2}, Status={3}",
+                        existingRow.Id,
+                        existingRow.GetAttributeValue<string>(TrackingFields.Name) ?? "(null)",
+                        existingRow.GetAttributeValue<string>(TrackingFields.AnnotationId) ?? "(null)",
+                        existingStatus?.Value.ToString() ?? "(null)");
                     return;
                 }
 
-                tracingService.Trace("Retrieving related Opportunity.");
-                tracingService.Trace("Opportunity Id: {0}", regarding.Id);
+                Trace(
+                    tracingService,
+                    "Retrieving Opportunity. OpportunityId={0}",
+                    regarding.Id);
 
                 Entity opportunity = service.Retrieve(
                     OpportunityEntity.LogicalName,
                     regarding.Id,
                     new ColumnSet(OpportunityFields.Name));
 
-                tracingService.Trace("Opportunity retrieved successfully.");
-                tracingService.Trace("Opportunity attributes present: {0}", string.Join(", ", opportunity.Attributes.Keys));
+                Trace(
+                    tracingService,
+                    "Opportunity retrieve succeeded. Id={0}, AttributeCount={1}",
+                    opportunity.Id,
+                    opportunity.Attributes.Count);
 
-                string opportunityName = opportunity.GetAttributeValue<string>(OpportunityFields.Name);
+                TraceEntityAttributes(tracingService, opportunity, "OPPORTUNITY");
 
-                tracingService.Trace("Opportunity Name: {0}", string.IsNullOrWhiteSpace(opportunityName) ? "(null/empty)" : opportunityName);
+                string opportunityName =
+                    opportunity.GetAttributeValue<string>(OpportunityFields.Name);
 
-                string sanitizedOpportunityName = SharePointNameHelper.SanitizeForSharePoint(opportunityName);
-                string folderName = SharePointNameHelper.BuildOpportunityFolderName(opportunityName, regarding.Id);
+                Trace(
+                    tracingService,
+                    "Opportunity Name={0}",
+                    string.IsNullOrWhiteSpace(opportunityName)
+                        ? "(null/empty)"
+                        : opportunityName);
 
-                tracingService.Trace("Folder name generation:");
-                tracingService.Trace(" - Original Opportunity Name: {0}", opportunityName ?? "(null)");
-                tracingService.Trace(" - Sanitized Opportunity Name: {0}", sanitizedOpportunityName);
-                tracingService.Trace(" - Final Folder Name: {0}", folderName);
+                string sanitizedOpportunityName =
+                    SharePointNameHelper.SanitizeForSharePoint(opportunityName);
 
-                string trackingName = BuildTrackingName(fileName, opportunityName, note.Id);
+                string folderName =
+                    SharePointNameHelper.BuildOpportunityFolderName(
+                        opportunityName,
+                        regarding.Id);
 
-                tracingService.Trace("Tracking record name generated: {0}", trackingName);
+                Trace(tracingService, "SharePoint folder-name generation:");
+                Trace(
+                    tracingService,
+                    " - OriginalOpportunityName={0}",
+                    opportunityName ?? "(null)");
+                Trace(
+                    tracingService,
+                    " - SanitizedOpportunityName={0}",
+                    sanitizedOpportunityName);
+                Trace(
+                    tracingService,
+                    " - FinalFolderName={0}",
+                    folderName);
+                Trace(
+                    tracingService,
+                    " - FinalFolderNameLength={0}",
+                    folderName?.Length ?? 0);
+
+                string trackingName =
+                    BuildTrackingName(fileName, opportunityName, note.Id);
+
+                Trace(
+                    tracingService,
+                    "Tracking name generated. Value={0}, Length={1}",
+                    trackingName,
+                    trackingName?.Length ?? 0);
 
                 Entity trackingRow = new Entity(TrackingEntity.LogicalName);
                 trackingRow[TrackingFields.Name] = trackingName;
-                trackingRow[TrackingFields.OpportunityId] = new EntityReference(OpportunityEntity.LogicalName, regarding.Id);
-                trackingRow[TrackingFields.AnnotationId] = note.Id.ToString();
-                trackingRow[TrackingFields.DocName] = fileName ?? string.Empty;
-                trackingRow[TrackingFields.SyncStatus] = new OptionSetValue(TrackingStatusValues.Pending);
+                trackingRow[TrackingFields.OpportunityId] =
+                    new EntityReference(OpportunityEntity.LogicalName, regarding.Id);
+                trackingRow[TrackingFields.AnnotationId] = annotationIdText;
+                trackingRow[TrackingFields.DocName] = fileName;
+                trackingRow[TrackingFields.SyncStatus] =
+                    new OptionSetValue(TrackingStatusValues.Pending);
                 trackingRow[TrackingFields.TargetFolderName] = folderName;
                 trackingRow[TrackingFields.SharePointError] = null;
                 trackingRow[TrackingFields.SharePointFileUrl] = null;
 
-                tracingService.Trace("Prepared tracking entity values:");
-                tracingService.Trace(" - {0}: {1}", TrackingFields.Name, trackingRow.GetAttributeValue<string>(TrackingFields.Name));
-                tracingService.Trace(" - {0}: {1}", TrackingFields.OpportunityId, regarding.Id);
-                tracingService.Trace(" - {0}: {1}", TrackingFields.AnnotationId, note.Id);
-                tracingService.Trace(" - {0}: {1}", TrackingFields.DocName, trackingRow.GetAttributeValue<string>(TrackingFields.DocName));
-                tracingService.Trace(" - {0}: {1}", TrackingFields.SyncStatus, TrackingStatusValues.Pending);
-                tracingService.Trace(" - {0}: {1}", TrackingFields.TargetFolderName, trackingRow.GetAttributeValue<string>(TrackingFields.TargetFolderName));
-                tracingService.Trace(" - {0}: null", TrackingFields.SharePointError);
-                tracingService.Trace(" - {0}: null", TrackingFields.SharePointFileUrl);
+                TraceEntityAttributes(tracingService, trackingRow, "TRACKING ROW BEFORE CREATE");
 
-                tracingService.Trace("Creating tracking row in table: {0}", TrackingEntity.LogicalName);
+                Trace(
+                    tracingService,
+                    "Creating tracking row. Table={0}",
+                    TrackingEntity.LogicalName);
+
                 Guid trackingId = service.Create(trackingRow);
 
-                tracingService.Trace("SUCCESS: Tracking row created.");
-                tracingService.Trace("Tracking Row Id: {0}", trackingId);
-                tracingService.Trace("Tracking Row Table: {0}", TrackingEntity.LogicalName);
+                Trace(
+                    tracingService,
+                    "SUCCESS: Tracking row created. TrackingId={0}, AnnotationId={1}, OpportunityId={2}",
+                    trackingId,
+                    annotationIdText,
+                    regarding.Id);
 
                 TraceContext(tracingService, context, "END");
+                Trace(tracingService, "EXIT SharepointOpportunityAttachmentSync - SUCCESS");
+                Trace(tracingService, "============================================================");
             }
             catch (FaultException<OrganizationServiceFault> ex)
             {
-                tracingService.Trace("OrganizationServiceFault encountered.");
-                tracingService.Trace("Fault Message: {0}", ex.Message);
-                tracingService.Trace("Fault Detail: {0}", ex.Detail?.Message ?? "(no detail)");
-                tracingService.Trace("Fault Trace: {0}", ex.ToString());
+                Trace(tracingService, "ORGANIZATION SERVICE FAULT");
+                Trace(tracingService, "Message={0}", ex.Message);
+                Trace(tracingService, "DetailMessage={0}", ex.Detail?.Message ?? "(no detail)");
+                Trace(tracingService, "ErrorCode={0}", ex.Detail?.ErrorCode.ToString() ?? "(null)");
+                Trace(tracingService, "Timestamp={0}", ex.Detail?.Timestamp.ToString("O") ?? "(null)");
+                Trace(tracingService, "ActivityId={0}", ex.Detail?.ActivityId.ToString() ?? "(null)");
+                Trace(tracingService, "TraceText={0}", ex.Detail?.TraceText ?? "(null)");
+                Trace(tracingService, "FullException={0}", ex);
                 throw;
             }
             catch (InvalidPluginExecutionException ex)
             {
-                tracingService.Trace("InvalidPluginExecutionException encountered.");
-                tracingService.Trace("Message: {0}", ex.Message);
-                tracingService.Trace("Trace: {0}", ex.ToString());
+                Trace(tracingService, "INVALID PLUGIN EXECUTION EXCEPTION");
+                Trace(tracingService, "Message={0}", ex.Message);
+                Trace(tracingService, "FullException={0}", ex);
                 throw;
             }
             catch (Exception ex)
             {
-                tracingService.Trace("Unhandled exception encountered.");
-                tracingService.Trace("Exception Type: {0}", ex.GetType().FullName);
-                tracingService.Trace("Exception Message: {0}", ex.Message);
-                tracingService.Trace("Stack Trace: {0}", ex.StackTrace ?? "(no stack trace)");
-                tracingService.Trace("Full Exception: {0}", ex.ToString());
+                Trace(tracingService, "UNHANDLED EXCEPTION");
+                Trace(tracingService, "ExceptionType={0}", ex.GetType().FullName);
+                Trace(tracingService, "Message={0}", ex.Message);
+                Trace(tracingService, "StackTrace={0}", ex.StackTrace ?? "(no stack trace)");
+                Trace(tracingService, "InnerException={0}", ex.InnerException?.ToString() ?? "(none)");
+                Trace(tracingService, "FullException={0}", ex);
 
-                throw new InvalidPluginExecutionException("An error occurred in AnnotationToSharePointSyncTrackerPlugin.", ex);
+                throw new InvalidPluginExecutionException(
+                    "An error occurred in SharepointOpportunityAttachmentSync. " +
+                    "Review the Plugin Trace Log using the correlation ID from this execution.",
+                    ex);
             }
         }
 
-        private static void TraceContext(ITracingService tracingService, IPluginExecutionContext context, string marker)
+        private static void Trace(
+            ITracingService tracingService,
+            string message,
+            params object[] args)
+        {
+            if (tracingService == null)
+            {
+                return;
+            }
+
+            if (args == null || args.Length == 0)
+            {
+                tracingService.Trace(message);
+                return;
+            }
+
+            tracingService.Trace(message, args);
+        }
+
+        private static void TraceContext(
+            ITracingService tracingService,
+            IPluginExecutionContext context,
+            string marker)
         {
             if (tracingService == null || context == null)
             {
                 return;
             }
 
-            tracingService.Trace("========== {0} AnnotationToSharePointSyncTrackerPlugin ==========", marker);
-            tracingService.Trace("CorrelationId: {0}", context.CorrelationId);
-            tracingService.Trace("OperationId: {0}", context.OperationId);
-            tracingService.Trace("OrganizationId: {0}", context.OrganizationId);
-            tracingService.Trace("OrganizationName: {0}", context.OrganizationName);
-            tracingService.Trace("MessageName: {0}", context.MessageName);
-            tracingService.Trace("PrimaryEntityName: {0}", context.PrimaryEntityName);
-            tracingService.Trace("PrimaryEntityId: {0}", context.PrimaryEntityId);
-            tracingService.Trace("Stage: {0}", context.Stage);
-            tracingService.Trace("Mode: {0}", context.Mode);
-            tracingService.Trace("Depth: {0}", context.Depth);
-            tracingService.Trace("UserId: {0}", context.UserId);
-            tracingService.Trace("InitiatingUserId: {0}", context.InitiatingUserId);
-            tracingService.Trace("OwningExtension Id: {0}", context.OwningExtension?.Id);
-            tracingService.Trace("OwningExtension Name: {0}", context.OwningExtension?.Name ?? "(null)");
-            tracingService.Trace("IsExecutingOffline: {0}", context.IsExecutingOffline);
-            tracingService.Trace("IsOfflinePlayback: {0}", context.IsOfflinePlayback);
-            tracingService.Trace("IsolationMode: {0}", context.IsolationMode);
-            tracingService.Trace("InputParameters Count: {0}", context.InputParameters?.Count ?? 0);
-            tracingService.Trace("SharedVariables Count: {0}", context.SharedVariables?.Count ?? 0);
-            tracingService.Trace("===============================================================");
+            Trace(
+                tracingService,
+                "========== {0} SharepointOpportunityAttachmentSync CONTEXT ==========",
+                marker);
+            Trace(tracingService, "CorrelationId={0}", context.CorrelationId);
+            Trace(tracingService, "OperationId={0}", context.OperationId);
+            Trace(tracingService, "RequestId={0}", context.RequestId);
+            Trace(tracingService, "OrganizationId={0}", context.OrganizationId);
+            Trace(tracingService, "OrganizationName={0}", context.OrganizationName);
+            Trace(tracingService, "MessageName={0}", context.MessageName);
+            Trace(tracingService, "PrimaryEntityName={0}", context.PrimaryEntityName);
+            Trace(tracingService, "PrimaryEntityId={0}", context.PrimaryEntityId);
+            Trace(tracingService, "Stage={0}", context.Stage);
+            Trace(tracingService, "Mode={0}", context.Mode);
+            Trace(tracingService, "Depth={0}", context.Depth);
+            Trace(tracingService, "UserId={0}", context.UserId);
+            Trace(tracingService, "InitiatingUserId={0}", context.InitiatingUserId);
+            Trace(tracingService, "BusinessUnitId={0}", context.BusinessUnitId);
+            Trace(tracingService, "OwningExtensionId={0}", context.OwningExtension?.Id);
+            Trace(
+                tracingService,
+                "OwningExtensionName={0}",
+                context.OwningExtension?.Name ?? "(null)");
+            Trace(tracingService, "IsInTransaction={0}", context.IsInTransaction);
+            Trace(tracingService, "IsExecutingOffline={0}", context.IsExecutingOffline);
+            Trace(tracingService, "IsOfflinePlayback={0}", context.IsOfflinePlayback);
+            Trace(tracingService, "IsolationMode={0}", context.IsolationMode);
+            Trace(tracingService, "InputParametersCount={0}", context.InputParameters?.Count ?? 0);
+            Trace(tracingService, "OutputParametersCount={0}", context.OutputParameters?.Count ?? 0);
+            Trace(tracingService, "SharedVariablesCount={0}", context.SharedVariables?.Count ?? 0);
+            Trace(tracingService, "PreEntityImagesCount={0}", context.PreEntityImages?.Count ?? 0);
+            Trace(tracingService, "PostEntityImagesCount={0}", context.PostEntityImages?.Count ?? 0);
+            Trace(tracingService, "===============================================================");
         }
 
-        private static string BuildTrackingName(string fileName, string opportunityName, Guid annotationId)
+        private static void TraceParameterNames(
+            ITracingService tracingService,
+            IPluginExecutionContext context)
         {
-            string safeFileName = string.IsNullOrWhiteSpace(fileName) ? "Attachment" : fileName.Trim();
-            string safeOppName = string.IsNullOrWhiteSpace(opportunityName) ? "Opportunity" : opportunityName.Trim();
+            if (context?.InputParameters == null)
+            {
+                Trace(tracingService, "Input parameter names: (none)");
+                return;
+            }
+
+            string names = context.InputParameters.Count == 0
+                ? "(none)"
+                : string.Join(", ", context.InputParameters.Keys.OrderBy(k => k));
+
+            Trace(tracingService, "Input parameter names: {0}", names);
+        }
+
+        private static void TraceEntityAttributes(
+            ITracingService tracingService,
+            Entity entity,
+            string label)
+        {
+            if (entity == null)
+            {
+                Trace(tracingService, "{0}: Entity is null.", label);
+                return;
+            }
+
+            Trace(
+                tracingService,
+                "----- {0}: LogicalName={1}, Id={2}, AttributeCount={3} -----",
+                label,
+                entity.LogicalName,
+                entity.Id,
+                entity.Attributes.Count);
+
+            if (entity.Attributes.Count == 0)
+            {
+                Trace(tracingService, "{0}: No attributes present.", label);
+                return;
+            }
+
+            foreach (var attribute in entity.Attributes.OrderBy(a => a.Key))
+            {
+                string formattedValue = FormatTraceValue(attribute.Key, attribute.Value);
+                Trace(
+                    tracingService,
+                    "{0}.{1}={2}",
+                    label,
+                    attribute.Key,
+                    formattedValue);
+            }
+        }
+
+        private static string FormatTraceValue(string attributeName, object value)
+        {
+            if (value == null)
+            {
+                return "(null)";
+            }
+
+            if (string.Equals(
+                attributeName,
+                AnnotationFields.DocumentBody,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                string body = value as string;
+                return body == null
+                    ? "(non-string value)"
+                    : $"[Base64 content omitted; Length={body.Length}]";
+            }
+
+            if (value is EntityReference entityReference)
+            {
+                return $"EntityReference({entityReference.LogicalName}, {entityReference.Id}, Name={entityReference.Name ?? "(null)"})";
+            }
+
+            if (value is OptionSetValue optionSetValue)
+            {
+                return $"OptionSetValue({optionSetValue.Value})";
+            }
+
+            if (value is Money money)
+            {
+                return $"Money({money.Value})";
+            }
+
+            if (value is AliasedValue aliasedValue)
+            {
+                return $"AliasedValue({FormatTraceValue(attributeName, aliasedValue.Value)})";
+            }
+
+            if (value is EntityCollection entityCollection)
+            {
+                return $"EntityCollection(Count={entityCollection.Entities.Count})";
+            }
+
+            if (value is byte[] bytes)
+            {
+                return $"ByteArray(Length={bytes.Length})";
+            }
+
+            if (value is string stringValue)
+            {
+                const int maxTraceLength = 500;
+
+                if (stringValue.Length <= maxTraceLength)
+                {
+                    return stringValue;
+                }
+
+                return stringValue.Substring(0, maxTraceLength) +
+                       $"...[truncated; TotalLength={stringValue.Length}]";
+            }
+
+            return value.ToString();
+        }
+
+        private static string BuildTrackingName(
+            string fileName,
+            string opportunityName,
+            Guid annotationId)
+        {
+            string safeFileName =
+                string.IsNullOrWhiteSpace(fileName)
+                    ? "Attachment"
+                    : fileName.Trim();
+
+            string safeOppName =
+                string.IsNullOrWhiteSpace(opportunityName)
+                    ? "Opportunity"
+                    : opportunityName.Trim();
 
             string combined = $"{safeFileName} - {safeOppName}";
 
@@ -328,7 +724,9 @@ namespace Winco.Dynamics365.Plugins
 
     internal static class SharePointNameHelper
     {
-        public static string BuildOpportunityFolderName(string opportunityName, Guid opportunityId)
+        public static string BuildOpportunityFolderName(
+            string opportunityName,
+            Guid opportunityId)
         {
             string cleanName = SanitizeForSharePoint(opportunityName);
             return $"{cleanName}_{opportunityId:D}";
@@ -341,12 +739,19 @@ namespace Winco.Dynamics365.Plugins
                 return "Opportunity";
             }
 
-            string cleaned = Regex.Replace(input, @"[/\\:\*\?""<>\|#%]", string.Empty);
-            cleaned = new string(cleaned.Where(c => !char.IsControl(c)).ToArray());
+            string cleaned = Regex.Replace(
+                input,
+                @"[/\\:\*\?""<>\|#%]",
+                string.Empty);
+
+            cleaned = new string(
+                cleaned.Where(c => !char.IsControl(c)).ToArray());
+
             cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim();
             cleaned = cleaned.Trim().TrimEnd('.');
 
             const int maxLength = 120;
+
             if (cleaned.Length > maxLength)
             {
                 cleaned = cleaned.Substring(0, maxLength).Trim().TrimEnd('.');
@@ -361,4 +766,3 @@ namespace Winco.Dynamics365.Plugins
         }
     }
 }
-    
