@@ -1,3 +1,40 @@
+
+SELECT COUNT(*) AS 'Print RFQ Count' FROM annotation
+INNER JOIN ctp_notesharepointsync note_sync ON annotationid = note_sync.ctp_annotationid
+WHERE isdocument = 1
+AND annotation.createdon > (SELECT MIN(createdon) FROM ctp_notesharepointsync)
+AND mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+AND filename LIKE 'PRINT RFQ%'
+GROUP BY mimetype
+ 
+SELECT objectid, filename, annotation.modifiedbyname,* FROM annotation
+INNER JOIN ctp_notesharepointsync note_sync ON annotationid = note_sync.ctp_annotationid
+WHERE isdocument = 1
+AND annotation.createdon > (SELECT MIN(createdon) FROM ctp_notesharepointsync)
+--AND mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+--AND filename NOT LIKE 'PRINT RFQ%'
+AND objecttypecode = 3 -- Opp
+ORDER BY annotation.modifiedbyname
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using System;
