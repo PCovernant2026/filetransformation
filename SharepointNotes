@@ -1,22 +1,44 @@
 
-SELECT COUNT(*) AS 'Print RFQ Count' FROM annotation
-INNER JOIN ctp_notesharepointsync note_sync ON annotationid = note_sync.ctp_annotationid
-WHERE isdocument = 1
-AND annotation.createdon > (SELECT MIN(createdon) FROM ctp_notesharepointsync)
-AND mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-AND filename LIKE 'PRINT RFQ%'
-GROUP BY mimetype
- 
-SELECT objectid, filename, annotation.modifiedbyname,* FROM annotation
-INNER JOIN ctp_notesharepointsync note_sync ON annotationid = note_sync.ctp_annotationid
-WHERE isdocument = 1
-AND annotation.createdon > (SELECT MIN(createdon) FROM ctp_notesharepointsync)
---AND mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
---AND filename NOT LIKE 'PRINT RFQ%'
-AND objecttypecode = 3 -- Opp
-ORDER BY annotation.modifiedbyname
+SELECT
+    a.annotationid,
+    a.objectid,
+    a.filename,
+    a.mimetype,
+    a.createdon,
+    a.modifiedon,
+    a.createdbyname,
+    a.modifiedbyname
+FROM annotation AS a
+LEFT JOIN ctp_notesharepointsync AS note_sync
+    ON CONVERT(NVARCHAR(36), a.annotationid) = note_sync.ctp_annotationid
+WHERE a.isdocument = 1
+  AND a.objecttypecode = 3
+  AND a.mimetype =
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  AND a.filename LIKE 'PRINT RFQ%'
+  AND note_sync.ctp_annotationid IS NULL
+ORDER BY a.createdon DESC;
 
 
+SELECT
+    CASE
+        WHEN note_sync.ctp_annotationid IS NULL
+            THEN 'Not Tracked'
+        ELSE 'Tracked'
+    END AS [Tracking Status],
+    COUNT(*) AS [File Count]
+FROM annotation AS a
+LEFT JOIN ctp_notesharepointsync AS note_sync
+    ON CONVERT(NVARCHAR(36), a.annotationid) = note_sync.ctp_annotationid
+WHERE a.isdocument = 1
+  AND a.objecttypecode = 3
+  AND a.filename LIKE 'PRINT RFQ%'
+GROUP BY
+    CASE
+        WHEN note_sync.ctp_annotationid IS NULL
+            THEN 'Not Tracked'
+        ELSE 'Tracked'
+    END;
 
 
 
