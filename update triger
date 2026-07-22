@@ -1,0 +1,37 @@
+SELECT
+    a.annotationid,
+    a.objectid AS opportunityid,
+    o.name AS opportunityname,
+    a.filename,
+    a.mimetype,
+    a.createdon,
+    a.modifiedon,
+    a.createdbyname,
+    a.modifiedbyname
+FROM annotation AS a
+INNER JOIN opportunity AS o
+    ON a.objectid = o.opportunityid
+LEFT JOIN ctp_notesharepointsync AS ns
+    ON ns.ctp_annotationid =
+       CONVERT(NVARCHAR(36), a.annotationid)
+WHERE a.isdocument = 1
+  AND a.createdon >= '2026-06-05T00:00:00'
+  AND a.filename IS NOT NULL
+  AND ns.ctp_notesharepointsyncid IS NULL
+ORDER BY a.createdon;
+
+
+///////////////////
+
+UPDATE a
+SET a.filename = a.filename
+FROM annotation AS a
+INNER JOIN opportunity AS o
+    ON a.objectid = o.opportunityid
+LEFT JOIN ctp_notesharepointsync AS ns
+    ON ns.ctp_annotationid =
+       CONVERT(NVARCHAR(36), a.annotationid)
+WHERE a.isdocument = 1
+  AND a.createdon >= '2026-06-05T00:00:00'
+  AND a.filename IS NOT NULL
+  AND ns.ctp_notesharepointsyncid IS NULL;
