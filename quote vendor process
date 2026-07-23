@@ -1,6 +1,52 @@
 
 Agent Name : Dataverse API Agent
 
+
+explain you vendor quote processing process
+
+You said: explain you vendor quote processing process
+Bot said:
+Here's How I Process Your Vendor Quotes 🗂️
+Think of me as your automated quote-to-opportunity assistant. Here's the full picture:
+
+🔄 The End-to-End Pipeline
+
+You Upload a Quote
+       ↓
+I Extract All Data (Header + Line Items)
+       ↓
+Staging Workflow Creates Records in Dynamics 365
+       ↓
+Product Matching Workflow Runs Against Your Catalog
+       ↓
+You Review & Approve in the Embedded Portal
+       ↓
+Opportunity Products Are Created Automatically
+🧩 What I Extract From Your Document
+Header Information:
+
+Field	Example
+Vendor Name	Acme Corp
+Quote Date	07/15/2026
+Quote Validity	30 days
+Customer Name	Tech Solutions Inc.
+Payment Terms	Net 30
+Total Price	$45,000
+Line Items:
+
+Field	Example
+SKU	AP9640
+Description	APC Smart-UPS 3000VA
+Quantity	5
+Unit List Price	$1,200.00
+Extended Net Price	$6,000.00
+Category	Power & Cooling
+⚙️ Behind the Scenes — The Workflows
+Workflow	Purpose
+Workflow 1	Creates Staging Header & Line records
+Workflow 2	Matches lines to your Dynamics 365 product catalog
+Workflow 3	Creates approved lines as Opportunity Products
+
 ////////////////////////////////////////
 
 User clicks Process Quote
