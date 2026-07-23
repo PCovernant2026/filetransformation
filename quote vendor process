@@ -1,0 +1,38 @@
+User clicks Process Quote
+↓
+Plugin sends:
+    Opportunity ID
+    Opportunity Name
+    Quote File
+    Operation = extract_map_preview
+↓
+Agent acknowledges request
+↓
+Plugin immediately returns control to UI
+↓
+UI shows:
+    Processing...
+↓
+Agent/Backend Processing
+    Extract Quote
+    Stage Records
+    Match Products
+↓
+Dataverse Updated
+↓
+Web Resource detects results
+↓
+Mapped Lines appear
+↓
+User Reviews
+↓
+Approve + Create Opportunity Lines
+
+
+summary 
+
+Plugin = submit request
+Agent = process request
+Dataverse = store results
+Web Resource = monitor results
+User = review and approve
