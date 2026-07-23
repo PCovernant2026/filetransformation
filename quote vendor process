@@ -1,3 +1,8 @@
+
+Agent Name : Dataverse API Agent
+
+////////////////////////////////////////
+
 User clicks Process Quote
 ↓
 Plugin sends:
@@ -36,3 +41,3073 @@ Agent = process request
 Dataverse = store results
 Web Resource = monitor results
 User = review and approve
+
+//////////////////////////////////////////////////////////////
+cureent plugin
+
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Json;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Xml;
+
+namespace CTP.VendorQuoteAgent
+{
+    /// <summary>
+    /// Dataverse Custom API plug-in for ctp_InvokeVendorQuoteAgent.
+    ///
+    /// This v6 version improves the Direct Line bridge by:
+    /// - Sending the exact API marker + JSON structure expected by the Copilot Agent.
+    /// - Draining initial welcome/greeting activities before sending the request.
+    /// - Ignoring non-JSON bot messages instead of failing immediately.
+    /// - Extracting the first valid JSON object if the agent wraps JSON in text/code fences.
+    /// - Returning a controlled JSON error with rawAgentResponse if no JSON is found.
+    /// - Writing detailed Plug-in Trace Logs for the portal request, exact agent message, Direct Line activity, and bot responses.
+    /// - Supporting operation=debug_echo_agent_message to return the exact agent message without calling Direct Line.
+    /// - Normalizing double-encoded JSON strings before sending to the agent.
+    /// - Returning a clear error if the Custom API body is not wrapped in ctp_RequestJson.
+    /// - Supporting operation=directline_diagnostic to call Direct Line and return every activity received.
+    /// - Including all captured non-JSON bot messages in Invalid Agent Response diagnostics.
+    ///
+    /// Exact message sent to agent:
+    /// CTP_VENDOR_QUOTE_AGENT_REQUEST
+    /// {ctp_RequestJson}
+    ///
+    /// Required Custom API input:  ctp_RequestJson  (String)
+    /// Required Custom API output: ctp_ResponseJson (String)
+    ///
+    /// Required environment variables:
+    /// - ctp_CopilotDirectLineSecret        Text for dev; secure later for production
+    /// - ctp_CopilotDirectLineBaseUrl       Text, usually https://directline.botframework.com
+    /// - ctp_CopilotBridgeTimeoutSeconds    Decimal/Text, recommended 25
+    /// - ctp_CopilotAgentName               Text, optional, used for tracing only
+    /// </summary>
+    public class InvokeVendorQuoteAgentPlugin : IPlugin
+    {
+        private const string InputRequestJson = "ctp_RequestJson";
+        private const string OutputResponseJson = "ctp_ResponseJson";
+        private const string PluginSenderId = "dataverse-custom-api-plugin";
+        private const int RawAgentResponseMaxLength = 1500;
+        private const int TraceChunkSize = 3000;
+        private const int DiagnosticActivityTextMaxLength = 5000;
+        private const int DiagnosticMaxActivities = 50;
+
+        public void Execute(IServiceProvider serviceProvider)
+        {
+            var context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            var tracing = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+            var serviceFactory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+            var service = serviceFactory.CreateOrganizationService(context.UserId);
+
+            try
+            {
+                tracing.Trace("ctp_InvokeVendorQuoteAgent plug-in started.");
+
+                TraceInputParameterKeys(context, tracing);
+
+                string rawRequestJson = GetRequestJsonFromContext(context, tracing);
+                if (string.IsNullOrWhiteSpace(rawRequestJson))
+                {
+                    context.OutputParameters[OutputResponseJson] = BuildApiErrorJson(
+                        string.Empty,
+                        "Missing Request",
+                        "Missing ctp_RequestJson. The Dataverse Custom API body must be { \"ctp_RequestJson\": \"{...}\" }.");
+                    return;
+                }
+
+                string requestJson = NormalizeRequestJson(rawRequestJson, tracing);
+                if (string.IsNullOrWhiteSpace(requestJson) || !LooksLikeJsonObject(requestJson) || !IsValidJson(requestJson))
+                {
+                    context.OutputParameters[OutputResponseJson] = BuildApiErrorJson(
+                        string.Empty,
+                        "Invalid Request",
+                        "ctp_RequestJson was received, but it was not a valid JSON object after normalization.");
+                    return;
+                }
+
+                string operation = TryExtractOperation(requestJson);
+
+                tracing.Trace("Context MessageName: " + context.MessageName);
+                tracing.Trace("Context CorrelationId: " + context.CorrelationId.ToString());
+                tracing.Trace("Operation: " + operation);
+                tracing.Trace("Raw request length: " + rawRequestJson.Length.ToString());
+                tracing.Trace("Normalized request length: " + requestJson.Length.ToString());
+                TraceLarge(tracing, "Raw request from Embedded Portal", rawRequestJson);
+                TraceLarge(tracing, "Normalized ctp_RequestJson used for agent", requestJson);
+
+                // Temporary debug operation: returns the exact message that would be sent to the Copilot Agent
+                // without calling Direct Line. Useful to verify the API marker + JSON format from the portal.
+                if (string.Equals(operation, "debug_echo_agent_message", StringComparison.OrdinalIgnoreCase))
+                {
+                    string debugAgentMessage = BuildStrictApiModeMessage(requestJson);
+                    tracing.Trace("debug_echo_agent_message requested. Returning agent message without calling Direct Line.");
+                    TraceLarge(tracing, "Exact agent message that would be sent", debugAgentMessage);
+
+                    context.OutputParameters[OutputResponseJson] = "{"
+                        + "\"success\":true,"
+                        + "\"operation\":\"debug_echo_agent_message\","
+                        + "\"status\":\"Debug Echo\","
+                        + "\"message\":\"This is the exact text the plug-in would send to the Copilot Agent.\","
+                        + "\"requestJson\":" + Quote(requestJson) + ","
+                        + "\"agentMessage\":" + Quote(debugAgentMessage)
+                        + "}";
+                    return;
+                }
+
+                string directLineSecret = GetEnvironmentVariable(service, "ctp_CopilotDirectLineSecret");
+                string directLineBaseUrl = GetEnvironmentVariable(service, "ctp_CopilotDirectLineBaseUrl", required: false);
+                string timeoutValue = GetEnvironmentVariable(service, "ctp_CopilotBridgeTimeoutSeconds", required: false);
+                string agentName = GetEnvironmentVariable(service, "ctp_CopilotAgentName", required: false);
+
+                if (string.IsNullOrWhiteSpace(directLineSecret))
+                {
+                    context.OutputParameters[OutputResponseJson] = BuildApiErrorJson(operation, "Missing Configuration", "Missing environment variable: ctp_CopilotDirectLineSecret.");
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(directLineBaseUrl))
+                {
+                    directLineBaseUrl = "https://directline.botframework.com";
+                }
+
+                int timeoutSeconds = 25;
+                int parsedTimeout;
+                if (int.TryParse(timeoutValue, out parsedTimeout) && parsedTimeout > 0)
+                {
+                    timeoutSeconds = parsedTimeout;
+                }
+
+                tracing.Trace("Agent Name: " + (agentName ?? string.Empty));
+                tracing.Trace("Direct Line Base URL: " + directLineBaseUrl);
+                tracing.Trace("Timeout Seconds: " + timeoutSeconds.ToString());
+                tracing.Trace("Operation: " + operation);
+
+                if (string.Equals(operation, "directline_diagnostic", StringComparison.OrdinalIgnoreCase))
+                {
+                    tracing.Trace("directline_diagnostic requested. Calling Direct Line and capturing all returned activities.");
+                    string diagnosticJson = RunDirectLineDiagnostic(
+                        directLineBaseUrl.TrimEnd('/'),
+                        directLineSecret,
+                        requestJson,
+                        timeoutSeconds,
+                        agentName,
+                        tracing);
+
+                    context.OutputParameters[OutputResponseJson] = diagnosticJson;
+                    tracing.Trace("ctp_InvokeVendorQuoteAgent plug-in completed with directline_diagnostic result.");
+                    return;
+                }
+
+                string agentResponseJson = SendRequestToCopilotAgent(
+                    directLineBaseUrl.TrimEnd('/'),
+                    directLineSecret,
+                    requestJson,
+                    operation,
+                    timeoutSeconds,
+                    tracing);
+
+                context.OutputParameters[OutputResponseJson] = agentResponseJson;
+                tracing.Trace("ctp_InvokeVendorQuoteAgent plug-in completed.");
+            }
+            catch (Exception ex)
+            {
+                tracing.Trace("Unhandled error: " + ex.ToString());
+                context.OutputParameters[OutputResponseJson] = BuildApiErrorJson("", "Plug-in Error", "Plug-in error: " + ex.Message);
+            }
+        }
+
+        private static string RunDirectLineDiagnostic(string baseUrl, string secret, string requestJson, int timeoutSeconds, string agentName, ITracingService tracing)
+        {
+            string probeRequestJson = BuildDiagnosticProbeRequestJson(requestJson);
+            string outgoingMessage = BuildStrictApiModeMessage(probeRequestJson);
+
+            var initialActivities = new List<Activity>();
+            var responseActivities = new List<Activity>();
+
+            bool conversationStarted = false;
+            bool messageSent = false;
+            string conversationId = string.Empty;
+            string watermark = null;
+
+            try
+            {
+                var conversation = StartConversation(baseUrl, secret, timeoutSeconds, tracing);
+                if (conversation == null || string.IsNullOrWhiteSpace(conversation.ConversationId))
+                {
+                    return BuildApiErrorJson("directline_diagnostic", "Direct Line Error", "Failed to start Direct Line conversation.");
+                }
+
+                conversationStarted = true;
+                conversationId = conversation.ConversationId;
+
+                try
+                {
+                    Thread.Sleep(700);
+                    var initial = GetActivities(baseUrl, secret, conversationId, null, timeoutSeconds, tracing);
+                    if (initial != null)
+                    {
+                        watermark = initial.Watermark;
+                        if (initial.Activities != null)
+                        {
+                            AddActivities(initialActivities, initial.Activities);
+                        }
+                        tracing.Trace("Diagnostic initial activities drained. Watermark: " + (watermark ?? string.Empty));
+                        TraceActivities(tracing, "Diagnostic initial activity", initial.Activities);
+                    }
+                }
+                catch (Exception drainEx)
+                {
+                    tracing.Trace("Diagnostic initial drain warning: " + drainEx.Message);
+                }
+
+                var activity = new OutboundActivity
+                {
+                    Type = "message",
+                    From = new ChannelAccount
+                    {
+                        Id = PluginSenderId,
+                        Name = "Dynamics 365 Embedded Portal"
+                    },
+                    Text = outgoingMessage
+                };
+
+                TraceLarge(tracing, "Diagnostic exact outgoing agent message", outgoingMessage);
+                SendActivity(baseUrl, secret, conversationId, activity, timeoutSeconds, tracing);
+                messageSent = true;
+
+                DateTime stopAt = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+                DateTime? lastNewNonPluginActivityAt = null;
+                int quietSecondsAfterFirstResponse = 4;
+
+                while (DateTime.UtcNow < stopAt)
+                {
+                    Thread.Sleep(1000);
+
+                    var polled = GetActivities(baseUrl, secret, conversationId, watermark, timeoutSeconds, tracing);
+                    if (polled == null)
+                    {
+                        continue;
+                    }
+
+                    watermark = polled.Watermark;
+                    if (polled.Activities == null || polled.Activities.Count == 0)
+                    {
+                        if (lastNewNonPluginActivityAt.HasValue && DateTime.UtcNow >= lastNewNonPluginActivityAt.Value.AddSeconds(quietSecondsAfterFirstResponse))
+                        {
+                            break;
+                        }
+                        continue;
+                    }
+
+                    TraceActivities(tracing, "Diagnostic polled activity", polled.Activities);
+
+                    bool sawNewNonPluginActivity = false;
+                    for (int i = 0; i < polled.Activities.Count; i++)
+                    {
+                        var a = polled.Activities[i];
+                        if (a == null) continue;
+
+                        if (responseActivities.Count < DiagnosticMaxActivities)
+                        {
+                            responseActivities.Add(a);
+                        }
+
+                        bool isFromPlugin = a.From != null && string.Equals(a.From.Id, PluginSenderId, StringComparison.OrdinalIgnoreCase);
+                        if (!isFromPlugin)
+                        {
+                            sawNewNonPluginActivity = true;
+                        }
+                    }
+
+                    if (sawNewNonPluginActivity)
+                    {
+                        lastNewNonPluginActivityAt = DateTime.UtcNow;
+                    }
+
+                    if (lastNewNonPluginActivityAt.HasValue && DateTime.UtcNow >= lastNewNonPluginActivityAt.Value.AddSeconds(quietSecondsAfterFirstResponse))
+                    {
+                        break;
+                    }
+                }
+
+                return BuildDirectLineDiagnosticJson(
+                    agentName,
+                    conversationStarted,
+                    conversationId,
+                    messageSent,
+                    probeRequestJson,
+                    outgoingMessage,
+                    initialActivities,
+                    responseActivities);
+            }
+            catch (Exception ex)
+            {
+                tracing.Trace("directline_diagnostic error: " + ex.ToString());
+                return "{"
+                    + "\"success\":false,"
+                    + "\"operation\":\"directline_diagnostic\","
+                    + "\"status\":\"Diagnostic Error\","
+                    + "\"message\":" + Quote(ex.Message) + ","
+                    + "\"configuredAgentName\":" + Quote(agentName ?? string.Empty) + ","
+                    + "\"conversationStarted\":" + (conversationStarted ? "true" : "false") + ","
+                    + "\"conversationId\":" + Quote(conversationId ?? string.Empty) + ","
+                    + "\"messageSent\":" + (messageSent ? "true" : "false") + ","
+                    + "\"payload\":{\"header\":{},\"lines\":[]}"
+                    + "}";
+            }
+        }
+
+        private static string BuildDiagnosticProbeRequestJson(string requestJson)
+        {
+            if (string.IsNullOrWhiteSpace(requestJson))
+            {
+                return "{\"operation\":\"test_connection\",\"source\":\"Dataverse Plug-in Direct Line Diagnostic\"}";
+            }
+
+            string replaced = Regex.Replace(
+                requestJson,
+                "\"operation\"\\s*:\\s*\"directline_diagnostic\"",
+                "\"operation\":\"test_connection\"",
+                RegexOptions.IgnoreCase);
+
+            return replaced;
+        }
+
+        private static void AddActivities(List<Activity> destination, List<Activity> source)
+        {
+            if (destination == null || source == null) return;
+
+            for (int i = 0; i < source.Count && destination.Count < DiagnosticMaxActivities; i++)
+            {
+                if (source[i] != null)
+                {
+                    destination.Add(source[i]);
+                }
+            }
+        }
+
+        private static string BuildDirectLineDiagnosticJson(
+            string agentName,
+            bool conversationStarted,
+            string conversationId,
+            bool messageSent,
+            string probeRequestJson,
+            string outgoingMessage,
+            List<Activity> initialActivities,
+            List<Activity> responseActivities)
+        {
+            int validJsonCount = 0;
+            int nonJsonBotMessageCount = 0;
+            string firstValidJson = string.Empty;
+
+            if (responseActivities != null)
+            {
+                for (int i = 0; i < responseActivities.Count; i++)
+                {
+                    var a = responseActivities[i];
+                    if (a == null) continue;
+                    if (!string.Equals(a.Type, "message", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (string.IsNullOrWhiteSpace(a.Text)) continue;
+
+                    bool isFromPlugin = a.From != null && string.Equals(a.From.Id, PluginSenderId, StringComparison.OrdinalIgnoreCase);
+                    if (isFromPlugin) continue;
+
+                    string extracted = TryExtractValidJson(a.Text);
+                    if (!string.IsNullOrWhiteSpace(extracted))
+                    {
+                        validJsonCount++;
+                        if (string.IsNullOrWhiteSpace(firstValidJson))
+                        {
+                            firstValidJson = extracted;
+                        }
+                    }
+                    else
+                    {
+                        nonJsonBotMessageCount++;
+                    }
+                }
+            }
+
+            var sb = new StringBuilder();
+            sb.Append("{");
+            sb.Append("\"success\":true,");
+            sb.Append("\"operation\":\"directline_diagnostic\",");
+            sb.Append("\"status\":\"Direct Line Diagnostic\",");
+            sb.Append("\"message\":\"Direct Line was called and every captured activity is included below. No Direct Line secret is returned.\",");
+            sb.Append("\"configuredAgentName\":").Append(Quote(agentName ?? string.Empty)).Append(",");
+            sb.Append("\"conversationStarted\":").Append(conversationStarted ? "true" : "false").Append(",");
+            sb.Append("\"conversationId\":").Append(Quote(conversationId ?? string.Empty)).Append(",");
+            sb.Append("\"messageSent\":").Append(messageSent ? "true" : "false").Append(",");
+            sb.Append("\"probeRequestJson\":").Append(Quote(probeRequestJson ?? string.Empty)).Append(",");
+            sb.Append("\"outgoingAgentMessage\":").Append(Quote(Truncate(outgoingMessage ?? string.Empty, DiagnosticActivityTextMaxLength))).Append(",");
+            sb.Append("\"initialActivityCount\":").Append(initialActivities == null ? 0 : initialActivities.Count).Append(",");
+            sb.Append("\"responseActivityCount\":").Append(responseActivities == null ? 0 : responseActivities.Count).Append(",");
+            sb.Append("\"validJsonResponseCount\":").Append(validJsonCount).Append(",");
+            sb.Append("\"nonJsonBotMessageCount\":").Append(nonJsonBotMessageCount).Append(",");
+            sb.Append("\"firstValidJson\":").Append(string.IsNullOrWhiteSpace(firstValidJson) ? "null" : Quote(firstValidJson)).Append(",");
+            AppendDiagnosticActivitiesJson(sb, "initialActivities", initialActivities);
+            sb.Append(",");
+            AppendDiagnosticActivitiesJson(sb, "responseActivities", responseActivities);
+            sb.Append(",");
+            sb.Append("\"payload\":{\"header\":{},\"lines\":[]}");
+            sb.Append("}");
+            return sb.ToString();
+        }
+
+        private static void AppendDiagnosticActivitiesJson(StringBuilder sb, string propertyName, List<Activity> activities)
+        {
+            sb.Append(Quote(propertyName)).Append(":");
+            sb.Append("[");
+
+            if (activities != null)
+            {
+                for (int i = 0; i < activities.Count; i++)
+                {
+                    if (i > 0) sb.Append(",");
+
+                    var a = activities[i];
+                    if (a == null)
+                    {
+                        sb.Append("null");
+                        continue;
+                    }
+
+                    string fromId = a.From == null ? string.Empty : (a.From.Id ?? string.Empty);
+                    string fromName = a.From == null ? string.Empty : (a.From.Name ?? string.Empty);
+                    string text = a.Text ?? string.Empty;
+                    string extractedJson = TryExtractValidJson(text);
+                    bool isFromPlugin = string.Equals(fromId, PluginSenderId, StringComparison.OrdinalIgnoreCase);
+
+                    sb.Append("{");
+                    sb.Append("\"id\":").Append(Quote(a.Id ?? string.Empty)).Append(",");
+                    sb.Append("\"type\":").Append(Quote(a.Type ?? string.Empty)).Append(",");
+                    sb.Append("\"fromId\":").Append(Quote(fromId)).Append(",");
+                    sb.Append("\"fromName\":").Append(Quote(fromName)).Append(",");
+                    sb.Append("\"isFromPlugin\":").Append(isFromPlugin ? "true" : "false").Append(",");
+                    sb.Append("\"text\":").Append(Quote(Truncate(text, DiagnosticActivityTextMaxLength))).Append(",");
+                    sb.Append("\"isValidJson\":").Append(string.IsNullOrWhiteSpace(extractedJson) ? "false" : "true").Append(",");
+                    sb.Append("\"extractedJson\":").Append(string.IsNullOrWhiteSpace(extractedJson) ? "null" : Quote(extractedJson));
+                    sb.Append("}");
+                }
+            }
+
+            sb.Append("]");
+        }
+
+        private static string SendRequestToCopilotAgent(string baseUrl, string secret, string requestJson, string operation, int timeoutSeconds, ITracingService tracing)
+        {
+            var conversation = StartConversation(baseUrl, secret, timeoutSeconds, tracing);
+            if (conversation == null || string.IsNullOrWhiteSpace(conversation.ConversationId))
+            {
+                return BuildApiErrorJson(operation, "Direct Line Error", "Failed to start Direct Line conversation.");
+            }
+
+            string watermark = null;
+
+            // Drain any initial welcome or greeting activities so they do not get mistaken for the API response.
+            try
+            {
+                Thread.Sleep(700);
+                var initialActivities = GetActivities(baseUrl, secret, conversation.ConversationId, null, timeoutSeconds, tracing);
+                if (initialActivities != null)
+                {
+                    watermark = initialActivities.Watermark;
+                    tracing.Trace("Initial Direct Line activities drained. Watermark: " + (watermark ?? string.Empty));
+                    TraceActivities(tracing, "Initial/drained activity", initialActivities.Activities);
+                }
+            }
+            catch (Exception drainEx)
+            {
+                tracing.Trace("Initial activity drain warning: " + drainEx.Message);
+            }
+
+            string integrationMessage = BuildStrictApiModeMessage(requestJson);
+            tracing.Trace("Exact message being sent to Copilot Agent. Length: " + integrationMessage.Length.ToString());
+            TraceLarge(tracing, "Exact Copilot Agent outgoing message", integrationMessage);
+
+            var activity = new OutboundActivity
+            {
+                Type = "message",
+                From = new ChannelAccount
+                {
+                    Id = PluginSenderId,
+                    Name = "Dynamics 365 Embedded Portal"
+                },
+                Text = integrationMessage
+            };
+
+            SendActivity(baseUrl, secret, conversation.ConversationId, activity, timeoutSeconds, tracing);
+
+            DateTime stopAt = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+            string lastNonJsonBotText = string.Empty;
+            int nonJsonMessageCount = 0;
+            var nonJsonBotTexts = new List<string>();
+
+            while (DateTime.UtcNow < stopAt)
+            {
+                Thread.Sleep(1000);
+
+                var activitiesResponse = GetActivities(baseUrl, secret, conversation.ConversationId, watermark, timeoutSeconds, tracing);
+                if (activitiesResponse == null)
+                {
+                    continue;
+                }
+
+                watermark = activitiesResponse.Watermark;
+
+                if (activitiesResponse.Activities == null)
+                {
+                    continue;
+                }
+
+                TraceActivities(tracing, "Polled activity", activitiesResponse.Activities);
+
+                foreach (var a in activitiesResponse.Activities)
+                {
+                    if (a == null) continue;
+                    if (!string.Equals(a.Type, "message", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (string.IsNullOrWhiteSpace(a.Text)) continue;
+
+                    bool isFromPlugin = a.From != null && string.Equals(a.From.Id, PluginSenderId, StringComparison.OrdinalIgnoreCase);
+                    if (isFromPlugin) continue;
+
+                    string text = a.Text.Trim();
+                    tracing.Trace("Bot message received. Length: " + text.Length.ToString());
+
+                    string json = TryExtractValidJson(text);
+                    if (!string.IsNullOrWhiteSpace(json))
+                    {
+                        tracing.Trace("Valid JSON response found from agent.");
+                        return json;
+                    }
+
+                    nonJsonMessageCount++;
+                    lastNonJsonBotText = text;
+                    if (nonJsonBotTexts.Count < 20)
+                    {
+                        nonJsonBotTexts.Add(text);
+                    }
+                    tracing.Trace("Non-JSON bot message ignored. Count: " + nonJsonMessageCount.ToString() + ". Text preview: " + Truncate(text, 250));
+
+                    // Continue polling. Do not fail immediately because the first message may be a greeting.
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(lastNonJsonBotText))
+            {
+                return BuildInvalidAgentResponseJson(operation, lastNonJsonBotText, nonJsonBotTexts);
+            }
+
+            return BuildApiErrorJson(operation, "Timeout", "Timed out waiting for a valid JSON response from the Copilot Agent.");
+        }
+
+        private static string BuildStrictApiModeMessage(string requestJson)
+        {
+            // IMPORTANT:
+            // The Copilot Agent expects the first line to be exactly:
+            // CTP_VENDOR_QUOTE_AGENT_REQUEST
+            // The JSON payload must start immediately after that marker.
+            // Do not add labels such as REQUEST_JSON, system instructions, markdown, or extra prose here.
+            string cleanJson = string.IsNullOrWhiteSpace(requestJson)
+                ? "{}"
+                : requestJson.Trim();
+
+            return "CTP_VENDOR_QUOTE_AGENT_REQUEST\n" + cleanJson;
+        }
+
+        private static DirectLineConversation StartConversation(string baseUrl, string secret, int timeoutSeconds, ITracingService tracing)
+        {
+            string url = baseUrl + "/v3/directline/conversations";
+            string response = HttpJson(url, "POST", secret, null, timeoutSeconds);
+            tracing.Trace("Direct Line conversation started.");
+            return Deserialize<DirectLineConversation>(response);
+        }
+
+        private static void SendActivity(string baseUrl, string secret, string conversationId, OutboundActivity activity, int timeoutSeconds, ITracingService tracing)
+        {
+            string url = baseUrl + "/v3/directline/conversations/" + Uri.EscapeDataString(conversationId) + "/activities";
+            string body = Serialize(activity);
+            tracing.Trace("Sending Direct Line activity. URL: " + url);
+            TraceLarge(tracing, "Direct Line outgoing activity JSON body", body);
+            HttpJson(url, "POST", secret, body, timeoutSeconds);
+            tracing.Trace("Activity sent to Copilot Agent.");
+        }
+
+        private static ActivitiesResponse GetActivities(string baseUrl, string secret, string conversationId, string watermark, int timeoutSeconds, ITracingService tracing)
+        {
+            string url = baseUrl + "/v3/directline/conversations/" + Uri.EscapeDataString(conversationId) + "/activities";
+            if (!string.IsNullOrWhiteSpace(watermark))
+            {
+                url += "?watermark=" + Uri.EscapeDataString(watermark);
+            }
+
+            tracing.Trace("Getting Direct Line activities. URL: " + url);
+            string response = HttpJson(url, "GET", secret, null, timeoutSeconds);
+            tracing.Trace("Direct Line activities response length: " + (response == null ? "0" : response.Length.ToString()));
+            return Deserialize<ActivitiesResponse>(response);
+        }
+
+        private static string HttpJson(string url, string method, string bearerSecretOrToken, string jsonBody, int timeoutSeconds)
+        {
+            var request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = method;
+            request.ContentType = "application/json";
+            request.Accept = "application/json";
+            request.Headers["Authorization"] = "Bearer " + bearerSecretOrToken;
+            request.KeepAlive = false;
+            request.Timeout = timeoutSeconds * 1000;
+            request.ReadWriteTimeout = timeoutSeconds * 1000;
+
+            if (!string.IsNullOrWhiteSpace(jsonBody))
+            {
+                byte[] bytes = Encoding.UTF8.GetBytes(jsonBody);
+                request.ContentLength = bytes.Length;
+                using (var stream = request.GetRequestStream())
+                {
+                    stream.Write(bytes, 0, bytes.Length);
+                }
+            }
+
+            try
+            {
+                using (var response = (HttpWebResponse)request.GetResponse())
+                using (var responseStream = response.GetResponseStream())
+                using (var reader = new StreamReader(responseStream))
+                {
+                    return reader.ReadToEnd();
+                }
+            }
+            catch (WebException webEx)
+            {
+                string errorBody = string.Empty;
+                if (webEx.Response != null)
+                {
+                    using (var stream = webEx.Response.GetResponseStream())
+                    using (var reader = new StreamReader(stream))
+                    {
+                        errorBody = reader.ReadToEnd();
+                    }
+                }
+
+                throw new InvalidPluginExecutionException("Direct Line HTTP call failed. " + webEx.Message + " " + errorBody, webEx);
+            }
+        }
+
+        private static string GetInputString(IPluginExecutionContext context, string key)
+        {
+            if (!context.InputParameters.Contains(key) || context.InputParameters[key] == null)
+            {
+                return string.Empty;
+            }
+
+            return context.InputParameters[key].ToString();
+        }
+
+        private static string GetRequestJsonFromContext(IPluginExecutionContext context, ITracingService tracing)
+        {
+            // Primary expected Custom API request parameter.
+            string value = GetInputString(context, InputRequestJson);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                tracing.Trace("Request was read from input parameter: " + InputRequestJson);
+                return value;
+            }
+
+            // Defensive aliases for mistakes made during portal testing.
+            string[] aliases = new[] { "RequestJson", "Request Json", "requestJson", "ctp_requestjson" };
+            for (int i = 0; i < aliases.Length; i++)
+            {
+                value = GetInputString(context, aliases[i]);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    tracing.Trace("Request was read from alias input parameter: " + aliases[i]);
+                    return value;
+                }
+            }
+
+            // Final defensive scan: if any string input contains an operation value, use it.
+            foreach (KeyValuePair<string, object> item in context.InputParameters)
+            {
+                if (item.Value == null) continue;
+                string text = item.Value.ToString();
+                if (text.IndexOf("\"operation\"", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    tracing.Trace("Request was read by scanning input parameter: " + item.Key);
+                    return text;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static void TraceInputParameterKeys(IPluginExecutionContext context, ITracingService tracing)
+        {
+            if (context == null || tracing == null) return;
+
+            tracing.Trace("Input parameter count: " + context.InputParameters.Count.ToString());
+            foreach (KeyValuePair<string, object> item in context.InputParameters)
+            {
+                string typeName = item.Value == null ? "null" : item.Value.GetType().FullName;
+                int length = item.Value == null ? 0 : item.Value.ToString().Length;
+                tracing.Trace("Input parameter: " + item.Key + ", type=" + typeName + ", stringLength=" + length.ToString());
+            }
+        }
+
+        private static string NormalizeRequestJson(string raw, ITracingService tracing)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+
+            string text = raw.Trim();
+            if (text.Length > 0 && text[0] == '\uFEFF')
+            {
+                text = text.Substring(1).Trim();
+            }
+
+            // If someone accidentally passes the whole Web API body into ctp_RequestJson,
+            // unwrap { "ctp_RequestJson": "{...}" }.
+            string wrapped = TryExtractWrappedCtpRequestJson(text);
+            if (!string.IsNullOrWhiteSpace(wrapped))
+            {
+                tracing.Trace("Detected and unwrapped nested ctp_RequestJson body.");
+                text = wrapped.Trim();
+            }
+
+            // If the portal double-stringified the JSON, turn "{\"operation\":...}" back into {"operation":...}.
+            for (int i = 0; i < 3; i++)
+            {
+                if (LooksLikeJsonObject(text)) break;
+
+                string unescaped = TryDeserializeJsonStringLiteral(text);
+                if (!string.IsNullOrWhiteSpace(unescaped) && !string.Equals(unescaped, text, StringComparison.Ordinal))
+                {
+                    tracing.Trace("Detected and normalized double-encoded JSON string. Pass: " + (i + 1).ToString());
+                    text = unescaped.Trim();
+                    continue;
+                }
+
+                break;
+            }
+
+            return text.Trim();
+        }
+
+        private static string TryExtractWrappedCtpRequestJson(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            if (!LooksLikeJsonObject(text)) return null;
+            if (text.IndexOf("ctp_RequestJson", StringComparison.OrdinalIgnoreCase) < 0) return null;
+
+            var match = Regex.Match(
+                text,
+                "\"ctp_RequestJson\"\\s*:\\s*\"(?<value>(?:\\\\.|[^\"])*)\"",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+            if (!match.Success) return null;
+
+            string literal = "\"" + match.Groups["value"].Value + "\"";
+            return TryDeserializeJsonStringLiteral(literal);
+        }
+
+        private static string TryDeserializeJsonStringLiteral(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            string t = text.Trim();
+            if (!t.StartsWith("\"", StringComparison.Ordinal) || !t.EndsWith("\"", StringComparison.Ordinal)) return null;
+
+            try
+            {
+                var serializer = new DataContractJsonSerializer(typeof(string));
+                using (var ms = new MemoryStream(Encoding.UTF8.GetBytes(t)))
+                {
+                    return (string)serializer.ReadObject(ms);
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string GetEnvironmentVariable(IOrganizationService service, string schemaName, bool required = true)
+        {
+            var definitionQuery = new QueryExpression("environmentvariabledefinition")
+            {
+                ColumnSet = new ColumnSet("environmentvariabledefinitionid", "schemaname", "defaultvalue")
+            };
+            definitionQuery.Criteria.AddCondition("schemaname", ConditionOperator.Equal, schemaName);
+            definitionQuery.TopCount = 1;
+
+            var definitions = service.RetrieveMultiple(definitionQuery);
+            if (definitions.Entities.Count == 0)
+            {
+                if (required)
+                {
+                    throw new InvalidPluginExecutionException("Missing environment variable definition: " + schemaName);
+                }
+                return null;
+            }
+
+            var definition = definitions.Entities[0];
+            string defaultValue = definition.Contains("defaultvalue") ? definition.GetAttributeValue<string>("defaultvalue") : null;
+
+            var valueQuery = new QueryExpression("environmentvariablevalue")
+            {
+                ColumnSet = new ColumnSet("value")
+            };
+            valueQuery.Criteria.AddCondition("environmentvariabledefinitionid", ConditionOperator.Equal, definition.Id);
+            valueQuery.TopCount = 1;
+
+            var values = service.RetrieveMultiple(valueQuery);
+            if (values.Entities.Count > 0 && values.Entities[0].Contains("value"))
+            {
+                string currentValue = values.Entities[0].GetAttributeValue<string>("value");
+                if (!string.IsNullOrWhiteSpace(currentValue))
+                {
+                    return currentValue;
+                }
+            }
+
+            return defaultValue;
+        }
+
+        private static string TryExtractOperation(string requestJson)
+        {
+            if (string.IsNullOrWhiteSpace(requestJson)) return string.Empty;
+
+            var match = Regex.Match(requestJson, "\"operation\"\\s*:\\s*\"(?<operation>[^\"]+)\"", RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                return match.Groups["operation"].Value;
+            }
+
+            return string.Empty;
+        }
+
+        private static string TryExtractValidJson(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+
+            string cleaned = RemoveCodeFence(text.Trim());
+
+            if (LooksLikeJsonObject(cleaned) && IsValidJson(cleaned))
+            {
+                return cleaned;
+            }
+
+            string candidate = ExtractFirstJsonObject(cleaned);
+            if (!string.IsNullOrWhiteSpace(candidate) && IsValidJson(candidate))
+            {
+                return candidate;
+            }
+
+            return null;
+        }
+
+        private static string RemoveCodeFence(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return text;
+            string t = text.Trim();
+
+            if (t.StartsWith("```", StringComparison.Ordinal))
+            {
+                int firstNewLine = t.IndexOf('\n');
+                if (firstNewLine >= 0)
+                {
+                    t = t.Substring(firstNewLine + 1);
+                }
+
+                int lastFence = t.LastIndexOf("```", StringComparison.Ordinal);
+                if (lastFence >= 0)
+                {
+                    t = t.Substring(0, lastFence);
+                }
+            }
+
+            return t.Trim();
+        }
+
+        private static bool LooksLikeJsonObject(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            string t = text.Trim();
+            return t.StartsWith("{") && t.EndsWith("}");
+        }
+
+        private static bool IsValidJson(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return false;
+
+            try
+            {
+                byte[] bytes = Encoding.UTF8.GetBytes(json);
+                using (var ms = new MemoryStream(bytes))
+                using (var reader = JsonReaderWriterFactory.CreateJsonReader(ms, XmlDictionaryReaderQuotas.Max))
+                {
+                    while (reader.Read()) { }
+                    return true;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static string ExtractFirstJsonObject(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+
+            int start = text.IndexOf('{');
+            if (start < 0) return null;
+
+            bool inString = false;
+            bool escaped = false;
+            int depth = 0;
+
+            for (int i = start; i < text.Length; i++)
+            {
+                char c = text[i];
+
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+
+                if (c == '\\' && inString)
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (c == '"')
+                {
+                    inString = !inString;
+                    continue;
+                }
+
+                if (inString) continue;
+
+                if (c == '{') depth++;
+                if (c == '}') depth--;
+
+                if (depth == 0)
+                {
+                    return text.Substring(start, i - start + 1).Trim();
+                }
+            }
+
+            return null;
+        }
+
+        private static void TraceLarge(ITracingService tracing, string label, string value)
+        {
+            if (tracing == null) return;
+
+            if (value == null)
+            {
+                tracing.Trace(label + ": [NULL]");
+                return;
+            }
+
+            tracing.Trace(label + " length: " + value.Length.ToString());
+
+            if (value.Length == 0)
+            {
+                tracing.Trace(label + ": [EMPTY]");
+                return;
+            }
+
+            int chunk = 1;
+            for (int i = 0; i < value.Length; i += TraceChunkSize)
+            {
+                int len = Math.Min(TraceChunkSize, value.Length - i);
+                tracing.Trace(label + " [chunk " + chunk.ToString() + "]: " + value.Substring(i, len));
+                chunk++;
+            }
+        }
+
+        private static void TraceActivities(ITracingService tracing, string label, List<Activity> activities)
+        {
+            if (tracing == null) return;
+
+            if (activities == null)
+            {
+                tracing.Trace(label + ": [NULL activities]");
+                return;
+            }
+
+            tracing.Trace(label + " count: " + activities.Count.ToString());
+
+            for (int i = 0; i < activities.Count; i++)
+            {
+                var a = activities[i];
+                if (a == null)
+                {
+                    tracing.Trace(label + "[" + i.ToString() + "]: [NULL activity]");
+                    continue;
+                }
+
+                string fromId = a.From == null ? string.Empty : (a.From.Id ?? string.Empty);
+                string fromName = a.From == null ? string.Empty : (a.From.Name ?? string.Empty);
+                string text = a.Text ?? string.Empty;
+                tracing.Trace(label + "[" + i.ToString() + "] type=" + (a.Type ?? string.Empty)
+                    + ", fromId=" + fromId
+                    + ", fromName=" + fromName
+                    + ", textLength=" + text.Length.ToString()
+                    + ", textPreview=" + Truncate(text, 500));
+            }
+        }
+
+        private static string BuildApiErrorJson(string operation, string status, string message)
+        {
+            return "{"
+                + "\"success\":false,"
+                + "\"operation\":" + Quote(operation ?? string.Empty) + ","
+                + "\"status\":" + Quote(status ?? "Error") + ","
+                + "\"message\":" + Quote(message ?? string.Empty) + ","
+                + "\"payload\":{\"header\":{},\"lines\":[]}"
+                + "}";
+        }
+
+        private static string BuildInvalidAgentResponseJson(string operation, string rawAgentResponse, List<string> allNonJsonResponses)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{");
+            sb.Append("\"success\":false,");
+            sb.Append("\"operation\":").Append(Quote(operation ?? string.Empty)).Append(",");
+            sb.Append("\"status\":\"Invalid Agent Response\",");
+            sb.Append("\"message\":\"The agent responded with text instead of valid JSON. See rawAgentResponse and rawAgentResponses for the captured response activities.\",");
+            sb.Append("\"rawAgentResponse\":").Append(Quote(Truncate(rawAgentResponse, RawAgentResponseMaxLength))).Append(",");
+            sb.Append("\"rawAgentResponses\":[");
+
+            if (allNonJsonResponses != null)
+            {
+                for (int i = 0; i < allNonJsonResponses.Count; i++)
+                {
+                    if (i > 0) sb.Append(",");
+                    sb.Append(Quote(Truncate(allNonJsonResponses[i], RawAgentResponseMaxLength)));
+                }
+            }
+
+            sb.Append("],");
+            sb.Append("\"payload\":{\"header\":{},\"lines\":[]}");
+            sb.Append("}");
+            return sb.ToString();
+        }
+
+        private static string Quote(string value)
+        {
+            if (value == null) return "null";
+            return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n").Replace("\t", "\\t") + "\"";
+        }
+
+        private static string Truncate(string value, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value)) return value;
+            if (value.Length <= maxLength) return value;
+            return value.Substring(0, maxLength) + "...";
+        }
+
+        private static string Serialize<T>(T value)
+        {
+            var serializer = new DataContractJsonSerializer(typeof(T));
+            using (var ms = new MemoryStream())
+            {
+                serializer.WriteObject(ms, value);
+                return Encoding.UTF8.GetString(ms.ToArray());
+            }
+        }
+
+        private static T Deserialize<T>(string json)
+        {
+            var serializer = new DataContractJsonSerializer(typeof(T));
+            using (var ms = new MemoryStream(Encoding.UTF8.GetBytes(json)))
+            {
+                return (T)serializer.ReadObject(ms);
+            }
+        }
+
+        [DataContract]
+        private class DirectLineConversation
+        {
+            [DataMember(Name = "conversationId")]
+            public string ConversationId { get; set; }
+
+            [DataMember(Name = "token")]
+            public string Token { get; set; }
+
+            [DataMember(Name = "streamUrl")]
+            public string StreamUrl { get; set; }
+        }
+
+        [DataContract]
+        private class ActivitiesResponse
+        {
+            [DataMember(Name = "activities")]
+            public List<Activity> Activities { get; set; }
+
+            [DataMember(Name = "watermark")]
+            public string Watermark { get; set; }
+        }
+
+        [DataContract]
+        private class Activity
+        {
+            [DataMember(Name = "id")]
+            public string Id { get; set; }
+
+            [DataMember(Name = "type")]
+            public string Type { get; set; }
+
+            [DataMember(Name = "text")]
+            public string Text { get; set; }
+
+            [DataMember(Name = "from")]
+            public ChannelAccount From { get; set; }
+        }
+
+        [DataContract]
+        private class OutboundActivity
+        {
+            [DataMember(Name = "type")]
+            public string Type { get; set; }
+
+            [DataMember(Name = "from")]
+            public ChannelAccount From { get; set; }
+
+            [DataMember(Name = "text")]
+            public string Text { get; set; }
+        }
+
+        [DataContract]
+        private class ChannelAccount
+        {
+            [DataMember(Name = "id")]
+            public string Id { get; set; }
+
+            [DataMember(Name = "name")]
+            public string Name { get; set; }
+
+            [DataMember(Name = "role")]
+            public string Role { get; set; }
+        }
+    }
+}
+
+///////////////////////////////////////////////
+current web resouces 
+
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CTP Vendor Quote Agent</title>
+
+  <!--
+    CTP Vendor Quote Agent - Embedded Portal Single-File Dataverse HTML Web Resource
+    ---------------------------------------------------------------------------
+    Embed in: Dynamics 365 / Dataverse model-driven app Opportunity form tab as the Embedded Portal.
+
+    Design goal:
+      Clean, quiet, modern agent workspace. HTML is only the UI; Copilot Agent
+      reads the file, generates the payload, maps products, and orchestrates actions.
+
+    Production rule:
+      Do NOT place Copilot/Direct Line secrets in this file. Use a secure proxy,
+      Dataverse Custom API, Azure Function, or another server-side bridge.
+
+    Configure in CTP_CONFIG below:
+      mode: "mock" | "agentProxy" | "dataverseCustomApi"
+  -->
+
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --surface: #ffffff;
+      --surface-subtle: #fbfcfd;
+      --text: #20242a;
+      --muted: #667085;
+      --line: #e4e7ec;
+      --line-strong: #d0d5dd;
+      --brand: #315cbb;
+      --brand-hover: #254a98;
+      --brand-soft: #eef4ff;
+      --success: #067647;
+      --success-soft: #ecfdf3;
+      --warn: #b54708;
+      --warn-soft: #fffaeb;
+      --danger: #b42318;
+      --danger-soft: #fef3f2;
+      --radius: 14px;
+      --shadow: 0 10px 28px rgba(16,24,40,.06);
+      --font: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+    }
+
+    button, input, textarea { font-family: inherit; }
+
+    .app {
+      min-height: 100vh;
+      padding: 18px;
+    }
+
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+
+    .topbar {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 11px;
+      display: grid;
+      place-items: center;
+      background: var(--brand);
+      color: white;
+      font-weight: 800;
+      letter-spacing: .4px;
+      flex: 0 0 auto;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      font-size: 19px;
+      line-height: 1.25;
+      font-weight: 700;
+    }
+
+    h2 {
+      font-size: 16px;
+      line-height: 1.25;
+      font-weight: 700;
+    }
+
+    h3 {
+      font-size: 13px;
+      line-height: 1.25;
+      font-weight: 700;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      margin-top: 3px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .badge.warn { background: var(--warn-soft); color: var(--warn); }
+    .badge.success { background: var(--success-soft); color: var(--success); }
+    .badge.danger { background: var(--danger-soft); color: var(--danger); }
+
+    .content {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-pad { padding: 16px; }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border-bottom: 1px solid var(--line);
+      background: var(--surface-subtle);
+    }
+
+    .step {
+      padding: 12px 14px;
+      border-right: 1px solid var(--line);
+    }
+
+    .step:last-child { border-right: 0; }
+
+    .step .label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      color: var(--muted);
+      font-size: 11px;
+      background: white;
+      flex: 0 0 auto;
+    }
+
+    .step.done .dot {
+      background: var(--success);
+      border-color: var(--success);
+      color: white;
+    }
+
+    .step.active .dot {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: white;
+    }
+
+    .step.done .label, .step.active .label, .step.processing .label { color: var(--text); }
+
+    .step.active, .step.processing {
+      background: #fff;
+    }
+
+    .step.processing .dot {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: white;
+      position: relative;
+    }
+
+    .step.processing .dot::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px solid rgba(72, 86, 190, .22);
+      border-top-color: var(--brand);
+      animation: spin .85s linear infinite;
+    }
+
+    .progress-caption {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #ffffff;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .progress-caption strong { color: var(--text); }
+
+    .progress-pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--brand);
+      box-shadow: 0 0 0 0 rgba(72, 86, 190, .36);
+      animation: pulse 1.25s ease-out infinite;
+      flex: 0 0 auto;
+    }
+
+    .progress-caption.idle .progress-pulse {
+      background: var(--muted);
+      box-shadow: none;
+      animation: none;
+      opacity: .45;
+    }
+
+    .progress-caption.done .progress-pulse {
+      background: var(--success);
+      box-shadow: none;
+      animation: none;
+    }
+
+    .progress-caption.error .progress-pulse {
+      background: var(--danger);
+      box-shadow: none;
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(72, 86, 190, .36); }
+      70% { box-shadow: 0 0 0 9px rgba(72, 86, 190, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(72, 86, 190, 0); }
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .input, .textarea {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      background: white;
+      color: var(--text);
+      padding: 9px 10px;
+      outline: none;
+      font-size: 13px;
+    }
+
+    .input:focus, .textarea:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(49, 92, 187, .10);
+    }
+
+    .textarea {
+      min-height: 80px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    .filebox {
+      border: 1px dashed var(--line-strong);
+      border-radius: 12px;
+      padding: 14px;
+      background: var(--surface-subtle);
+      margin-bottom: 14px;
+    }
+
+    .filebox-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+
+    .dropzone {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      min-height: 112px;
+      padding: 18px;
+      border: 1.5px dashed var(--line-strong);
+      border-radius: 14px;
+      background: white;
+      cursor: pointer;
+      transition: border-color .15s ease, background .15s ease, box-shadow .15s ease, transform .15s ease;
+      outline: none;
+    }
+
+    .dropzone:hover, .dropzone:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(49, 92, 187, .08);
+      background: #fbfdff;
+    }
+
+    .dropzone.dragging {
+      border-color: var(--brand);
+      background: #f3f7ff;
+      box-shadow: 0 0 0 4px rgba(49, 92, 187, .12);
+      transform: translateY(-1px);
+    }
+
+    .dropzone.has-file {
+      border-style: solid;
+      border-color: #b7c7ee;
+      background: #fbfdff;
+    }
+
+    .drop-content {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      min-width: 0;
+    }
+
+    .drop-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      color: var(--brand);
+      background: rgba(49, 92, 187, .09);
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .drop-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 520px;
+    }
+
+    .drop-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .file-input-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .btn.mini {
+      min-height: 32px;
+      padding: 6px 10px;
+      font-size: 12px;
+      flex: 0 0 auto;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      min-height: 36px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      background: var(--brand);
+      color: white;
+      font-weight: 700;
+      font-size: 13px;
+      transition: .15s ease;
+    }
+
+    .btn:hover { background: var(--brand-hover); }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+
+    .btn.secondary {
+      background: white;
+      color: var(--text);
+      border-color: var(--line-strong);
+    }
+
+    .btn.secondary:hover { background: var(--surface-subtle); }
+
+    .btn.ghost {
+      background: transparent;
+      color: var(--brand);
+      border-color: transparent;
+    }
+
+    .btn.danger {
+      background: white;
+      color: var(--danger);
+      border-color: #fecdca;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.55);
+      border-top-color: white;
+      animation: spin .85s linear infinite;
+      vertical-align: -3px;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .agent-message {
+      border: 1px solid #d9e5ff;
+      border-radius: 12px;
+      background: #f8fbff;
+      padding: 13px;
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: var(--brand);
+      color: white;
+      font-weight: 800;
+      font-size: 12px;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+      background: white;
+    }
+
+    .tab {
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      padding: 12px 9px 10px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .tab.active {
+      color: var(--brand);
+      border-bottom-color: var(--brand);
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      min-width: 820px;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      padding: 11px 12px;
+      font-size: 13px;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--surface-subtle);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+    .chip {
+      display: inline-flex;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--brand-soft);
+      color: var(--brand);
+      white-space: nowrap;
+    }
+
+    .chip.matched { background: var(--success-soft); color: var(--success); }
+    .chip.unmatched { background: var(--warn-soft); color: var(--warn); }
+    .chip.low { background: #f4f3ff; color: #5925dc; }
+    .chip.failed { background: var(--danger-soft); color: var(--danger); }
+
+
+    .table-actionbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: white;
+      flex-wrap: wrap;
+    }
+
+    .review-summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .review-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-weight: 800;
+      background: var(--surface-subtle);
+      border: 1px solid var(--line);
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .review-pill.good {
+      background: var(--success-soft);
+      border-color: #abefc6;
+      color: var(--success);
+    }
+
+    .review-pill.warn {
+      background: var(--warn-soft);
+      border-color: #fedf89;
+      color: var(--warn);
+    }
+
+    .edit-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      padding: 10px 14px 0;
+    }
+
+    .editable-table {
+      min-width: 1280px;
+    }
+
+    .editable-table th,
+    .editable-table td {
+      padding: 10px 9px;
+    }
+
+    .line-approval {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 32px;
+    }
+
+    .line-approval input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--brand);
+    }
+
+    .cell-input, .cell-select, .cell-textarea {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: white;
+      color: var(--text);
+      padding: 7px 8px;
+      outline: none;
+      font-size: 12px;
+    }
+
+    .cell-input:focus, .cell-select:focus, .cell-textarea:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(49, 92, 187, .09);
+    }
+
+    .cell-textarea {
+      min-height: 54px;
+      resize: vertical;
+      line-height: 1.35;
+    }
+
+    .sku-field { margin-top: 6px; }
+
+    .line-dirty-message {
+      display: none;
+      color: var(--warn);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .line-dirty-message.show {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .edited-mark {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 2px 6px;
+      margin-top: 5px;
+      background: #f2f4f7;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .side-card {
+      padding: 15px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .kv {
+      display: grid;
+      gap: 8px;
+    }
+
+    .kv-row {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 8px;
+    }
+
+    .kv-label { color: var(--muted); font-size: 12px; }
+    .kv-value { font-weight: 700; font-size: 13px; word-break: break-word; }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 9px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px;
+      background: var(--surface-subtle);
+    }
+
+    .metric-value {
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 800;
+    }
+
+    .metric-label {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .approval {
+      border-top: 1px solid var(--line);
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      background: var(--surface-subtle);
+    }
+
+    .checkline {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .alert {
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      padding: 12px;
+      line-height: 1.45;
+      font-size: 13px;
+      margin-top: 12px;
+    }
+
+    .alert.info { background: #f8fbff; border-color: #d9e5ff; color: #1849a9; }
+    .alert.warn { background: var(--warn-soft); border-color: #fedf89; color: var(--warn); }
+    .alert.danger { background: var(--danger-soft); border-color: #fecdca; color: var(--danger); }
+    .alert.success { background: var(--success-soft); border-color: #abefc6; color: var(--success); }
+
+    .code {
+      background: #101828;
+      color: #e4e7ec;
+      border-radius: 12px;
+      padding: 13px;
+      max-height: 420px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .toast {
+      display: none;
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      max-width: 420px;
+      z-index: 9999;
+      background: #101828;
+      color: white;
+      padding: 12px 14px;
+      border-radius: 12px;
+      box-shadow: 0 18px 40px rgba(16,24,40,.25);
+      line-height: 1.4;
+      font-size: 13px;
+    }
+
+    .toast.show { display: block; }
+
+    @media (max-width: 980px) {
+      .content { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: repeat(2, 1fr); }
+      .step:nth-child(2) { border-right: 0; }
+      .side { order: -1; }
+    }
+
+    @media (max-width: 640px) {
+      .app { padding: 10px; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .form-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; }
+      .step { border-right: 0; }
+      .approval { align-items: flex-start; flex-direction: column; }
+      .dropzone { align-items: flex-start; flex-direction: column; }
+      .drop-title { max-width: 100%; white-space: normal; }
+    }
+
+    /* Compact editable table: same format, no horizontal scroll */
+    .content {
+      grid-template-columns: minmax(0, 1fr) 300px;
+    }
+
+    .table-wrap {
+      overflow-x: hidden;
+      width: 100%;
+    }
+
+    .editable-table {
+      width: 100%;
+      min-width: 0;
+      table-layout: fixed;
+      border-collapse: collapse;
+    }
+
+    .editable-table th,
+    .editable-table td {
+      padding: 8px 6px;
+      font-size: 11.5px;
+      vertical-align: top;
+    }
+
+    .editable-table th {
+      font-size: 11px;
+      white-space: normal;
+      line-height: 1.25;
+    }
+
+    .editable-table .col-approve { width: 5%; }
+    .editable-table .col-line { width: 4%; }
+    .editable-table .col-product { width: 22%; }
+    .editable-table .col-description { width: 25%; }
+    .editable-table .col-qty { width: 7%; }
+    .editable-table .col-uom { width: 7%; }
+    .editable-table .col-cost { width: 9%; }
+    .editable-table .col-status { width: 10%; }
+    .editable-table .col-reason { width: 11%; }
+
+    .cell-input,
+    .cell-select,
+    .cell-textarea {
+      font-size: 11.5px;
+      padding: 6px 7px;
+      border-radius: 7px;
+      min-height: 30px;
+    }
+
+    .cell-textarea {
+      min-height: 46px;
+      max-height: 90px;
+      resize: vertical;
+    }
+
+    .sku-field {
+      margin-top: 5px;
+    }
+
+    .editable-table .small {
+      font-size: 11px;
+      line-height: 1.3;
+    }
+
+    .reason-cell .small {
+      max-height: 82px;
+      overflow: auto;
+      overflow-wrap: anywhere;
+    }
+
+    .status-cell label.small {
+      font-size: 10.5px;
+      gap: 4px !important;
+    }
+
+    .line-approval {
+      min-height: 30px;
+    }
+
+    .line-approval input {
+      width: 15px;
+      height: 15px;
+    }
+
+    .table-actionbar {
+      gap: 10px;
+      padding: 10px 14px;
+    }
+
+    .review-summary {
+      gap: 8px;
+    }
+
+    .edit-note {
+      padding: 8px 14px 0;
+    }
+
+    @media (max-width: 1200px) {
+      .content {
+        grid-template-columns: 1fr;
+      }
+
+      .side {
+        order: 2;
+      }
+    }
+
+    @media (max-width: 850px) {
+      .editable-table th,
+      .editable-table td {
+        padding: 7px 4px;
+        font-size: 10.5px;
+      }
+
+      .cell-input,
+      .cell-select,
+      .cell-textarea {
+        font-size: 10.5px;
+        padding: 5px 5px;
+      }
+
+      .editable-table .col-approve { width: 5%; }
+      .editable-table .col-line { width: 4%; }
+      .editable-table .col-product { width: 23%; }
+      .editable-table .col-description { width: 26%; }
+      .editable-table .col-qty { width: 7%; }
+      .editable-table .col-uom { width: 7%; }
+      .editable-table .col-cost { width: 9%; }
+      .editable-table .col-status { width: 10%; }
+      .editable-table .col-reason { width: 9%; }
+    }
+
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    "use strict";
+
+    const CTP_CONFIG = {
+      runtime: {
+        mode: "dataverseCustomApi", // "mock" | "agentProxy" | "dataverseCustomApi"
+        agentProxyUrl: "",
+        dataverseCustomApiName: "ctp_InvokeVendorQuoteAgent",
+        dataverseRequestParamName: "ctp_RequestJson",
+        dataverseResponseParamName: "ctp_ResponseJson",
+        timeoutMs: 120000
+      },
+      agent: {
+        name: "CTP Vendor Quote Agent",
+        version: "2.4.0-embedded-portal-custom-api"
+      },
+      file: {
+        allowLocalFileBase64: true,
+        maxLocalFileBytes: 4 * 1024 * 1024,
+        acceptedExtensions: ["pdf", "xlsx", "xls", "csv", "docx", "doc", "png", "jpg", "jpeg", "txt"]
+      },
+      dataverse: {
+        stagingEntityLogicalName: "ctp_vendorquotestaging"
+      }
+    };
+
+    const sampleResponse = {
+      success: true,
+      status: "Requires Review",
+      message: "I mapped the vendor quote into the standard CTP payload. Five lines need review before Opportunity Products are created.",
+      payload: {
+        header: {
+          opportunityId: "00000000-0000-0000-0000-000000000000",
+          opportunityName: "UMC Discovery Ridge - 100kW UPS",
+          vendorName: "Schneider Electric IT Corporation",
+          quoteNumber: "ISX0002642109-0007",
+          fileName: "UMC Discovery Ridge 100kW UPS 5-28-26 1.docx",
+          fileUrl: "SharePoint or Dataverse file reference",
+          currency: "USD",
+          confidence: 0.72
+        },
+        lines: [
+          { lineNumber: 1, vendorSku: null, productName: "Galaxy VS UPS 100kW 480V", description: "Galaxy VS UPS 100kW 480V for External Batteries, Start-up 5x8", quantity: 1, unitOfMeasure: "Each", vendorUnitCost: null, matchStatus: "Unmatched", matchConfidence: 0.46, reason: "No SKU found. Description match requires review." },
+          { lineNumber: 2, vendorSku: null, productName: "Galaxy VS Air Filter Kit", description: "Galaxy VS Air Filter Kit for 521mm wide UPS", quantity: 1, unitOfMeasure: "Each", vendorUnitCost: null, matchStatus: "Unmatched", matchConfidence: 0.42, reason: "No SKU found. Awaiting product mapping." },
+          { lineNumber: 3, vendorSku: null, productName: "Galaxy VS Seismic Kit", description: "Galaxy VS Seismic Kit for Modular Battery Cabinet or 521mm wide UPS", quantity: 2, unitOfMeasure: "Each", vendorUnitCost: null, matchStatus: "Low Confidence", matchConfidence: 0.61, reason: "Possible match found but confidence is below threshold." },
+          { lineNumber: 4, vendorSku: null, productName: "Galaxy VS Maintenance Bypass Cabinet", description: "Maintenance Bypass Cabinet, UL, Single-Unit 50-75kW 208V, 100-150kW 480V", quantity: 1, unitOfMeasure: "Each", vendorUnitCost: null, matchStatus: "Low Confidence", matchConfidence: 0.58, reason: "Model found similar products; human review recommended." },
+          { lineNumber: 5, vendorSku: null, productName: "1 Year 4HR 7X24 Response Upgrade", description: "Service Contract for 41 to 150 kVA", quantity: 1, unitOfMeasure: "Each", vendorUnitCost: null, matchStatus: "Unmatched", matchConfidence: 0.35, reason: "Service line needs manual mapping or write-in approval." }
+        ]
+      }
+    };
+
+    const state = {
+      opportunity: null,
+      selectedFile: null,
+      fileBase64: null,
+      fileReference: "",
+      vendorHint: "",
+      instruction: "",
+      activeTab: "lines",
+      response: null,
+      approved: false,
+      busy: false,
+      error: "",
+      toast: "",
+      isDragging: false,
+      unsavedLineChanges: false,
+      progressStage: "quote",
+      progressText: "Waiting for quote file or file reference."
+    };
+
+    const root = document.getElementById("root");
+    const byId = (id) => document.getElementById(id);
+
+    function esc(v) {
+      return String(v ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function pretty(v) {
+      try { return JSON.stringify(v, null, 2); } catch { return String(v ?? ""); }
+    }
+
+    function normalizeGuid(v) {
+      return String(v || "").replace(/[{}]/g, "").trim();
+    }
+
+    function getXrm() {
+      try { return window.parent && window.parent.Xrm ? window.parent.Xrm : window.Xrm || null; }
+      catch { return null; }
+    }
+
+    function readOpportunityContext() {
+      const xrm = getXrm();
+      let id = "", name = "Current Opportunity", entityName = "opportunity", clientUrl = "";
+      try {
+        if (xrm?.Utility?.getGlobalContext) clientUrl = xrm.Utility.getGlobalContext().getClientUrl();
+        if (xrm?.Page?.data?.entity) {
+          id = normalizeGuid(xrm.Page.data.entity.getId());
+          entityName = xrm.Page.data.entity.getEntityName?.() || entityName;
+          const nameAttr = xrm.Page.getAttribute?.("name");
+          name = nameAttr?.getValue?.() || name;
+        }
+      } catch { }
+
+      const params = new URLSearchParams(window.location.search || "");
+      id = id || normalizeGuid(params.get("id"));
+      name = params.get("name") || name;
+      entityName = params.get("typename") || entityName;
+
+      return { id: id || "00000000-0000-0000-0000-000000000000", name, entityName, clientUrl, source: id ? "Dynamics form" : "Preview" };
+    }
+
+    function setState(next) { Object.assign(state, next); render(); }
+
+    function showToast(msg) {
+      state.toast = msg;
+      render();
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => setState({ toast: "" }), 3800);
+    }
+
+    function fmtBytes(bytes) {
+      if (!bytes && bytes !== 0) return "";
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+      return (bytes / 1024 / 1024).toFixed(1) + " MB";
+    }
+
+    function lines() { return state.response?.payload?.lines || []; }
+    function header() { return state.response?.payload?.header || {}; }
+
+    function countStatus(type) {
+      const t = type.toLowerCase();
+      return lines().filter(l => String(l.matchStatus || "").toLowerCase().includes(t)).length;
+    }
+
+    function needsReviewCount() {
+      return lines().filter(l => {
+        const s = String(l.matchStatus || "").toLowerCase();
+        return s.includes("unmatched") || s.includes("low");
+      }).length;
+    }
+
+    function statusClass(s) {
+      const v = String(s || "").toLowerCase();
+      if (v.includes("created") || v.includes("approved")) return "success";
+      if (v.includes("review") || v.includes("waiting")) return "warn";
+      if (v.includes("fail") || v.includes("error")) return "danger";
+      return "";
+    }
+
+    function chipClass(s) {
+      const v = String(s || "").toLowerCase();
+      if (v.includes("matched") && !v.includes("unmatched")) return "matched";
+      if (v.includes("unmatched")) return "unmatched";
+      if (v.includes("low")) return "low";
+      if (v.includes("fail")) return "failed";
+      return "";
+    }
+
+
+    function normalizeAgentResponse(response) {
+      if (!response || !response.payload) return response;
+      if (!Array.isArray(response.payload.lines)) response.payload.lines = [];
+      response.payload.lines = response.payload.lines.map((line, index) => ({
+        lineNumber: line.lineNumber ?? index + 1,
+        vendorSku: line.vendorSku ?? line.sku ?? null,
+        productName: line.productName ?? "",
+        description: line.description ?? line.productName ?? "",
+        quantity: line.quantity ?? 1,
+        unitOfMeasure: line.unitOfMeasure ?? line.uom ?? "Each",
+        vendorUnitCost: line.vendorUnitCost ?? null,
+        vendorExtendedCost: line.vendorExtendedCost ?? null,
+        matchStatus: line.matchStatus ?? "Unmatched",
+        matchConfidence: line.matchConfidence ?? null,
+        useWriteInProduct: !!line.useWriteInProduct,
+        userApproved: !!line.userApproved,
+        userModified: !!line.userModified,
+        reviewDecision: line.reviewDecision || (line.userApproved ? "Approved" : "Pending Review"),
+        reason: line.reason ?? "",
+        ...line
+      }));
+      return response;
+    }
+
+    function approvedLineCount() {
+      return lines().filter(l => !!l.userApproved).length;
+    }
+
+    function allLinesApproved() {
+      const current = lines();
+      return current.length > 0 && current.every(l => !!l.userApproved);
+    }
+
+    function toNumberOrNull(value) {
+      if (value === null || value === undefined || String(value).trim() === "") return null;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function toNumberOrZero(value) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    async function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || "").split(",")[1] || "");
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+    }
+
+    function isAcceptedFile(file) {
+      if (!file || !file.name) return false;
+      const ext = file.name.split(".").pop().toLowerCase();
+      return CTP_CONFIG.file.acceptedExtensions.includes(ext);
+    }
+
+    async function handleSelectedFile(file) {
+      if (!file) return;
+      if (!isAcceptedFile(file)) {
+        showToast("Unsupported file type. Use PDF, Excel, CSV, DOCX, image, or TXT files.");
+        return;
+      }
+
+      state.selectedFile = file;
+      state.fileBase64 = null;
+      state.error = "";
+      state.response = null;
+      state.approved = false;
+      state.unsavedLineChanges = false;
+      state.isDragging = false;
+      state.progressStage = "quote";
+      state.progressText = "Quote selected. Agent is ready to extract and map.";
+
+      if (CTP_CONFIG.file.allowLocalFileBase64 && file.size <= CTP_CONFIG.file.maxLocalFileBytes) {
+        try { state.fileBase64 = await fileToBase64(file); } catch { }
+      }
+
+      render();
+      showToast(`Selected ${file.name}. Ask the agent to process it when ready.`);
+    }
+
+    async function onFileChange(e) {
+      const file = e.target.files?.[0];
+      await handleSelectedFile(file);
+    }
+
+    function setDropVisual(isDragging) {
+      state.isDragging = isDragging;
+      const zone = byId("dropzone");
+      if (zone) zone.classList.toggle("dragging", isDragging);
+    }
+
+    function onDropZoneClick(e) {
+      if (e.target && e.target.id === "fileInput") return;
+      byId("fileInput")?.click();
+    }
+
+    function onDropZoneKeydown(e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        byId("fileInput")?.click();
+      }
+    }
+
+    function onDropZoneDragOver(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      setDropVisual(true);
+    }
+
+    function onDropZoneDragLeave(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const zone = byId("dropzone");
+      if (zone && e.relatedTarget && zone.contains(e.relatedTarget)) return;
+      setDropVisual(false);
+    }
+
+    async function onDropZoneDrop(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      setDropVisual(false);
+      const file = e.dataTransfer?.files?.[0];
+      await handleSelectedFile(file);
+    }
+
+    function buildRequest(operation) {
+      return {
+        operation,
+        source: "Dynamics 365 Opportunity HTML Web Resource",
+        agentName: CTP_CONFIG.agent.name,
+        timestampUtc: new Date().toISOString(),
+        opportunity: state.opportunity,
+        file: {
+          fileName: state.selectedFile?.name || "",
+          mimeType: state.selectedFile?.type || "",
+          sizeBytes: state.selectedFile?.size || 0,
+          fileReference: state.fileReference,
+          localFileBase64: state.fileBase64
+        },
+        hints: { vendorName: state.vendorHint, instruction: state.instruction },
+        currentPayload: state.response?.payload || null,
+        approval: {
+          approved: state.approved,
+          approvedOnUtc: state.approved ? new Date().toISOString() : null,
+          approvedLineCount: approvedLineCount(),
+          totalLineCount: lines().length,
+          allLinesApproved: allLinesApproved()
+        }
+      };
+    }
+
+    function validate(operation) {
+      if (operation === "extract_map_preview" && !state.selectedFile && !state.fileReference) {
+        throw new Error("Select a quote file or provide a file reference before asking the agent to process it.");
+      }
+      if (operation === "approve_create_products" && !state.response?.payload) {
+        throw new Error("Ask the agent to extract and map the quote first.");
+      }
+      if (operation === "approve_create_products" && state.unsavedLineChanges) {
+        throw new Error("Save the line-item edits before creating Opportunity Product Lines.");
+      }
+      if (operation === "approve_create_products" && !allLinesApproved()) {
+        throw new Error("Approve each line item before creating Opportunity Product Lines. Use Approve all lines if every line is correct.");
+      }
+      if (operation === "approve_create_products" && !state.approved) {
+        throw new Error("Confirm that you reviewed and approve the mapped quote before creating Opportunity Product Lines.");
+      }
+    }
+
+    function startProgress(operation) {
+      if (operation === "approve_create_products") {
+        return { stage: "creating", text: "Agent is creating the staging audit snapshot and Opportunity Product Lines." };
+      }
+      if (operation === "refresh_mapping") {
+        return { stage: "mapping", text: "Agent is refreshing product mapping and validation." };
+      }
+      return { stage: "mapping", text: "Agent is reading the quote, extracting content, and generating the mapped payload." };
+    }
+
+    function finishProgress(operation, response) {
+      const status = String(response?.status || "").toLowerCase();
+      if (operation === "approve_create_products" || status.includes("created")) {
+        return { stage: "created", text: "Opportunity Product Lines were created and linked to the staging audit snapshot." };
+      }
+      return { stage: "review", text: "Agent mapping is ready. Review the mapped lines before approval." };
+    }
+
+    function inferredStage(hasPayload, isCreated) {
+      if (state.busy) return state.progressStage;
+      if (isCreated) return "created";
+      if (state.approved) return "approved";
+      if (hasPayload) return "review";
+      if (state.selectedFile || state.fileReference) return "quote";
+      return state.progressStage || "quote";
+    }
+
+    function stepClass(step, hasPayload, isCreated) {
+      const stage = inferredStage(hasPayload, isCreated);
+      const hasQuote = !!state.selectedFile || !!state.fileReference;
+      const isBusy = !!state.busy;
+      let cls = "step";
+
+      if (step === 1) {
+        if (hasQuote || hasPayload || isCreated) cls += " done";
+        else cls += " active";
+      }
+
+      if (step === 2) {
+        if (stage === "mapping") cls += isBusy ? " processing" : " active";
+        else if (hasPayload || stage === "review" || stage === "approved" || stage === "creating" || stage === "created") cls += " done";
+        else if (hasQuote) cls += " active";
+      }
+
+      if (step === 3) {
+        if (stage === "review") cls += " active";
+        if (state.approved || stage === "approved" || stage === "creating" || stage === "created") cls += " done";
+      }
+
+      if (step === 4) {
+        if (stage === "creating") cls += isBusy ? " processing" : " active";
+        else if (isCreated || stage === "created") cls += " done";
+      }
+
+      return cls;
+    }
+
+    function progressCaptionClass(hasPayload, isCreated) {
+      if (state.error) return "error";
+      if (isCreated) return "done";
+      if (!state.busy && !hasPayload && !state.selectedFile && !state.fileReference) return "idle";
+      return "";
+    }
+
+    function progressCaptionText(hasPayload, isCreated) {
+      if (state.error) return "Processing stopped. Fix the error and try again.";
+      if (state.progressText) return state.progressText;
+      if (isCreated) return "Opportunity Product Lines created.";
+      if (state.approved) return "Approved. Ready to create Opportunity Product Lines.";
+      if (hasPayload) return "Review mapped quote lines before approval.";
+      if (state.selectedFile || state.fileReference) return "Quote selected. Agent is ready to process.";
+      return "Waiting for quote file or file reference.";
+    }
+
+    async function askAgent(operation) {
+      try {
+        validate(operation);
+        const progress = startProgress(operation);
+        setState({ busy: true, error: "", progressStage: progress.stage, progressText: progress.text });
+        const request = buildRequest(operation);
+        let response;
+        if (CTP_CONFIG.runtime.mode === "mock") response = await mockAgent(operation, request);
+        else if (CTP_CONFIG.runtime.mode === "agentProxy") response = await callAgentProxy(request);
+        else if (CTP_CONFIG.runtime.mode === "dataverseCustomApi") response = await callCustomApi(request);
+        else throw new Error("Unsupported runtime mode: " + CTP_CONFIG.runtime.mode);
+        if (!response || response.success === false) throw new Error(response?.message || "Agent returned an unsuccessful response.");
+        response = normalizeAgentResponse(response);
+        const doneProgress = finishProgress(operation, response);
+        setState({
+          busy: false,
+          response,
+          approved: operation === "approve_create_products" ? state.approved : false,
+          unsavedLineChanges: false,
+          activeTab: operation === "approve_create_products" ? "result" : "lines",
+          progressStage: doneProgress.stage,
+          progressText: doneProgress.text
+        });
+        showToast(response.message || "Agent completed the request.");
+      } catch (err) {
+        setState({ busy: false, error: err.message || String(err), progressStage: "error", progressText: "Processing stopped. Fix the error and try again." });
+      }
+    }
+
+    async function mockAgent(operation, request) {
+      await new Promise(r => setTimeout(r, 750));
+      if (operation === "approve_create_products") {
+        return {
+          success: true,
+          status: "Opportunity Products Created",
+          message: "Approved. I created the staging audit snapshot and Opportunity Product Lines. This is mock mode.",
+          payload: state.response.payload,
+          result: {
+            vendorQuoteStagingId: "9db6b7d2-8ac0-4a24-9be7-1fcfbd1a5c9f",
+            stagingLinesCreated: lines().length,
+            opportunityProductLinesCreated: lines().length,
+            approvedOnUtc: new Date().toISOString()
+          }
+        };
+      }
+      const res = JSON.parse(JSON.stringify(sampleResponse));
+      res.payload.header.opportunityId = request.opportunity.id;
+      res.payload.header.opportunityName = request.opportunity.name;
+      res.payload.header.fileName = request.file.fileName || res.payload.header.fileName;
+      res.payload.header.fileUrl = request.file.fileReference || res.payload.header.fileUrl;
+      if (request.hints.vendorName) res.payload.header.vendorName = request.hints.vendorName;
+      return res;
+    }
+
+    async function callAgentProxy(request) {
+      if (!CTP_CONFIG.runtime.agentProxyUrl) throw new Error("Agent proxy URL is not configured.");
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), CTP_CONFIG.runtime.timeoutMs);
+      try {
+        const res = await fetch(CTP_CONFIG.runtime.agentProxyUrl, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+          signal: controller.signal
+        });
+        const text = await res.text();
+        const json = text ? JSON.parse(text) : {};
+        if (!res.ok) throw new Error(json.message || "Agent proxy HTTP " + res.status);
+        return json;
+      } finally { clearTimeout(timer); }
+    }
+
+    async function callCustomApi(request) {
+      const xrm = getXrm();
+      if (!xrm?.WebApi?.online?.execute) throw new Error("Xrm.WebApi.online.execute is not available. Open this inside Dynamics 365.");
+      const p = CTP_CONFIG.runtime.dataverseRequestParamName;
+      const out = CTP_CONFIG.runtime.dataverseResponseParamName;
+      const apiRequest = { [p]: JSON.stringify(request) };
+      apiRequest.getMetadata = () => ({
+        boundParameter: null,
+        parameterTypes: { [p]: { typeName: "Edm.String", structuralProperty: 1 } },
+        operationType: 0,
+        operationName: CTP_CONFIG.runtime.dataverseCustomApiName
+      });
+      const response = await xrm.WebApi.online.execute(apiRequest);
+      if (!response.ok) throw new Error("Dataverse Custom API failed with status " + response.status);
+      const json = await response.json();
+      const raw = json[out] || json.ctp_responsejson || json.response;
+      return typeof raw === "string" ? JSON.parse(raw) : (raw || json);
+    }
+
+    function openStaging() {
+      const id = state.response?.result?.vendorQuoteStagingId;
+      const xrm = getXrm();
+      if (!id) return showToast("No staging record ID was returned yet.");
+      if (xrm?.Navigation?.openForm) {
+        xrm.Navigation.openForm({ entityName: CTP_CONFIG.dataverse.stagingEntityLogicalName, entityId: id });
+      } else showToast("Open this inside Dynamics 365 to navigate to the staging record.");
+    }
+
+    function copyPayload() {
+      const payload = state.response?.payload;
+      if (!payload) return showToast("No payload to copy yet.");
+      navigator.clipboard?.writeText(pretty(payload)).then(() => showToast("Payload copied."), () => showToast("Could not copy payload."));
+    }
+
+
+
+    function markLineChangesDirty() {
+      state.unsavedLineChanges = true;
+      state.approved = false;
+      const msg = byId("lineDirtyMessage");
+      if (msg) msg.classList.add("show");
+      const save = byId("saveLineEdits");
+      if (save) save.disabled = false;
+      const approved = byId("approved");
+      if (approved) {
+        approved.checked = false;
+        approved.disabled = true;
+      }
+      const approveCreate = byId("approveCreate");
+      if (approveCreate) approveCreate.disabled = true;
+    }
+
+    function saveLineEdits() {
+      if (!state.response?.payload?.lines) return showToast("No line items to save.");
+      const updated = state.response.payload.lines.map((line, index) => {
+        const get = (field) => document.querySelector(`[data-line-index="${index}"][data-field="${field}"]`);
+        const approvedEl = get("userApproved");
+        const useWriteInEl = get("useWriteInProduct");
+        const vendorSku = get("vendorSku")?.value?.trim() || null;
+        const productName = get("productName")?.value?.trim() || "";
+        const description = get("description")?.value?.trim() || productName;
+        const quantity = toNumberOrZero(get("quantity")?.value);
+        const unitOfMeasure = get("unitOfMeasure")?.value?.trim() || "Each";
+        const vendorUnitCost = toNumberOrNull(get("vendorUnitCost")?.value);
+        const vendorExtendedCost = vendorUnitCost == null ? null : Number((vendorUnitCost * quantity).toFixed(2));
+        const matchStatus = get("matchStatus")?.value || line.matchStatus || "Unmatched";
+        const userApproved = !!approvedEl?.checked;
+        const useWriteInProduct = !!useWriteInEl?.checked;
+
+        const changed = vendorSku !== (line.vendorSku ?? null)
+          || productName !== (line.productName ?? "")
+          || description !== (line.description ?? "")
+          || quantity !== Number(line.quantity ?? 0)
+          || unitOfMeasure !== (line.unitOfMeasure ?? "Each")
+          || vendorUnitCost !== (line.vendorUnitCost ?? null)
+          || matchStatus !== (line.matchStatus ?? "Unmatched")
+          || useWriteInProduct !== !!line.useWriteInProduct
+          || userApproved !== !!line.userApproved;
+
+        return {
+          ...line,
+          vendorSku,
+          productName,
+          description,
+          quantity,
+          unitOfMeasure,
+          vendorUnitCost,
+          vendorExtendedCost,
+          matchStatus,
+          useWriteInProduct,
+          userApproved,
+          reviewDecision: userApproved ? "Approved" : "Pending Review",
+          userModified: changed || !!line.userModified,
+          lastEditedOnUtc: changed ? new Date().toISOString() : line.lastEditedOnUtc
+        };
+      });
+
+      state.response.payload.lines = updated;
+      state.response.payload.review = {
+        approvedLineCount: updated.filter(l => !!l.userApproved).length,
+        totalLineCount: updated.length,
+        allLinesApproved: updated.length > 0 && updated.every(l => !!l.userApproved),
+        savedOnUtc: new Date().toISOString()
+      };
+      state.unsavedLineChanges = false;
+      state.approved = false;
+      state.progressStage = allLinesApproved() ? "review" : "review";
+      state.progressText = allLinesApproved()
+        ? "All line edits were saved. Confirm final quote approval to create Opportunity Product Lines."
+        : "Line edits were saved. Approve each line before final creation.";
+      render();
+      showToast("Line changes saved into the payload.");
+    }
+
+    function approveAllLines() {
+      if (!state.response?.payload?.lines?.length) return showToast("No line items to approve.");
+      state.response.payload.lines = state.response.payload.lines.map(line => ({
+        ...line,
+        userApproved: true,
+        reviewDecision: "Approved",
+        reviewedOnUtc: new Date().toISOString()
+      }));
+      state.response.payload.review = {
+        approvedLineCount: state.response.payload.lines.length,
+        totalLineCount: state.response.payload.lines.length,
+        allLinesApproved: true,
+        savedOnUtc: new Date().toISOString()
+      };
+      state.unsavedLineChanges = false;
+      state.approved = false;
+      state.progressStage = "review";
+      state.progressText = "All lines are approved. Confirm final quote approval to create Opportunity Product Lines.";
+      render();
+      showToast("All line items approved in the payload.");
+    }
+
+    function clearLineApprovals() {
+      if (!state.response?.payload?.lines?.length) return showToast("No line items to update.");
+      state.response.payload.lines = state.response.payload.lines.map(line => ({
+        ...line,
+        userApproved: false,
+        reviewDecision: "Pending Review",
+        reviewedOnUtc: null
+      }));
+      state.response.payload.review = {
+        approvedLineCount: 0,
+        totalLineCount: state.response.payload.lines.length,
+        allLinesApproved: false,
+        savedOnUtc: new Date().toISOString()
+      };
+      state.unsavedLineChanges = false;
+      state.approved = false;
+      state.progressStage = "review";
+      state.progressText = "Line approvals were cleared. Review and approve each line before final creation.";
+      render();
+      showToast("Line approvals cleared.");
+    }
+
+    function render() {
+      if (!state.opportunity) state.opportunity = readOpportunityContext();
+      const hasPayload = !!state.response?.payload;
+      const isCreated = String(state.response?.status || "").toLowerCase().includes("created");
+
+      root.innerHTML = `
+        <div class="app">
+          <div class="wrap">
+            <header class="topbar">
+              <div class="brand">
+                <div class="mark">CTP</div>
+                <div>
+                  <h1>Vendor Quote Agent Portal</h1>
+                  <p class="sub">Embedded Portal for quote extraction, mapping review, approval, and Opportunity Product creation.</p>
+                </div>
+              </div>
+              <span class="badge ${CTP_CONFIG.runtime.mode === "mock" ? "warn" : "success"}">${CTP_CONFIG.runtime.mode === "mock" ? "Preview mode" : "Connected"}</span>
+            </header>
+
+            <div class="content">
+              <div class="main">
+                <section class="panel">
+                  <div class="steps">
+                    <div class="${stepClass(1, hasPayload, isCreated)}"><div class="label"><span class="dot">1</span>Quote</div></div>
+                    <div class="${stepClass(2, hasPayload, isCreated)}"><div class="label"><span class="dot">2</span>Agent mapping</div></div>
+                    <div class="${stepClass(3, hasPayload, isCreated)}"><div class="label"><span class="dot">3</span>Review</div></div>
+                    <div class="${stepClass(4, hasPayload, isCreated)}"><div class="label"><span class="dot">4</span>Create lines</div></div>
+                  </div>
+                  <div class="progress-caption ${progressCaptionClass(hasPayload, isCreated)}" role="status" aria-live="polite">
+                    <span class="progress-pulse"></span>
+                    <span><strong>Progress:</strong> ${esc(progressCaptionText(hasPayload, isCreated))}</span>
+                  </div>
+
+                  <div class="panel-pad">
+                    <div class="section-head">
+                      <div>
+                        <h2>Quote intake</h2>
+                        <p class="sub">Give the agent a quote file or file reference. The agent generates the payload and mapping.</p>
+                      </div>
+                    </div>
+
+                    ${CTP_CONFIG.runtime.mode === "mock" ? `<div class="alert warn"><strong>Preview mode:</strong> update <strong>CTP_CONFIG.runtime.mode</strong> to <strong>agentProxy</strong> or <strong>dataverseCustomApi</strong> when your backend bridge is ready.</div>` : ""}
+                    ${state.error ? `<div class="alert danger"><strong>Error:</strong> ${esc(state.error)}</div>` : ""}
+
+                    <div class="filebox">
+                      <div class="filebox-row">
+                        <div>
+                          <h3>Vendor quote document</h3>
+                          <p class="sub">${state.selectedFile ? `${esc(state.selectedFile.name)} · ${fmtBytes(state.selectedFile.size)}` : "No local file selected"}</p>
+                        </div>
+                        <span class="badge">PDF · Excel · DOCX</span>
+                      </div>
+
+                      <div class="form-grid">
+                        <div class="field full">
+                          <label for="fileInput">Upload quote file</label>
+                          <div id="dropzone" class="dropzone ${state.isDragging ? "dragging" : ""} ${state.selectedFile ? "has-file" : ""}" role="button" tabindex="0" aria-label="Drag and drop a vendor quote file here or click to browse">
+                            <input class="file-input-hidden" id="fileInput" type="file" accept=".pdf,.xlsx,.xls,.csv,.docx,.doc,.png,.jpg,.jpeg,.txt" />
+                            <div class="drop-content">
+                              <div class="drop-icon">↑</div>
+                              <div style="min-width:0;">
+                                <div class="drop-title">${state.selectedFile ? esc(state.selectedFile.name) : "Drag and drop quote file here"}</div>
+                                <div class="drop-meta">${state.selectedFile ? `${fmtBytes(state.selectedFile.size)} · ${esc(state.selectedFile.type || "file")}` : "or click to browse · PDF, Excel, CSV, DOCX, images, TXT"}</div>
+                              </div>
+                            </div>
+                            <button class="btn secondary mini" id="browseFile" type="button">Browse</button>
+                          </div>
+                        </div>
+                        <div class="field">
+                          <label for="fileRef">SharePoint / Dataverse file reference</label>
+                          <input class="input" id="fileRef" value="${esc(state.fileReference)}" placeholder="Paste file URL or attachment reference" />
+                        </div>
+                        <div class="field">
+                          <label for="vendorHint">Vendor hint</label>
+                          <input class="input" id="vendorHint" value="${esc(state.vendorHint)}" placeholder="Optional, example: Schneider Electric" />
+                        </div>
+                        <div class="field">
+                          <label for="instruction">Instruction to agent</label>
+                          <input class="input" id="instruction" value="${esc(state.instruction)}" placeholder="Optional mapping/review instruction" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="actions">
+                      <button class="btn" id="askAgent" ${state.busy ? "disabled" : ""}>${state.busy ? `<span class="spinner"></span>` : ""}Ask Agent to Process Quote</button>
+                      <button class="btn secondary" id="refreshMapping" ${state.busy || !hasPayload ? "disabled" : ""}>Refresh Mapping</button>
+                      <button class="btn ghost" id="copyPayload" ${!hasPayload ? "disabled" : ""}>Copy Payload</button>
+                    </div>
+
+                    <div class="agent-message">
+                      <div class="avatar">AI</div>
+                      <div>
+                        <h3>${esc(CTP_CONFIG.agent.name)}</h3>
+                        <p class="sub">${esc(state.response?.message || "I will read the selected quote, generate a vendor-neutral payload, map lines to products where possible, and return a review preview.")}</p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="panel">
+                  <div class="tabs">
+                    <button class="tab ${state.activeTab === "lines" ? "active" : ""}" data-tab="lines">Mapped lines</button>
+                    <button class="tab ${state.activeTab === "header" ? "active" : ""}" data-tab="header">Header</button>
+                    <button class="tab ${state.activeTab === "payload" ? "active" : ""}" data-tab="payload">Payload JSON</button>
+                    <button class="tab ${state.activeTab === "result" ? "active" : ""}" data-tab="result">Result</button>
+                  </div>
+                  ${renderTab()}
+                  <div class="approval">
+                    <div>
+                      <label class="checkline"><input id="approved" type="checkbox" ${state.approved ? "checked" : ""} ${hasPayload && allLinesApproved() && !state.unsavedLineChanges ? "" : "disabled"} /> I reviewed and approve the saved line-item payload</label>
+                      <div class="small" style="margin-top:4px;">Final creation is enabled only after each line is approved and all edits are saved.</div>
+                    </div>
+                    <div class="actions">
+                      <button class="btn" id="approveCreate" ${state.busy || !hasPayload || !state.approved || !allLinesApproved() || state.unsavedLineChanges ? "disabled" : ""}>${state.busy ? `<span class="spinner"></span>` : ""}Approve + Create Opportunity Lines</button>
+                      <button class="btn secondary" id="openStaging" ${!state.response?.result?.vendorQuoteStagingId ? "disabled" : ""}>Open staging</button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <aside class="panel side side-card">
+                <div>
+                  <h2>Context</h2>
+                  <p class="sub">Current record and mapping summary.</p>
+                </div>
+                <div class="kv">
+                  <div class="kv-row"><div class="kv-label">Opportunity</div><div class="kv-value">${esc(state.opportunity.name)}</div></div>
+                  <div class="kv-row"><div class="kv-label">Record ID</div><div class="kv-value">${esc(state.opportunity.id)}</div></div>
+                  <div class="kv-row"><div class="kv-label">Source</div><div class="kv-value">${esc(state.opportunity.source)}</div></div>
+                  <div class="kv-row"><div class="kv-label">Status</div><div class="kv-value"><span class="badge ${statusClass(state.response?.status || "Waiting")}">${esc(state.response?.status || "Waiting")}</span></div></div>
+                </div>
+
+                <div class="metric-grid">
+                  <div class="metric"><div class="metric-value">${lines().length}</div><div class="metric-label">Lines</div></div>
+                  <div class="metric"><div class="metric-value">${countStatus("matched") - countStatus("unmatched")}</div><div class="metric-label">Matched</div></div>
+                  <div class="metric"><div class="metric-value">${needsReviewCount()}</div><div class="metric-label">Review</div></div>
+                  <div class="metric"><div class="metric-value">${countStatus("low")}</div><div class="metric-label">Low confidence</div></div>
+                </div>
+
+                <div class="alert info">
+                  <strong>Design rule:</strong> HTML is the interaction surface. Copilot Agent performs file reading, payload generation, mapping, and tool orchestration.
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+        <div class="toast ${state.toast ? "show" : ""}">${esc(state.toast)}</div>
+      `;
+      wire();
+    }
+
+    function renderTab() {
+      if (state.activeTab === "header") return renderHeader();
+      if (state.activeTab === "payload") return renderPayload();
+      if (state.activeTab === "result") return renderResult();
+      return renderLines();
+    }
+
+    function renderLines() {
+      if (!lines().length) return `<div class="panel-pad"><div class="alert info">No mapped quote lines yet. Ask the agent to process a quote.</div></div>`;
+
+      const approved = approvedLineCount();
+      const total = lines().length;
+      const rows = lines().map((l, index) => `
+        <tr>
+          <td>
+            <div class="line-approval">
+              <input type="checkbox" data-edit="line" data-line-index="${index}" data-field="userApproved" ${l.userApproved ? "checked" : ""} title="Approve this line" />
+            </div>
+          </td>
+          <td>${esc(l.lineNumber)}</td>
+          <td class="product-cell">
+            <input class="cell-input" data-edit="line" data-line-index="${index}" data-field="productName" value="${esc(l.productName || "")}" placeholder="Product name" />
+            <input class="cell-input sku-field" data-edit="line" data-line-index="${index}" data-field="vendorSku" value="${esc(l.vendorSku || "")}" placeholder="Vendor SKU / product code" />
+            ${l.userModified ? `<span class="edited-mark">Edited</span>` : ""}
+          </td>
+          <td class="description-cell"><textarea class="cell-textarea" data-edit="line" data-line-index="${index}" data-field="description" placeholder="Description">${esc(l.description || "")}</textarea></td>
+          <td class="qty-cell"><input class="cell-input" type="number" step="0.01" min="0" data-edit="line" data-line-index="${index}" data-field="quantity" value="${esc(l.quantity ?? "")}" /></td>
+          <td class="uom-cell"><input class="cell-input" data-edit="line" data-line-index="${index}" data-field="unitOfMeasure" value="${esc(l.unitOfMeasure || "Each")}" /></td>
+          <td class="cost-cell"><input class="cell-input" type="number" step="0.01" min="0" data-edit="line" data-line-index="${index}" data-field="vendorUnitCost" value="${l.vendorUnitCost == null ? "" : esc(l.vendorUnitCost)}" placeholder="Missing" /></td>
+          <td class="status-cell">
+            <select class="cell-select" data-edit="line" data-line-index="${index}" data-field="matchStatus">
+              ${["Matched", "Unmatched", "Low Confidence", "Write-In", "Skipped"].map(s => `<option value="${esc(s)}" ${String(l.matchStatus || "").toLowerCase() === s.toLowerCase() ? "selected" : ""}>${esc(s)}</option>`).join("")}
+            </select>
+            <label class="small" style="display:flex;align-items:center;gap:6px;margin-top:7px;">
+              <input type="checkbox" data-edit="line" data-line-index="${index}" data-field="useWriteInProduct" ${l.useWriteInProduct ? "checked" : ""} /> Write-in
+            </label>
+          </td>
+          <td class="reason-cell"><div class="small" title="${esc(l.reason || "")}">${esc(l.reason || "")}</div>${l.matchConfidence != null ? `<div class="small">Confidence: ${esc(l.matchConfidence)}</div>` : ""}</td>
+        </tr>
+      `).join("");
+
+      return `
+        <div class="table-actionbar">
+          <div class="review-summary">
+            <span class="review-pill ${allLinesApproved() ? "good" : "warn"}">${approved}/${total} lines approved</span>
+            <span id="lineDirtyMessage" class="line-dirty-message ${state.unsavedLineChanges ? "show" : ""}">Unsaved line changes</span>
+            <span>Edits saved here update the payload used by the agent to create records.</span>
+          </div>
+          <div class="actions">
+            <button class="btn secondary" id="approveAllLines" ${state.busy ? "disabled" : ""}>Approve all lines</button>
+            <button class="btn secondary" id="clearLineApprovals" ${state.busy ? "disabled" : ""}>Clear approvals</button>
+            <button class="btn" id="saveLineEdits" ${state.busy || !state.unsavedLineChanges ? "disabled" : ""}>Save line changes</button>
+          </div>
+        </div>
+        <div class="edit-note">Review each line, edit values as needed, approve the line, then save. The Payload JSON tab updates from these saved edits.</div>
+        <div class="table-wrap"><table class="editable-table">
+          <colgroup>
+            <col class="col-approve" />
+            <col class="col-line" />
+            <col class="col-product" />
+            <col class="col-description" />
+            <col class="col-qty" />
+            <col class="col-uom" />
+            <col class="col-cost" />
+            <col class="col-status" />
+            <col class="col-reason" />
+          </colgroup>
+          <thead><tr><th>Approve</th><th>Line</th><th>Product / SKU</th><th>Description</th><th>Qty</th><th>UOM</th><th>Unit cost</th><th>Status</th><th>Agent reason</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+
+    function renderHeader() {
+      if (!state.response?.payload) return `<div class="panel-pad"><div class="alert info">No header payload yet.</div></div>`;
+      const h = header();
+      return `<div class="panel-pad"><div class="form-grid">
+        ${readonly("Vendor", h.vendorName)}
+        ${readonly("Quote number", h.quoteNumber)}
+        ${readonly("File name", h.fileName)}
+        ${readonly("File reference", h.fileUrl)}
+        ${readonly("Currency", h.currency)}
+        ${readonly("Confidence", h.confidence)}
+      </div></div>`;
+    }
+
+    function readonly(label, value) {
+      return `<div class="field"><label>${esc(label)}</label><input class="input" value="${esc(value ?? "N/A")}" readonly /></div>`;
+    }
+
+    function renderPayload() {
+      if (!state.response?.payload) return `<div class="panel-pad"><div class="alert info">No payload yet.</div></div>`;
+      return `<div class="panel-pad"><div class="code">${esc(pretty(state.response.payload))}</div></div>`;
+    }
+
+    function renderResult() {
+      if (!state.response) return `<div class="panel-pad"><div class="alert info">No result yet.</div></div>`;
+      return `<div class="panel-pad"><div class="alert ${state.response.success ? "success" : "danger"}"><strong>${esc(state.response.status || "Result")}</strong><br>${esc(state.response.message || "")}</div><div class="code" style="margin-top:12px">${esc(pretty(state.response.result || state.response))}</div></div>`;
+    }
+
+    function wire() {
+      byId("fileInput")?.addEventListener("change", onFileChange);
+      byId("browseFile")?.addEventListener("click", e => { e.stopPropagation(); byId("fileInput")?.click(); });
+      const dropzone = byId("dropzone");
+      if (dropzone) {
+        dropzone.addEventListener("click", onDropZoneClick);
+        dropzone.addEventListener("keydown", onDropZoneKeydown);
+        dropzone.addEventListener("dragover", onDropZoneDragOver);
+        dropzone.addEventListener("dragenter", onDropZoneDragOver);
+        dropzone.addEventListener("dragleave", onDropZoneDragLeave);
+        dropzone.addEventListener("drop", onDropZoneDrop);
+      }
+      byId("fileRef")?.addEventListener("input", e => state.fileReference = e.target.value);
+      byId("vendorHint")?.addEventListener("input", e => state.vendorHint = e.target.value);
+      byId("instruction")?.addEventListener("input", e => state.instruction = e.target.value);
+      byId("askAgent")?.addEventListener("click", () => askAgent("extract_map_preview"));
+      byId("refreshMapping")?.addEventListener("click", () => askAgent("refresh_mapping"));
+      byId("copyPayload")?.addEventListener("click", copyPayload);
+      byId("approved")?.addEventListener("change", e => { const checked = !!e.target.checked; setState({ approved: checked, progressStage: checked ? "approved" : "review", progressText: checked ? "Quote reviewed and approved. Ready to create Opportunity Product Lines." : "Review mapped quote lines before approval." }); });
+      byId("approveCreate")?.addEventListener("click", () => askAgent("approve_create_products"));
+      byId("openStaging")?.addEventListener("click", openStaging);
+      byId("saveLineEdits")?.addEventListener("click", saveLineEdits);
+      byId("approveAllLines")?.addEventListener("click", approveAllLines);
+      byId("clearLineApprovals")?.addEventListener("click", clearLineApprovals);
+      document.querySelectorAll("[data-edit='line']").forEach(el => {
+        el.addEventListener("input", markLineChangesDirty);
+        el.addEventListener("change", markLineChangesDirty);
+      });
+      document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => setState({ activeTab: t.getAttribute("data-tab") || "lines" })));
+    }
+
+    document.addEventListener("DOMContentLoaded", render);
+  </script>
+</body>
+</html>
+
+
