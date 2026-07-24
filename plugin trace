@@ -1,1 +1,1 @@
-Text(ParseJSON(Topic.TopicRequestJsonText).operation)
+Text(ParseJSON(Topic.RequestJsonText).processingRunId)
