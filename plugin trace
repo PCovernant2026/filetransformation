@@ -1,1 +1,10 @@
-Conversation.CTPApiMode
+Topic.RequestJsonText
+
+
+Trim(
+    Mid(
+        System.Activity.Text,
+        Len("CTP_VENDOR_QUOTE_AGENT_REQUEST") + 1,
+        Len(System.Activity.Text)
+    )
+)
