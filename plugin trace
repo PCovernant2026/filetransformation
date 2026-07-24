@@ -1,1 +1,4 @@
 00 - CTP Vendor Quote API Intake
+
+
+Receives vendor quote processing requests from Dynamics 365 Embedded Portal through Direct Line. Reads the attached quote file, extracts the payload, and calls Flow 1 to create staging records.
