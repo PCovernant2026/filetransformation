@@ -1,1 +1,12 @@
-Text(ParseJSON(Topic.TopicRequestJsonText).opportunity.id)
+Topic.OpportunityName
+
+Text(ParseJSON(Topic.RequestJsonText).opportunity.name)
+
+
+
+Topic.RequestFileName
+Text(ParseJSON(Topic.RequestJsonText).file.fileName)
+
+
+Topic.FileDeliveryMode
+Text(ParseJSON(Topic.RequestJsonText).fileDeliveryMode)
