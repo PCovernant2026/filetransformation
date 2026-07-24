@@ -1,1 +1,4 @@
-Text(ParseJSON(Topic.RequestJsonText).processingRunId)
+
+Topic.OpportunityId
+
+Text(ParseJSON(Topic.RequestJsonText).opportunity.id)
