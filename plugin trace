@@ -1,6 +1,5 @@
-Topic.FileAttachmentName
-Text(ParseJSON(Topic.RequestJsonText).fileAttachmentName)
-
-
-Topic.FileAttachmentContentType
-Text(ParseJSON(Topic.RequestJsonText).fileAttachmentContentType)
+Or(
+    IsBlank(Topic.Operation),
+    IsBlank(Topic.ProcessingRunId),
+    IsBlank(Topic.OpportunityId)
+)
