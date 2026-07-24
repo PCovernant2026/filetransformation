@@ -3,3 +3,6 @@ Or(
     IsBlank(Topic.ProcessingRunId),
     IsBlank(Topic.OpportunityId)
 )
+
+
+API request is missing required values. ProcessingRunId, OpportunityId, or Operation was blank.
