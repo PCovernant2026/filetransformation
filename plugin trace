@@ -1,3 +1,6 @@
 Topic.Operation
 
 Text(ParseJSON(Topic.RequestJsonText).operation)
+
+
+extract_map_preview
