@@ -1,10 +1,3 @@
-Topic.RequestJsonText
+Topic.Operation
 
-
-Trim(
-    Mid(
-        System.Activity.Text,
-        Len("CTP_VENDOR_QUOTE_AGENT_REQUEST") + 1,
-        Len(System.Activity.Text)
-    )
-)
+Text(ParseJSON(Topic.RequestJsonText).operation)
