@@ -1,12 +1,6 @@
-Topic.OpportunityName
-
-Text(ParseJSON(Topic.RequestJsonText).opportunity.name)
-
+Topic.FileAttachmentName
+Text(ParseJSON(Topic.RequestJsonText).fileAttachmentName)
 
 
-Topic.RequestFileName
-Text(ParseJSON(Topic.RequestJsonText).file.fileName)
-
-
-Topic.FileDeliveryMode
-Text(ParseJSON(Topic.RequestJsonText).fileDeliveryMode)
+Topic.FileAttachmentContentType
+Text(ParseJSON(Topic.RequestJsonText).fileAttachmentContentType)
