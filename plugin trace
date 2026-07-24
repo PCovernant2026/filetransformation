@@ -1,1 +1,1 @@
-StartsWith(System.Activity.Text, "CTP_VENDOR_QUOTE_AGENT_REQUEST")
+Conversation.CTPApiMode
