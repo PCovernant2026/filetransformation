@@ -1,0 +1,208 @@
+using System;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
+
+namespace CTP.Plugins
+{
+    public class OpportunityAutoPopulateParentRecords : IPlugin
+    {
+        public void Execute(IServiceProvider serviceProvider)
+        {
+            ITracingService tracingService =
+                (ITracingService)serviceProvider.GetService(typeof(ITracingService));
+
+            IPluginExecutionContext context =
+                (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+
+            IOrganizationServiceFactory serviceFactory =
+                (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+
+            IOrganizationService service =
+                serviceFactory.CreateOrganizationService(context.UserId);
+
+            try
+            {
+                if (!context.InputParameters.Contains("Target") ||
+                    !(context.InputParameters["Target"] is Entity target))
+                {
+                    return;
+                }
+
+                if (context.MessageName != "Create" ||
+                    context.PrimaryEntityName != "opportunity")
+                {
+                    return;
+                }
+
+                if (!target.Contains("originatingleadid"))
+                {
+                    tracingService.Trace("Opportunity does not contain originatingleadid.");
+                    return;
+                }
+
+                var leadRef = target.GetAttributeValue<EntityReference>("originatingleadid");
+
+                if (leadRef == null)
+                {
+                    tracingService.Trace("originatingleadid is null.");
+                    return;
+                }
+
+                tracingService.Trace($"Loading Lead: {leadRef.Id}");
+
+                Entity lead = service.Retrieve(
+                    "lead",
+                    leadRef.Id,
+                    new ColumnSet(
+                        "firstname",
+                        "lastname",
+                        "emailaddress1",
+                        "companyname"));
+
+                string firstName = lead.GetAttributeValue<string>("firstname");
+                string lastName = lead.GetAttributeValue<string>("lastname");
+                string emailAddress = lead.GetAttributeValue<string>("emailaddress1");
+                string companyName = lead.GetAttributeValue<string>("companyname");
+
+                tracingService.Trace(
+                    $"Lead Values - FirstName: {firstName}, LastName: {lastName}, Email: {emailAddress}, Company: {companyName}");
+
+                //
+                // CONTACT MATCHING
+                // Priority:
+                // 1. Email Address
+                // 2. First Name + Last Name
+                //
+                EntityReference matchedContact = null;
+
+                if (!string.IsNullOrWhiteSpace(emailAddress))
+                {
+                    tracingService.Trace("Attempting Contact match by email.");
+
+                    var emailQuery = new QueryExpression("contact")
+                    {
+                        ColumnSet = new ColumnSet("contactid", "fullname"),
+                        TopCount = 1
+                    };
+
+                    emailQuery.Criteria.AddCondition(
+                        "emailaddress1",
+                        ConditionOperator.Equal,
+                        emailAddress);
+
+                    EntityCollection emailMatches =
+                        service.RetrieveMultiple(emailQuery);
+
+                    if (emailMatches.Entities.Count > 0)
+                    {
+                        matchedContact =
+                            emailMatches.Entities[0].ToEntityReference();
+
+                        tracingService.Trace(
+                            $"Contact matched by email. ContactId: {matchedContact.Id}");
+                    }
+                }
+
+                if (matchedContact == null &&
+                    !string.IsNullOrWhiteSpace(firstName) &&
+                    !string.IsNullOrWhiteSpace(lastName))
+                {
+                    tracingService.Trace("Attempting Contact match by first/last name.");
+
+                    var nameQuery = new QueryExpression("contact")
+                    {
+                        ColumnSet = new ColumnSet("contactid", "fullname"),
+                        TopCount = 1
+                    };
+
+                    nameQuery.Criteria.AddCondition(
+                        "firstname",
+                        ConditionOperator.Equal,
+                        firstName);
+
+                    nameQuery.Criteria.AddCondition(
+                        "lastname",
+                        ConditionOperator.Equal,
+                        lastName);
+
+                    EntityCollection nameMatches =
+                        service.RetrieveMultiple(nameQuery);
+
+                    if (nameMatches.Entities.Count > 0)
+                    {
+                        matchedContact =
+                            nameMatches.Entities[0].ToEntityReference();
+
+                        tracingService.Trace(
+                            $"Contact matched by name. ContactId: {matchedContact.Id}");
+                    }
+                }
+
+                if (matchedContact != null)
+                {
+                    target["parentcontactid"] = matchedContact;
+
+                    tracingService.Trace(
+                        $"Set parentcontactid = {matchedContact.Id}");
+                }
+                else
+                {
+                    tracingService.Trace(
+                        "No Contact match found.");
+                }
+
+                //
+                // ACCOUNT MATCHING
+                // Match Lead.companyname -> Account.name
+                //
+                if (!string.IsNullOrWhiteSpace(companyName))
+                {
+                    tracingService.Trace(
+                        $"Attempting Account match using company name: {companyName}");
+
+                    var accountQuery = new QueryExpression("account")
+                    {
+                        ColumnSet = new ColumnSet("accountid", "name"),
+                        TopCount = 1
+                    };
+
+                    accountQuery.Criteria.AddCondition(
+                        "name",
+                        ConditionOperator.Equal,
+                        companyName);
+
+                    EntityCollection accountMatches =
+                        service.RetrieveMultiple(accountQuery);
+
+                    if (accountMatches.Entities.Count > 0)
+                    {
+                        EntityReference matchedAccount =
+                            accountMatches.Entities[0].ToEntityReference();
+
+                        target["parentaccountid"] = matchedAccount;
+
+                        tracingService.Trace(
+                            $"Set parentaccountid = {matchedAccount.Id}");
+                    }
+                    else
+                    {
+                        tracingService.Trace(
+                            $"No Account match found for company name: {companyName}");
+                    }
+                }
+
+                tracingService.Trace(
+                    "OpportunityAutoPopulateParentRecords completed successfully.");
+            }
+            catch (Exception ex)
+            {
+                tracingService.Trace(
+                    $"OpportunityAutoPopulateParentRecords Exception: {ex}");
+
+                throw new InvalidPluginExecutionException(
+                    "An error occurred in OpportunityAutoPopulateParentRecords.",
+                    ex);
+            }
+        }
+    }
+}
