@@ -1,14 +1,11 @@
 kind: AdaptiveDialog
 modelDescription: Receives vendor quote requests from Dynamics 365 through Direct Line and invokes Flow 1 for staging.
-
 beginDialog:
   kind: OnActivity
   id: main
   condition: =StartsWith(System.Activity.Text,"CTP_VENDOR_QUOTE_AGENT_REQUEST")
   type: Message
-
   actions:
-
     - kind: SetVariable
       id: setApiMode
       variable: Topic.ConversationCTPApiMode
@@ -68,14 +65,10 @@ beginDialog:
 
     - kind: ConditionGroup
       id: validateRequest
-
       conditions:
-
         - id: requiredValuesMissing
           condition: =IsBlank(Topic.TopicOperation) || IsBlank(Topic.TopicProcessingRunID) || IsBlank(Topic.TopicOpportunityId)
-
           actions:
-
             - kind: SendActivity
               id: missingRequiredValues
               activity: API request is missing required values. ProcessingRunId, OpportunityId, or Operation was blank.
@@ -84,27 +77,18 @@ beginDialog:
               id: endMissingData
 
       elseActions:
-
         - kind: ConditionGroup
           id: operationRouting
-
           conditions:
-
             - id: extractMapPreview
               condition: =Topic.TopicOperation = "extract_map_preview"
-
               actions:
-
                 - kind: ConditionGroup
                   id: validateAttachment
-
                   conditions:
-
                     - id: noAttachmentPresent
                       condition: =CountRows(System.Activity.Attachments)=0
-
                       actions:
-
                         - kind: SendActivity
                           id: attachmentMissing
                           activity: No Quote File Attachment Was Received By Agent.
@@ -113,7 +97,6 @@ beginDialog:
                           id: endNoAttachment
 
                   elseActions:
-
                     - kind: SetVariable
                       id: attachmentName
                       variable: Topic.TopicFileAttachmentName
@@ -126,7 +109,6 @@ beginDialog:
 
                     - kind: InvokeFlowAction
                       id: callFlow1
-
                       input:
                         binding:
                           text: Topic.TopicRequestJsonText
@@ -160,11 +142,9 @@ beginDialog:
                         Message: {Topic.message}
 
           elseActions:
-
             - kind: SendActivity
               id: unsupportedOperation
               activity: Unsupported operation received.
 
 inputType: {}
-
 outputType: {}
