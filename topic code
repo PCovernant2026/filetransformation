@@ -1,3 +1,58 @@
+
+kind: AdaptiveDialog
+modelDescription: Suppresses conversational responses during CTP API mode.
+beginDialog:
+  kind: OnGeneratedResponse
+  id: main
+  condition: =Conversation.CTPApiMode = true
+  actions:
+    - kind: SetVariable
+      id: suppressResponse
+      variable: ContinueResponse
+      value: =false
+
+    - kind: EndDialog
+      id: endSuppressApiResponse
+
+inputType: {}
+outputType: {}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 kind: AdaptiveDialog
 modelDescription: Receives vendor quote requests from Dynamics 365 through Direct Line, extracts the vendor quote payload, and invokes Flow 1 for staging.
 beginDialog:
