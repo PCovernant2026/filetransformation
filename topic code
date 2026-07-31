@@ -1,5 +1,5 @@
 kind: AdaptiveDialog
-modelDescription: Receives vendor quote requests from Dynamics 365 through Direct Line and invokes Flow 1 for staging.
+modelDescription: Receives vendor quote requests from Dynamics 365 through Direct Line, extracts the vendor quote payload, and invokes Flow 1 for staging.
 beginDialog:
   kind: OnActivity
   id: main
@@ -8,8 +8,8 @@ beginDialog:
   actions:
     - kind: SetVariable
       id: setApiMode
-      variable: Topic.ConversationCTPApiMode
-      value: true
+      variable: Conversation.CTPApiMode
+      value: =true
 
     - kind: SetVariable
       id: setRequestJson
@@ -67,7 +67,7 @@ beginDialog:
       id: validateRequest
       conditions:
         - id: requiredValuesMissing
-          condition: =IsBlank(Topic.TopicOperation) || IsBlank(Topic.TopicProcessingRunID) || IsBlank(Topic.TopicOpportunityId)
+          condition: =Or(IsBlank(Topic.TopicOperation),IsBlank(Topic.TopicProcessingRunID),IsBlank(Topic.TopicOpportunityId))
           actions:
             - kind: SendActivity
               id: missingRequiredValues
@@ -87,11 +87,11 @@ beginDialog:
                   id: validateAttachment
                   conditions:
                     - id: noAttachmentPresent
-                      condition: =CountRows(System.Activity.Attachments)=0
+                      condition: =CountRows(System.Activity.Attachments) = 0
                       actions:
                         - kind: SendActivity
                           id: attachmentMissing
-                          activity: No Quote File Attachment Was Received By Agent.
+                          activity: No quote file attachment was received by the agent.
 
                         - kind: EndDialog
                           id: endNoAttachment
@@ -100,51 +100,137 @@ beginDialog:
                     - kind: SetVariable
                       id: attachmentName
                       variable: Topic.TopicFileAttachmentName
-                      value: =First(System.Activity.Attachments).Name
+                      value: =IfError(First(System.Activity.Attachments).Name,Topic.TopicFileAttachmentName)
 
                     - kind: SetVariable
                       id: attachmentContentType
                       variable: Topic.TopicFileAttachmentContentType
-                      value: =First(System.Activity.Attachments).ContentType
+                      value: =IfError(First(System.Activity.Attachments).ContentType,Topic.TopicFileAttachmentContentType)
 
-                    - kind: InvokeFlowAction
-                      id: callFlow1
-                      input:
-                        binding:
-                          text: Topic.TopicRequestJsonText
-                          text_1: Topic.TopicOpportunityId
-                          text_2: Topic.TopicProcessingRunID
-                          text_3: Topic.TopicFileAttachmentName
+                    - kind: SetVariable
+                      id: attachmentContentUrl
+                      variable: Topic.TopicFileAttachmentContentUrl
+                      value: =IfError(First(System.Activity.Attachments).ContentUrl,Blank())
 
-                      output:
-                        binding:
-                          matchedlines: Topic.matchedLines
-                          message: Topic.message
-                          stagingid: Topic.stagingId
-                          success: Topic.success
-                          totallines: Topic.totalLines
+                    - kind: SetVariable
+                      id: setExtractionPrompt
+                      variable: Topic.ExtractionPrompt
+                      value: |-
+                        =Concatenate(
+                            "You are processing a vendor quote file received from Dynamics 365. ",
+                            "This is API mode. Do not greet the user. Do not ask for another file. Do not explain your work. ",
+                            "Use the attached quote file as the source document. ",
+                            "Use the Vendor Quote Mapping Document and configured agent instructions as the source of truth for field mapping. ",
+                            "Extract the vendor quote header and every product/service line item. ",
+                            "Return only valid JSON. Do not use markdown. Do not wrap the response in code fences. ",
+                            "Opportunity ID: ", Topic.TopicOpportunityId, ". ",
+                            "Opportunity Name: ", Topic.TopicOpportunityName, ". ",
+                            "Processing Run ID: ", Topic.TopicProcessingRunID, ". ",
+                            "Attached File Name: ", Topic.TopicFileAttachmentName, ". ",
+                            "Attached File Content Type: ", Topic.TopicFileAttachmentContentType, ". ",
+                            "Return exactly one JSON object with this structure: ",
+                            "{ ""header"": { ""solution_name"": """", ""solution_number"": """", ""opportunity_id"": """", ""vendor"": """", ""totalDesignPrice"": 0, ""sourceDocument"": """", ""quoteDate"": """", ""quoteValidity"": """", ""salesContact"": """", ""customerName"": """", ""customerAddress"": """", ""paymentTerms"": """", ""billToAddress"": """" }, ""lineItems"": [ { ""line_number"": 1, ""sku"": """", ""description"": """", ""quantity"": 1, ""unit_list_price"": 0, ""ext_net_price"": 0, ""category"": """" } ] }. ",
+                            "Rules: ",
+                            "Every product, service, labor, warranty, shipping, startup, support, subscription, or fee line must become one lineItems record unless the mapping document says to exclude it. ",
+                            "Preserve vendor SKU or product code when available. Preserve the full product description. ",
+                            "Quantity must be numeric. Unit list price must be numeric. Extended net price must be numeric. ",
+                            "If a value is missing, use an empty string or 0. ",
+                            "header.opportunity_id must equal ", Topic.TopicOpportunityId, ". ",
+                            "header.sourceDocument must equal ", Topic.TopicFileAttachmentName, "."
+                        )
 
-                      flowId: 21c3de61-9475-f111-ab0f-000d3a9d81f7
+                    - kind: SearchAndSummarizeContent
+                      id: extractVendorQuotePayload
+                      userInput: =Topic.ExtractionPrompt
+                      variable: Topic.ExtractedJson
+                      moderationLevel: Medium
+                      autoSend: false
+                      additionalInstructions: |-
+                        Use the current activity attachment as the vendor quote source document.
+                        Use the Vendor Quote Mapping Document as the primary mapping reference.
+                        Return only the extracted JSON object.
+                        Do not include markdown, explanation, citations, or code fences.
+                      sharePointSearchDataSource: {}
 
-                    - kind: SendActivity
-                      id: completionResponse
-                      activity: |-
-                        Processing Complete
+                    - kind: SetVariable
+                      id: cleanExtractedJson
+                      variable: Topic.ExtractedJsonClean
+                      value: |-
+                        =Trim(
+                            Substitute(
+                                Substitute(
+                                    Text(Topic.ExtractedJson),
+                                    "```json",
+                                    ""
+                                ),
+                                "```",
+                                ""
+                            )
+                        )
 
-                        Success: {Topic.success}
+                    - kind: ConditionGroup
+                      id: validateExtractedJson
+                      conditions:
+                        - id: extractedJsonInvalid
+                          condition: =Or(IsBlank(Topic.ExtractedJsonClean),Not(StartsWith(Topic.ExtractedJsonClean,"{")),Not(EndsWith(Topic.ExtractedJsonClean,"}")))
+                          actions:
+                            - kind: SendActivity
+                              id: invalidExtractedJson
+                              activity: Agent extraction returned blank or invalid JSON.
 
-                        Staging Id: {Topic.stagingId}
+                            - kind: EndDialog
+                              id: endInvalidExtractedJson
 
-                        Total Lines: {Topic.totalLines}
+                      elseActions:
+                        - kind: InvokeFlowAction
+                          id: callFlow1
+                          input:
+                            binding:
+                              text: Topic.ExtractedJsonClean
+                              text_1: Topic.TopicOpportunityId
+                              text_2: Topic.TopicProcessingRunID
+                              text_3: =Concatenate("directline_attachment://", Topic.TopicFileAttachmentName)
+                              text_4: Topic.TopicFileAttachmentName
 
-                        Matched Lines: {Topic.matchedLines}
+                          output:
+                            binding:
+                              matchedlines: Topic.matchedLines
+                              message: Topic.message
+                              stagingid: Topic.stagingId
+                              success: Topic.success
+                              totallines: Topic.totalLines
 
-                        Message: {Topic.message}
+                          flowId: 21c3de61-9475-f111-ab0f-000d3a9d81f7
+
+                        - kind: ConditionGroup
+                          id: validateFlow1Result
+                          conditions:
+                            - id: flow1Failed
+                              condition: =Or(Topic.success = false,Lower(Text(Topic.success)) = "false")
+                              actions:
+                                - kind: SendActivity
+                                  id: flow1FailedMessage
+                                  activity: |-
+                                    Flow 1 failed.
+
+                                    ProcessingRunId: {Topic.TopicProcessingRunID}
+
+                                    Message: {Topic.message}
+
+                                - kind: EndDialog
+                                  id: endFlow1Failed
+
+                          elseActions:
+                            - kind: EndDialog
+                              id: endSuccess
 
           elseActions:
             - kind: SendActivity
               id: unsupportedOperation
-              activity: Unsupported operation received.
+              activity: Unsupported operation received. Expected extract_map_preview.
+
+            - kind: EndDialog
+              id: endUnsupportedOperation
 
 inputType: {}
 outputType: {}
