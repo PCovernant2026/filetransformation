@@ -1,0 +1,170 @@
+kind: AdaptiveDialog
+modelDescription: Receives vendor quote requests from Dynamics 365 through Direct Line and invokes Flow 1 for staging.
+
+beginDialog:
+  kind: OnActivity
+  id: main
+  condition: =StartsWith(System.Activity.Text,"CTP_VENDOR_QUOTE_AGENT_REQUEST")
+  type: Message
+
+  actions:
+
+    - kind: SetVariable
+      id: setApiMode
+      variable: Topic.ConversationCTPApiMode
+      value: true
+
+    - kind: SetVariable
+      id: setRequestJson
+      variable: Topic.TopicRequestJsonText
+      value: |-
+        =Trim(
+            Mid(
+                System.Activity.Text,
+                Len("CTP_VENDOR_QUOTE_AGENT_REQUEST") + 1,
+                Len(System.Activity.Text)
+            )
+        )
+
+    - kind: SetVariable
+      id: setOperation
+      variable: Topic.TopicOperation
+      value: =IfError(Text(ParseJSON(Topic.TopicRequestJsonText).operation),"extract_map_preview")
+
+    - kind: SetVariable
+      id: setProcessingRunId
+      variable: Topic.TopicProcessingRunID
+      value: =IfError(Text(ParseJSON(Topic.TopicRequestJsonText).processingRunId),Blank())
+
+    - kind: SetVariable
+      id: setOpportunityId
+      variable: Topic.TopicOpportunityId
+      value: =IfError(Text(ParseJSON(Topic.TopicRequestJsonText).opportunity.id),Blank())
+
+    - kind: SetVariable
+      id: setOpportunityName
+      variable: Topic.TopicOpportunityName
+      value: =IfError(Text(ParseJSON(Topic.TopicRequestJsonText).opportunity.name),Blank())
+
+    - kind: SetVariable
+      id: setRequestFileName
+      variable: Topic.TopicRequestFileName
+      value: =IfError(Text(ParseJSON(Topic.TopicRequestJsonText).file.fileName),Blank())
+
+    - kind: SetVariable
+      id: setFileDeliveryMode
+      variable: Topic.TopicFileDeliveryMode
+      value: =IfError(Text(ParseJSON(Topic.TopicRequestJsonText).fileDeliveryMode),Blank())
+
+    - kind: SetVariable
+      id: setFileAttachmentName
+      variable: Topic.TopicFileAttachmentName
+      value: =IfError(Text(ParseJSON(Topic.TopicRequestJsonText).fileAttachmentName),Blank())
+
+    - kind: SetVariable
+      id: setFileAttachmentContentType
+      variable: Topic.TopicFileAttachmentContentType
+      value: =IfError(Text(ParseJSON(Topic.TopicRequestJsonText).fileAttachmentContentType),Blank())
+
+    - kind: ConditionGroup
+      id: validateRequest
+
+      conditions:
+
+        - id: requiredValuesMissing
+          condition: =IsBlank(Topic.TopicOperation) || IsBlank(Topic.TopicProcessingRunID) || IsBlank(Topic.TopicOpportunityId)
+
+          actions:
+
+            - kind: SendActivity
+              id: missingRequiredValues
+              activity: API request is missing required values. ProcessingRunId, OpportunityId, or Operation was blank.
+
+            - kind: EndDialog
+              id: endMissingData
+
+      elseActions:
+
+        - kind: ConditionGroup
+          id: operationRouting
+
+          conditions:
+
+            - id: extractMapPreview
+              condition: =Topic.TopicOperation = "extract_map_preview"
+
+              actions:
+
+                - kind: ConditionGroup
+                  id: validateAttachment
+
+                  conditions:
+
+                    - id: noAttachmentPresent
+                      condition: =CountRows(System.Activity.Attachments)=0
+
+                      actions:
+
+                        - kind: SendActivity
+                          id: attachmentMissing
+                          activity: No Quote File Attachment Was Received By Agent.
+
+                        - kind: EndDialog
+                          id: endNoAttachment
+
+                  elseActions:
+
+                    - kind: SetVariable
+                      id: attachmentName
+                      variable: Topic.TopicFileAttachmentName
+                      value: =First(System.Activity.Attachments).Name
+
+                    - kind: SetVariable
+                      id: attachmentContentType
+                      variable: Topic.TopicFileAttachmentContentType
+                      value: =First(System.Activity.Attachments).ContentType
+
+                    - kind: InvokeFlowAction
+                      id: callFlow1
+
+                      input:
+                        binding:
+                          text: Topic.TopicRequestJsonText
+                          text_1: Topic.TopicOpportunityId
+                          text_2: Topic.TopicProcessingRunID
+                          text_3: Topic.TopicFileAttachmentName
+
+                      output:
+                        binding:
+                          matchedlines: Topic.matchedLines
+                          message: Topic.message
+                          stagingid: Topic.stagingId
+                          success: Topic.success
+                          totallines: Topic.totalLines
+
+                      flowId: 21c3de61-9475-f111-ab0f-000d3a9d81f7
+
+                    - kind: SendActivity
+                      id: completionResponse
+                      activity: |-
+                        Processing Complete
+
+                        Success: {Topic.success}
+
+                        Staging Id: {Topic.stagingId}
+
+                        Total Lines: {Topic.totalLines}
+
+                        Matched Lines: {Topic.matchedLines}
+
+                        Message: {Topic.message}
+
+          elseActions:
+
+            - kind: SendActivity
+              id: unsupportedOperation
+              activity: Unsupported operation received.
+
+inputType: {}
+
+outputType: {}
