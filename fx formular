@@ -1,182 +1,1174 @@
-using Microsoft.Crm.Sdk.Messages;
-using Microsoft.Xrm.Sdk;
-using Microsoft.Xrm.Sdk.Query;
-using Microsoft.Xrm.Sdk.Workflow;
-using System;
-using System.Activities;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace CTP.WorkflowAssembly
 {
-    public class OpportunityLost : CodeActivity
-    {
-        protected override void Execute(CodeActivityContext context)
-        {
-            try
-            {
-                IWorkflowContext executionContext = context.GetExtension<IWorkflowContext>();
-                IOrganizationServiceFactory serviceFactory = context.GetExtension<IOrganizationServiceFactory>();
-                IOrganizationService service = serviceFactory.CreateOrganizationService(executionContext.InitiatingUserId);
+    "inputs": {
+        "host": {
+            "connectionName": "shared_sharepointonline",
+            "operationId": "OnNewFile",
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+            "dataset": "https://mailctp365.sharepoint.com/reporting",
+            "folderId": "%252fCCBills%252fTransactionsToUpload",
+            "inferContentType": true
+        },
+        "authentication": "@parameters('$authentication')"
+    },
+    "recurrence": {
+        "interval": 1,
+        "frequency": "Minute"
+    },
+    "metadata": {
+        "%252fCCBills%252fTransactionsToUpload": "/CCBills/TransactionsToUpload",
+        "operationMetadataId": "e197a878-8a21-49e4-90de-3bc3ba43f275"
+    }
+}
 
-                Entity opportunity = service.Retrieve(executionContext.PrimaryEntityName, executionContext.PrimaryEntityId, new ColumnSet(false));
-                //int lostStatusReason = statusReasonValue.Get(context);
-                #region Quote
+{
+    "inputs": {
+        "host": {
+            "connectionName": "shared_encodiandocumentmanager_1",
+            "operationId": "ParseCsv",
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_encodiandocumentmanager"
+        },
+        "parameters": {
+            "operation/FileContent": "@triggerOutputs()?['body']",
+            "operation/csvColumnHeaders": "Transaction Date, Posted Date, Card No., Description, Category, Debit, Credit",
+            "operation/skipFirstLine": true
+        },
+        "authentication": "@parameters('$authentication')"
+    },
+    "metadata": {
+        "operationMetadataId": "dfea6605-1b5d-4fde-8133-3d2ffba26a55"
+    }
+}
 
-                QueryExpression quoteQuery = new QueryExpression
-                {
-                    EntityName = "quote",
-                    ColumnSet = new ColumnSet("quoteid", "statecode", "statuscode"),
-                    Criteria = {Conditions =
-                    {
-                        new ConditionExpression("opportunityid", ConditionOperator.Equal, opportunity.Id)
+{
+    "inputs": {
+        "content": "@outputs('Parse_CSV')?['body/csvData']",
+        "schema": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "Transaction Date": {
+                        "type": "string"
+                    },
+                    "Posted Date": {
+                        "type": "string"
+                    },
+                    "Card No.": {
+                        "type": "string"
+                    },
+                    "Description": {
+                        "type": "string"
+                    },
+                    "Category": {
+                        "type": "string"
+                    },
+                    "Debit": {
+                        "type": "string"
+                    },
+                    "Credit": {
+                        "type": "string"
                     }
-                }
-                };
-
-                EntityCollection quotes = service.RetrieveMultiple(quoteQuery);
-                //throw new Exception(quotes.Entities.Count().ToString());
-                foreach (Entity entity in quotes.Entities)
-                {
-                    if (((OptionSetValue)entity.Attributes["statecode"]).Value != 0)
-                    {
-                        //Draft Quote
-                        DraftQuote(entity, service);
-                        
-                    }
-                    //Activate Quote
-                    ActivateQuote(entity, service);
-                }
-
-                quotes = service.RetrieveMultiple(quoteQuery);
-                foreach (Entity ent in quotes.Entities)
-                {
-                    Entity closeEntity = new Entity("quoteclose");
-                    closeEntity.Attributes.Add("subject", "Closing Quote, Opportunity Closed" + DateTime.Now.ToString());
-                    closeEntity.Attributes.Add("quoteid", ent.ToEntityReference());
-                    CloseQuoteRequest closequote = new CloseQuoteRequest
-                    {
-                        QuoteClose = closeEntity,
-                        Status = new OptionSetValue(6)//Cancelled
-                    };
-
-                    try
-                    {
-                        CloseQuoteResponse response = (CloseQuoteResponse)service.Execute(closequote);
-                    }
-                    catch (Exception ex)
-                    {
-                        throw new Exception("quote:" + ((OptionSetValue)ent.Attributes["statecode"]).Value.ToString() + ex.Message);
-                    }
-
-                }
-
-                #endregion
-
-                #region GlazingContractor
-                //throw new Exception(opportunity.ToEntityReference().LogicalName.ToString());
-                QueryExpression glazingContractorQuery = new QueryExpression
-                {
-                    EntityName = "new_glazingcontractor",
-                    ColumnSet = new ColumnSet("statecode", "statuscode"),
-                    Criteria = {Conditions =
-                    {
-                        new ConditionExpression("new_projectname", ConditionOperator.Equal, opportunity.Id)
-                    }
-                }
-                };
-
-                EntityCollection glazingContractors = service.RetrieveMultiple(glazingContractorQuery);
-                foreach (Entity glazingContractor in glazingContractors.Entities)
-                {
-                    SetStateRequest request = new SetStateRequest
-                    {
-                        EntityMoniker = glazingContractor.ToEntityReference(),
-                        State = new OptionSetValue(1),//Inactive
-                        Status = new OptionSetValue(2)//Lost
-                    };
-                    try
-                    {
-                        service.Execute(request);
-                    }
-                    catch (Exception ex)
-                    {
-                        throw ex.InnerException;
-                        //If for some reason one of the other Glazing Contractor Quotes cannot be closed, we just move on.
-                    }
-                }
-
-                
-                #endregion
-
-               /* #region Opportunity
-
-                Entity lostOpportunity = new Entity("opportunityclose");
-                lostOpportunity.Attributes.Add("subject", "Opportunity Close" + DateTime.Now.ToString());
-                lostOpportunity.Attributes.Add("opportunityid", opportunity.ToEntityReference());
-
-                LoseOpportunityRequest oppRequest = new LoseOpportunityRequest
-                {
-                    OpportunityClose = lostOpportunity,
-                    Status = new OptionSetValue(lostStatusReason)
-                };
-
-                try
-                {
-                    LoseOpportunityResponse response = (LoseOpportunityResponse)service.Execute(oppRequest);
-                }
-                catch(Exception ex)
-                {
-                    throw new Exception("Opp:"+ ex.Message);
-                }
-                #endregion*/
-
-            }
-            catch (Exception ex)
-            {
-                throw ex;
+                },
+                "required": [
+                    "Transaction Date",
+                    "Posted Date",
+                    "Card No.",
+                    "Description",
+                    "Category",
+                    "Debit",
+                    "Credit"
+                ]
             }
         }
+    },
+    "metadata": {
+        "operationMetadataId": "634eae11-209a-4921-97ee-7660a3e895b4"
+    }
+}
 
-        private void ActivateQuote(Entity entity, IOrganizationService userService)
-        {
-            SetStateRequest activateQuote = new SetStateRequest()
-            {
-                EntityMoniker = entity.ToEntityReference(),
-                State = new OptionSetValue(1),//Active
-                Status = new OptionSetValue(3)//Open
-            };
+{
+    "inputs": {
+        "from": "@body('Parse_JSON')",
+        "where": "@not(equals(item()?['Category'], 'Payment/Credit'))"
+    },
+    "metadata": {
+        "operationMetadataId": "61ef230b-8ff5-42a6-bd81-1e02e5752751"
+    }
+}
 
-            try
+{
+    "inputs": {
+        "from": "@body('Filter_array')",
+        "where": "@not(contains(toUpper(item()?['Description']), 'CAPITAL ONE ONLINE PYMT'))"
+    },
+    "metadata": {
+        "operationMetadataId": "1930f3d0-34d4-4905-acf9-e9d334b7edb9"
+    }
+}
+
+{
+    "inputs": {
+        "variables": [
             {
-                userService.Execute(activateQuote);
+                "name": "varMissingCardNos",
+                "type": "array"
             }
-            catch (Exception ex)
+        ]
+    },
+    "metadata": {
+        "operationMetadataId": "ebfa6fbc-7896-48e9-a3b4-61cc92a174f9"
+    }
+}
+
+{
+    "inputs": {
+        "variables": [
             {
-                throw new Exception("Activate" + ex.Message);
+                "name": "varCounter",
+                "type": "integer",
+                "value": 0
             }
+        ]
+    },
+    "metadata": {
+        "operationMetadataId": "5b607add-93f8-4557-a2e7-f2b45e2a0dff"
+    }
+}
+
+{
+    "inputs": {
+        "variables": [
+            {
+                "name": "varBlankArray",
+                "type": "array"
+            }
+        ]
+    },
+    "metadata": {
+        "operationMetadataId": "f8bec044-c528-4872-9a47-097d2c663a1b"
+    }
+}
+
+{
+    "inputs": {
+        "variables": [
+            {
+                "name": "varCardNumber",
+                "type": "string"
+            }
+        ]
+    },
+    "metadata": {
+        "operationMetadataId": "cb12f034-b549-4a72-9b17-61c90657d545"
+    }
+}
+
+{
+    "inputs": {
+        "variables": [
+            {
+                "name": "VarFileNameMonth",
+                "type": "string",
+                "value": "@base64ToString(triggerOutputs()?['headers/x-ms-file-name-encoded'])"
+            }
+        ]
+    },
+    "metadata": {
+        "operationMetadataId": "d334ea7b-ecc0-4218-8115-82be2288aa6a"
+    }
+}
+
+
+{
+    "inputs": {
+        "variables": [
+            {
+                "name": "varMissingManagers",
+                "type": "array"
+            }
+        ]
+    },
+    "metadata": {
+        "operationMetadataId": "150cc9f2-35b0-4358-99e8-e5c6230d301a"
+    }
+}
+
+
+{
+    "inputs": "@first(split(variables('VarFileNameMonth'),' '))",
+    "metadata": {
+        "operationMetadataId": "fd55bd23-194e-4115-8ae9-438b7e0b3fc7"
+    }
+}
+
+{
+    "inputs": {
+        "variables": [
+            {
+                "name": "FileMonth",
+                "type": "string",
+                "value": "@{outputs('Extract_Month_of_Statement_from_file_name')}"
+            }
+        ]
+    },
+    "metadata": {
+        "operationMetadataId": "3ed4d920-a886-45b6-861a-bae5858328b4"
+    }
+}
+
+
+
+{
+    "inputs": "@length(variables('FileMonth'))",
+    "metadata": {
+        "operationMetadataId": "7826318a-e393-46de-834e-f87c72a5689d"
+    }
+}
+
+
+{
+    "inputs": {
+        "variables": [
+            {
+                "name": "MonthLength",
+                "type": "integer",
+                "value": "@outputs('get_length_of_the_month')"
+            }
+        ]
+    },
+    "metadata": {
+        "operationMetadataId": "d0c1edcb-ad10-46e4-a1af-8a943bed31df"
+    }
+}
+
+
+{
+    "inputs": {
+        "name": "MonthLength",
+        "value": 1
+    },
+    "metadata": {
+        "operationMetadataId": "aba83dd9-3e32-4e0d-854b-fa3e0e3e174e"
+    }
+}
+
+
+{
+    "inputs": {
+        "variables": [
+            {
+                "name": "VarFileYear",
+                "type": "string"
+            }
+        ]
+    },
+    "metadata": {
+        "operationMetadataId": "e462176c-c8f0-4169-9de9-44529616dd9e"
+    }
+}
+
+
+{
+    "inputs": "@substring(variables('VarFileNameMonth'), variables('MonthLength'), 4)",
+    "metadata": {
+        "operationMetadataId": "ddf85670-c9ba-4ffe-a969-49a0d7250955"
+    }
+}
+
+
+{
+    "inputs": {
+        "name": "VarFileYear",
+        "value": "@{outputs('Extract_File_Year')}"
+    },
+    "metadata": {
+        "operationMetadataId": "376c9076-b900-493a-a422-42d035f4d32b"
+    }
+}
+
+
+{
+    "inputs": {
+        "host": {
+            "connectionName": "shared_office365users",
+            "operationId": "UserProfile_V2",
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365users"
+        },
+        "parameters": {
+            "id": "dmeyer@mailctp.com"
+        },
+        "authentication": "@parameters('$authentication')"
+    },
+    "metadata": {
+        "operationMetadataId": "7632b630-9f24-43f1-a652-312733fcc7e9"
+    }
+}
+
+
+{
+    "inputs": {
+        "host": {
+            "connectionName": "shared_office365users",
+            "operationId": "UserProfile_V2",
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365users"
+        },
+        "parameters": {
+            "id": "dfriedrichs@mailctp.com"
+        },
+        "authentication": "@parameters('$authentication')"
+    },
+    "metadata": {
+        "operationMetadataId": "1ba1f506-3b41-45e0-a9a0-c9537f955861"
+    }
+}
+
+
+
+{
+    "inputs": {
+        "host": {
+            "connectionName": "shared_sharepointonline",
+            "operationId": "GetItems",
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+            "dataset": "https://mailctp365.sharepoint.com/reporting",
+            "table": "f1561c94-a2e5-4251-938e-622c879b6956",
+            "$top": 500
+        },
+        "authentication": "@parameters('$authentication')"
+    },
+    "metadata": {
+        "operationMetadataId": "54e91520-2f66-4875-ac6e-8c878bfd05d0"
+    }
+}
+
+{
+  "type": "Foreach",
+  "foreach": "@outputs('Get_Existing_Transactions')?['body/value']",
+  "actions": {
+    "Create_item_2": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://mailctp365.sharepoint.com/reporting",
+          "table": "d2ddefd1-1dfa-41ab-976a-79c2d5f45438",
+          "item/Title": "@items('Move_Existing_Transactions_to_Archive')?['Title']",
+          "item/Cardholder/Claims": "@items('Move_Existing_Transactions_to_Archive')?['Cardholder/DisplayName']",
+          "item/Manager/Claims": "@items('Move_Existing_Transactions_to_Archive')?['Manager/DisplayName']",
+          "item/Approval": "@items('Move_Existing_Transactions_to_Archive')?['Approval']",
+          "item/Transaction_x0020_Date": "@items('Move_Existing_Transactions_to_Archive')?['Transaction_x0020_Date']",
+          "item/Posted_x0020_Date": "@items('Move_Existing_Transactions_to_Archive')?['Posted_x0020_Date']",
+          "item/Description": "@items('Move_Existing_Transactions_to_Archive')?['Description']",
+          "item/CCCategory": "@items('Move_Existing_Transactions_to_Archive')?['CCCategory']",
+          "item/CCSubcategory": "@items('Move_Existing_Transactions_to_Archive')?['CCSubcategory']",
+          "item/Debit": "@items('Move_Existing_Transactions_to_Archive')?['Debit']",
+          "item/Credit": "@items('Move_Existing_Transactions_to_Archive')?['Credit']",
+          "item/Billing_x0020_Month": "@items('Move_Existing_Transactions_to_Archive')?['Billing_x0020_Month']",
+          "item/Client_x0020_Name": "@items('Move_Existing_Transactions_to_Archive')?['Client_x0020_Name']",
+          "item/Comments": "@items('Move_Existing_Transactions_to_Archive')?['Comments']",
+          "item/Card_x0020_No_x002e_": "@items('Move_Existing_Transactions_to_Archive')?['Card_x0020_No_x002e_']",
+          "item/ApprovalDate": "@items('Move_Existing_Transactions_to_Archive')?['ApprovalDate']",
+          "item/TransactionYear": "@items('Move_Existing_Transactions_to_Archive')?['TransactionYear']",
+          "item/Category": "@items('Move_Existing_Transactions_to_Archive')?['Category']"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connection": "shared_sharepointonline",
+          "operationId": "PostItem"
         }
-
-        private void DraftQuote(Entity entity, IOrganizationService userService)
-        {
-            SetStateRequest draftQuote = new SetStateRequest()
-            {
-                EntityMoniker = entity.ToEntityReference(),
-                State = new OptionSetValue(0),//Draft
-                Status = new OptionSetValue(1)//InProgress
-            };
-
-            try
-            {
-                userService.Execute(draftQuote);
-            }
-            catch (Exception ex)
-            {
-                throw new Exception("Draft" + ex.Message);
-                //If for some reason one of the other Glazing Contractor Quotes cannot be closed, we just move on.
-            }
+      },
+      "metadata": {
+        "operationMetadataId": "105e5d9f-f582-46e5-9e2e-ce84b9f1ca60"
+      }
+    },
+    "Delete_item": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://mailctp365.sharepoint.com/reporting",
+          "table": "f1561c94-a2e5-4251-938e-622c879b6956",
+          "id": "@items('Move_Existing_Transactions_to_Archive')?['ID']"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connection": "shared_sharepointonline",
+          "operationId": "DeleteItem"
         }
+      },
+      "runAfter": {
+        "Apply_to_each": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "b5b9a512-9dbe-428b-a108-a2ecad0b7561"
+      }
+    },
+    "Get_attachments": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://mailctp365.sharepoint.com/reporting",
+          "table": "f1561c94-a2e5-4251-938e-622c879b6956",
+          "itemId": "@items('Move_Existing_Transactions_to_Archive')?['ID']"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connection": "shared_sharepointonline",
+          "operationId": "GetItemAttachments"
+        }
+      },
+      "runAfter": {
+        "Create_item_2": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "4a9a6a99-c1d7-4f6e-8767-c058a3aa48b7"
+      }
+    },
+    "Apply_to_each": {
+      "type": "Foreach",
+      "foreach": "@body('Get_attachments')",
+      "actions": {
+        "Get_attachment_content": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "https://mailctp365.sharepoint.com/reporting",
+              "table": "f1561c94-a2e5-4251-938e-622c879b6956",
+              "itemId": "@items('Move_Existing_Transactions_to_Archive')?['ID']",
+              "attachmentId": "@item()?['Id']"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connection": "shared_sharepointonline",
+              "operationId": "GetAttachmentContent"
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "e48c9234-6ebf-4735-8bbf-4dc50a4ca186"
+          }
+        },
+        "Add_attachment": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "https://mailctp365.sharepoint.com/reporting",
+              "table": "d2ddefd1-1dfa-41ab-976a-79c2d5f45438",
+              "itemId": "@outputs('Create_item_2')?['body/ID']",
+              "displayName": "@item()?['DisplayName']",
+              "body": "@body('Get_attachment_content')"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connection": "shared_sharepointonline",
+              "operationId": "CreateAttachment"
+            }
+          },
+          "runAfter": {
+            "Get_attachment_content": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "4f8cf33f-6f79-4514-8ac3-27421b6578fd"
+          }
+        }
+      },
+      "runAfter": {
+        "Get_attachments": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "5463c356-6eb9-410e-a45d-6a7fc5db6db8"
+      }
+    }
+  },
+  "runAfter": {
+    "Get_Existing_Transactions": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "645adb4c-c162-410f-a523-e727e22ef597"
+  }
+}
+
+
+
+{
+  "type": "Foreach",
+  "foreach": "@body('Filter_array_2')",
+  "actions": {
+    "Set_varCardNumber": {
+      "type": "SetVariable",
+      "inputs": {
+        "name": "varCardNumber",
+        "value": "@outputs('Create_item')?['body/Card_x0020_No_x002e_']"
+      },
+      "runAfter": {
+        "Create_item": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "0639ac83-3071-4dd4-8317-882180386054"
+      }
+    },
+    "Check_Card_Number_of_Transaction_Against_List_of_Cardholders": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://mailctp365.sharepoint.com/reporting",
+          "table": "b81e0f00-65f5-4028-aa42-1e4a9f2af1eb",
+          "$filter": "Title eq'@{variables('varCardNumber')}'",
+          "$top": 1
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connection": "shared_sharepointonline",
+          "operationId": "GetItems"
+        }
+      },
+      "runAfter": {
+        "Set_varCardNumber": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "2da73eee-3808-4811-b67f-47116e20a00c"
+      }
+    },
+    "Get_Manager_and_User_Profile_for_Cardholder": {
+      "type": "Foreach",
+      "foreach": "@outputs('Check_Card_Number_of_Transaction_Against_List_of_Cardholders')?['body/value']",
+      "actions": {
+        "Get_user_profile_(V2)": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "id": "@items('Get_Manager_and_User_Profile_for_Cardholder')?['Cardholder/Email']"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365users",
+              "connection": "shared_office365users",
+              "operationId": "UserProfile_V2"
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "02e0a315-3e3f-4be0-a1db-830fd6cb27a5"
+          }
+        },
+        "If_Cardholder_is_Doug_Meyer": {
+          "type": "If",
+          "expression": {
+            "not": {
+              "equals": [
+                "@outputs('Get_user_profile_(V2)')?['body/id']",
+                "@outputs('Get_Doug_Meyer')?['body/id']"
+              ]
+            }
+          },
+          "actions": {
+            "Update_item": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "dataset": "https://mailctp365.sharepoint.com/reporting",
+                  "table": "CCTransactions",
+                  "id": "@outputs('Create_item')?['body/ID']",
+                  "item/Cardholder/Claims": "@items('Get_Manager_and_User_Profile_for_Cardholder')?['Cardholder/Claims']"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connection": "shared_sharepointonline",
+                  "operationId": "PatchItem"
+                }
+              },
+              "metadata": {
+                "operationMetadataId": "73a4385c-a836-4323-80f7-5be667fc2c6d"
+              }
+            },
+            "If_Cardholder_Was_Able_to_Populate": {
+              "type": "If",
+              "expression": {
+                "not": {
+                  "equals": [
+                    "@outputs('Update_item')?['body/Cardholder/Claims']",
+                    "@null"
+                  ]
+                }
+              },
+              "actions": {
+                "Get_the_Cardholder's_Manager": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "id": "@outputs('Get_user_profile_(V2)')?['body/id']"
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365users",
+                      "connection": "shared_office365users",
+                      "operationId": "Manager_V2"
+                    }
+                  },
+                  "metadata": {
+                    "operationMetadataId": "e6081bbe-d2f6-420b-a5b3-1449f6ec1d89"
+                  }
+                },
+                "Set_Manager_of_Cardholder": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://mailctp365.sharepoint.com/reporting",
+                      "table": "CCTransactions",
+                      "id": "@outputs('Create_item')?['body/ID']",
+                      "item/Manager/Claims": "@outputs('Get_the_Cardholder''s_Manager')?['body/displayName']"
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connection": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    }
+                  },
+                  "runAfter": {
+                    "Get_the_Cardholder's_Manager": [
+                      "Succeeded",
+                      "Failed"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "9ec9ad16-370e-434a-840e-1cd737c60ca4"
+                  }
+                },
+                "If_Cardholder's_Manager_Was_Able_to_Populate": {
+                  "type": "If",
+                  "expression": {
+                    "not": {
+                      "equals": [
+                        "@outputs('Set_Manager_of_Cardholder')?['body/Manager/Claims']",
+                        "@null"
+                      ]
+                    }
+                  },
+                  "actions": {
+                    "Update_Manager_info_in_Cardholder_Table": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "parameters": {
+                          "dataset": "https://mailctp365.sharepoint.com/reporting",
+                          "table": "CCCardholders",
+                          "id": "@items('Get_Manager_and_User_Profile_for_Cardholder')?['ID']",
+                          "item/Title": "@items('Get_Manager_and_User_Profile_for_Cardholder')?['Title']",
+                          "item/Manager/Claims": "@outputs('Get_the_Cardholder''s_Manager')?['body/displayName']"
+                        },
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "connection": "shared_sharepointonline",
+                          "operationId": "PatchItem"
+                        }
+                      },
+                      "metadata": {
+                        "operationMetadataId": "f3ff96d2-25a4-4979-90aa-d2d866f456ea"
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {
+                      "Add_Cardholder_to_list_of_Cardholders_without_Managers": {
+                        "type": "AppendToArrayVariable",
+                        "inputs": {
+                          "name": "varMissingManagers",
+                          "value": "@outputs('Set_Manager_of_Cardholder')?['body/Cardholder/DisplayName']"
+                        },
+                        "metadata": {
+                          "operationMetadataId": "faadb33d-a0f8-4913-8a61-57f8d33c52f4"
+                        }
+                      },
+                      "Set_Manager_to_David_to_allow_the_App_to_Work": {
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "parameters": {
+                            "dataset": "https://mailctp365.sharepoint.com/reporting",
+                            "table": "CCTransactions",
+                            "id": "@outputs('Create_item')?['body/ID']",
+                            "item/Manager/Claims": "@outputs('Get_David_Friedrichs')?['body/displayName']"
+                          },
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                            "connection": "shared_sharepointonline",
+                            "operationId": "PatchItem"
+                          }
+                        },
+                        "runAfter": {
+                          "Add_Cardholder_to_list_of_Cardholders_without_Managers": [
+                            "Succeeded"
+                          ]
+                        },
+                        "metadata": {
+                          "operationMetadataId": "0b4fe640-029d-4b81-9ab5-997f003ba01b"
+                        }
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Set_Manager_of_Cardholder": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "36c2a61a-40a1-43fb-b8c9-5ee3c01671b9"
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "Add_Cardholder_to_list_of_missing_Cardholders": {
+                    "type": "AppendToArrayVariable",
+                    "inputs": {
+                      "name": "varMissingCardNos",
+                      "value": "@outputs('Update_item')?['body/Card_x0020_No_x002e_']"
+                    },
+                    "metadata": {
+                      "operationMetadataId": "8959e095-7072-4af4-add0-aa1cb35cfc6c"
+                    }
+                  },
+                  "Set_Manager_to_David": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "https://mailctp365.sharepoint.com/reporting",
+                        "table": "CCTransactions",
+                        "id": "@outputs('Create_item')?['body/ID']",
+                        "item/Approval": "@outputs('Get_David_Friedrichs')?['body/displayName']"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "connection": "shared_sharepointonline",
+                        "operationId": "PatchItem"
+                      }
+                    },
+                    "runAfter": {
+                      "Add_Cardholder_to_list_of_missing_Cardholders": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "d233a9b6-b042-400f-8843-1f5ed15337e5"
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "Update_item": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "abf6f9f9-da01-4cc3-8d26-d72a8c3514b5"
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Add_Cardholder_and_Manager_info_to_Transactions_List": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "parameters": {
+                    "dataset": "https://mailctp365.sharepoint.com/reporting",
+                    "table": "CCTransactions",
+                    "id": "@outputs('Create_item')?['body/ID']",
+                    "item/Cardholder/Claims": "@outputs('Get_Doug_Meyer')?['body/displayName']",
+                    "item/Manager/Claims": "@outputs('Get_David_Friedrichs')?['body/displayName']"
+                  },
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connection": "shared_sharepointonline",
+                    "operationId": "PatchItem"
+                  }
+                },
+                "metadata": {
+                  "operationMetadataId": "d6b7f02d-58b9-4b71-a2be-816a447d565d"
+                }
+              },
+              "Update_Manager_in_Cardholder_List": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "parameters": {
+                    "dataset": "https://mailctp365.sharepoint.com/reporting",
+                    "table": "CCCardholders",
+                    "id": "@items('Get_Manager_and_User_Profile_for_Cardholder')?['ID']",
+                    "item/Title": "@items('Get_Manager_and_User_Profile_for_Cardholder')?['Title']",
+                    "item/Cardholder/Claims": "@outputs('Add_Cardholder_and_Manager_info_to_Transactions_List')?['body/Cardholder/Claims']",
+                    "item/Manager/Claims": "@outputs('Add_Cardholder_and_Manager_info_to_Transactions_List')?['body/Manager/Claims']"
+                  },
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connection": "shared_sharepointonline",
+                    "operationId": "PatchItem"
+                  }
+                },
+                "runAfter": {
+                  "Add_Cardholder_and_Manager_info_to_Transactions_List": [
+                    "Succeeded"
+                  ]
+                },
+                "metadata": {
+                  "operationMetadataId": "a7a54faf-276a-44b2-9b51-aacfdf195e3b"
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Get_user_profile_(V2)": [
+              "Succeeded",
+              "Failed"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "99666f9f-2a56-4cbb-9d6b-be7d89eef497"
+          }
+        }
+      },
+      "runAfter": {
+        "If_There_is_No_Matching_Cardholders": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "bd0baa96-4033-40d3-b684-6520e68dc1a6"
+      }
+    },
+    "Increment_variable": {
+      "type": "IncrementVariable",
+      "inputs": {
+        "name": "varCounter",
+        "value": 1
+      },
+      "metadata": {
+        "operationMetadataId": "9cbde9ab-b8b3-4e7e-9dbb-a05bd215e0d0"
+      }
+    },
+    "Create_item": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://mailctp365.sharepoint.com/reporting",
+          "table": "CCTransactions",
+          "item/Title": "@variables('varCounter')",
+          "item/Transaction_x0020_Date": "@items('Populate_Transaction_Data_in_Sharepoint')['Transaction Date']",
+          "item/Posted_x0020_Date": "@items('Populate_Transaction_Data_in_Sharepoint')['Posted Date']",
+          "item/Description": "@items('Populate_Transaction_Data_in_Sharepoint')['Description']",
+          "item/Debit": "@items('Populate_Transaction_Data_in_Sharepoint')['Debit']",
+          "item/Credit": "-@{items('Populate_Transaction_Data_in_Sharepoint')['Credit']}",
+          "item/Billing_x0020_Month": "@outputs('Extract_Month_of_Statement_from_file_name')",
+          "item/Card_x0020_No_x002e_": "@items('Populate_Transaction_Data_in_Sharepoint')['Card No.']",
+          "item/TransactionYear": "@variables('VarFileYear')",
+          "item/Category": "@items('Populate_Transaction_Data_in_Sharepoint')['Category']"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connection": "shared_sharepointonline",
+          "operationId": "PostItem"
+        }
+      },
+      "runAfter": {
+        "Increment_variable": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "f7940e1d-c4b1-4865-b021-3d49a4c693d7"
+      }
+    },
+    "If_There_is_No_Matching_Cardholders": {
+      "type": "If",
+      "expression": {
+        "equals": [
+          "@outputs('Check_Card_Number_of_Transaction_Against_List_of_Cardholders')?['body/value']",
+          "@variables('varBlankArray')"
+        ]
+      },
+      "actions": {
+        "Append_to_array_variable": {
+          "type": "AppendToArrayVariable",
+          "inputs": {
+            "name": "varMissingCardNos",
+            "value": "@outputs('Create_item')?['body/Card_x0020_No_x002e_']"
+          },
+          "metadata": {
+            "operationMetadataId": "e5d3486a-7c56-4381-855d-eb8378b86345"
+          }
+        },
+        "Set_Cardholderless_recrord's_manager_to_David_Friedrichs": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "https://mailctp365.sharepoint.com/reporting",
+              "table": "CCTransactions",
+              "id": "@outputs('Create_item')?['body/ID']",
+              "item/Manager/Claims": "@outputs('Get_David_Friedrichs')?['body/displayName']"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connection": "shared_sharepointonline",
+              "operationId": "PatchItem"
+            }
+          },
+          "runAfter": {
+            "Append_to_array_variable": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "382ad49d-f4e8-4399-b4c3-d7cd6944f699"
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Check_Card_Number_of_Transaction_Against_List_of_Cardholders": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "94b9a9f4-c789-471f-b300-e6657b7a86a7"
+      }
+    }
+  },
+  "runAfter": {
+    "Move_Existing_Transactions_to_Archive": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "83de9426-eeb1-4798-bec0-d39a119e674b"
+  }
+}
+
+
+{
+  "type": "If",
+  "expression": {
+    "not": {
+      "equals": [
+        "@variables('varMissingCardNos')",
+        "@variables('varBlankArray')"
+      ]
+    }
+  },
+  "actions": {
+    "Dedupe_varMissingCardNumbers": {
+      "type": "Compose",
+      "inputs": "@union(variables('varMissingCardNos'), variables('varMissingCardNos'))",
+      "metadata": {
+        "operationMetadataId": "425e6ee9-a5b5-4611-8e5e-f03bc3b1e5a7"
+      }
+    },
+    "Set_varMissingCardNumbers_to_Deduped_List": {
+      "type": "SetVariable",
+      "inputs": {
+        "name": "varMissingCardNos",
+        "value": "@outputs('Dedupe_varMissingCardNumbers')"
+      },
+      "runAfter": {
+        "Dedupe_varMissingCardNumbers": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "d733fd25-cc44-4265-a0c7-95426390fcdd"
+      }
+    },
+    "Join_Values_from_varMissingCardNumbers_to_a_List": {
+      "type": "Join",
+      "inputs": {
+        "from": "@variables('varMissingCardNos')",
+        "joinWith": "', '"
+      },
+      "runAfter": {
+        "Set_varMissingCardNumbers_to_Deduped_List": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "d727f145-1ee6-4575-a4b8-13b21cd3f505"
+      }
+    },
+    "Send_an_email_regarding_the_missing_card_numbers": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "emailMessage/To": "dfriedrichs@mailctp.com;JCasey@mailctp.com",
+          "emailMessage/Subject": "Card Numbers without linked Employees",
+          "emailMessage/Body": "<p>Hello,<br>\n<br>\nThe following card numbers from the most recent credit card invoice do not have employees linked to them in Sharepoint.<br>\n<br>\n@{body('Join_Values_from_varMissingCardNumbers_to_a_List')}<br>\n<br>\nThank You</p>"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+          "connection": "shared_office365",
+          "operationId": "SendEmailV2"
+        }
+      },
+      "runAfter": {
+        "Join_Values_from_varMissingCardNumbers_to_a_List": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "936ab3d1-c6c2-4605-babc-1cfd9469d498"
+      }
+    }
+  },
+  "else": {
+    "actions": {}
+  },
+  "runAfter": {
+    "Populate_Transaction_Data_in_Sharepoint": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "fa05a824-653e-46a4-82f8-10b4cd6ae2c1"
+  }
+}
+
+
+{
+  "type": "If",
+  "expression": {
+    "not": {
+      "equals": [
+        "@variables('varMissingManagers')",
+        "@variables('varBlankArray')"
+      ]
+    }
+  },
+  "actions": {
+    "Join_Array_of_Cardholders_with_Missing_Managers_into_a_String": {
+      "type": "Join",
+      "inputs": {
+        "from": "@variables('varMissingManagers')",
+        "joinWith": "', '"
+      },
+      "runAfter": {
+        "Set_Missing_Manager_List_to_Deduped_List": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "3b46cf7a-cb78-4214-b5e8-1c00f63f3799"
+      }
+    },
+    "Send_an_email_(V2)": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "emailMessage/To": "Accounting@mailctp.com",
+          "emailMessage/Subject": "Cardholders Missing Managers",
+          "emailMessage/Body": "<p>Hello,<br>\n<br>\nDuring the import of this month's credit card transactions, &nbsp;The system was unable to get manager information for following cardholders:<br>\n<br>\n@{body('Join_Array_of_Cardholders_with_Missing_Managers_into_a_String')}<br>\n<br>\n<br>\nThanks,</p>"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+          "connection": "shared_office365",
+          "operationId": "SendEmailV2"
+        }
+      },
+      "runAfter": {
+        "Join_Array_of_Cardholders_with_Missing_Managers_into_a_String": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "e5faacbe-1e34-43c1-bfe0-984acb599fb6"
+      }
+    },
+    "Dedupe_Array_of_Missing_Managers": {
+      "type": "Compose",
+      "inputs": "@union(variables('varMissingManagers'), variables('varMissingManagers'))",
+      "metadata": {
+        "operationMetadataId": "3d39ab49-a1b3-4cd3-8bcf-852268e2a78a"
+      }
+    },
+    "Set_Missing_Manager_List_to_Deduped_List": {
+      "type": "SetVariable",
+      "inputs": {
+        "name": "varMissingManagers",
+        "value": "@outputs('Dedupe_Array_of_Missing_Managers')"
+      },
+      "runAfter": {
+        "Dedupe_Array_of_Missing_Managers": [
+          "Succeeded"
+        ]
+      },
+      "metadata": {
+        "operationMetadataId": "85adfe19-7744-4787-9afe-df512b7d56ca"
+      }
+    }
+  },
+  "else": {
+    "actions": {}
+  },
+  "runAfter": {
+    "Check_if_There_are_Any_Card_Numbers_that_Don't_Have_Cardholders": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "eeed97a4-c039-4da4-a88a-69b8e5690ffa"
+  }
+}
+
+
+
+
+
+
+
+{
+    "inputs": {
+        "host": {
+            "connectionName": "shared_sharepointonline",
+            "operationId": "PatchItem",
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+            "dataset": "https://mailctp365.sharepoint.com/reporting",
+            "table": "3edfdf78-ee55-4ec8-a31b-de335df80ac3",
+            "id": 1,
+            "item/Sent": false
+        },
+        "authentication": "@parameters('$authentication')"
+    },
+    "metadata": {
+        "operationMetadataId": "75b801eb-0198-460f-b7aa-f85bada820f6"
+    }
+}
+
+
+{
+    "inputs": {
+        "host": {
+            "connectionName": "shared_sharepointonline",
+            "operationId": "MoveFileAsync",
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+        },
+        "parameters": {
+            "dataset": "https://mailctp365.sharepoint.com/reporting",
+            "parameters/sourceFileId": "@triggerOutputs()?['headers/x-ms-file-id']",
+            "parameters/destinationDataset": "https://mailctp365.sharepoint.com/reporting",
+            "parameters/destinationFolderPath": "/CCBills/Bills",
+            "parameters/nameConflictBehavior": 1
+        },
+        "authentication": "@parameters('$authentication')"
+    },
+    "metadata": {
+        "operationMetadataId": "d02ea791-3cef-4192-92f8-16692d3d8e43"
     }
 }
