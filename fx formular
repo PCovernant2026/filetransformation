@@ -1,5 +1,19 @@
-Flow save failed with code 'InvalidTemplate' and message 'The template validation failed: 'The action(s) 'Filter_Credit_Transactions' referenced by 'inputs' in action 'Condition' are not defined in the template.'.'.
+Credit Transactions - @{variables('FileMonth')} @{variables('VarFileYear')}
 
+<p>Hello Accounting Team,</p>
+
+<p>
+The following credit transactions were identified during the monthly credit card transaction import.
+These transactions were excluded from the normal debit transaction processing and are being provided for review.
+</p>
+
+@{body('Create_HTML_table')}
+
+<p>
+Please review the transactions above and take any necessary action.
+</p>
+
+<p>Thank you.</p>
 
 
 
