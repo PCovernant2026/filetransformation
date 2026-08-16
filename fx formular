@@ -1,13 +1,10 @@
-| Column           | Value                         |
-| ---------------- | ----------------------------- |
-| Transaction Date | `item()?['Transaction Date']` |
-| Posted Date      | `item()?['Posted Date']`      |
-| Card Number      | `item()?['Card No.']`         |
-| Description      | `item()?['Description']`      |
-| Category         | `item()?['Category']`         |
-| Credit           | `item()?['Credit']`           |
-
-
+@and(
+    not(empty(item()?['Credit'])),
+    not(equals(trim(string(item()?['Credit'])), '')),
+    not(equals(trim(string(item()?['Credit'])), '0')),
+    not(equals(trim(string(item()?['Credit'])), '0.00')),
+    not(equals(trim(string(item()?['Credit'])), '$0.00'))
+)
 
 
 
