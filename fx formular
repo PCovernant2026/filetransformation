@@ -1,3 +1,41 @@
+
+
+@and(
+    not(equals(
+        toLower(trim(string(coalesce(item()?['Category'], '')))),
+        'payment/credit'
+    )),
+    or(
+        empty(item()?['Credit']),
+        equals(trim(string(item()?['Credit'])), ''),
+        equals(trim(string(item()?['Credit'])), '0'),
+        equals(trim(string(item()?['Credit'])), '0.00'),
+        equals(trim(string(item()?['Credit'])), '$0.00')
+    ),
+    not(
+        contains(
+            toUpper(string(coalesce(item()?['Description'], ''))),
+            'CAPITAL ONE ONLINE PYMT'
+        )
+    )
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 connectionName: shared_encodiandocumentmanager_1
 operationId: ParseCsv
 apiId: /providers/Microsoft.PowerApps/apis/shared_encodiandocumentmanager
