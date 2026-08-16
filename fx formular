@@ -1,19 +1,18 @@
-Credit Transactions - @{variables('FileMonth')} @{variables('VarFileYear')}
-
-<p>Hello Accounting Team,</p>
-
-<p>
-The following credit transactions were identified during the monthly credit card transaction import.
-These transactions were excluded from the normal debit transaction processing and are being provided for review.
-</p>
-
-@{body('Create_HTML_table')}
-
-<p>
-Please review the transactions above and take any necessary action.
-</p>
-
-<p>Thank you.</p>
+@and(
+    or(
+        empty(item()?['Credit']),
+        equals(trim(string(item()?['Credit'])), ''),
+        equals(trim(string(item()?['Credit'])), '0'),
+        equals(trim(string(item()?['Credit'])), '0.00'),
+        equals(trim(string(item()?['Credit'])), '$0.00')
+    ),
+    not(
+        contains(
+            toUpper(string(coalesce(item()?['Description'], ''))),
+            'CAPITAL ONE ONLINE PYMT'
+        )
+    )
+)
 
 
 
