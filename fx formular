@@ -1,11 +1,4 @@
-@and(
-    not(empty(item()?['Credit'])),
-    not(equals(trim(string(item()?['Credit'])), '')),
-    not(equals(trim(string(item()?['Credit'])), '0')),
-    not(equals(trim(string(item()?['Credit'])), '0.00')),
-    not(equals(trim(string(item()?['Credit'])), '$0.00'))
-)
-
+length(body('Filter_Credit_Transactions'))
 
 
 
