@@ -1,414 +1,545 @@
-@and(
-    or(
-        empty(item()?['Credit']),
-        equals(trim(string(item()?['Credit'])), ''),
-        equals(trim(string(item()?['Credit'])), '0'),
-        equals(trim(string(item()?['Credit'])), '0.00'),
-        equals(trim(string(item()?['Credit'])), '$0.00')
-    ),
-    not(
-        contains(
-            toUpper(string(coalesce(item()?['Description'], ''))),
-            'CAPITAL ONE ONLINE PYMT'
-        )
-    )
-)
-
-
-
-
-
-
-@and(
-    not(equals(
-        toLower(trim(string(coalesce(item()?['Category'], '')))),
-        'payment/credit'
-    )),
-    or(
-        empty(item()?['Credit']),
-        equals(trim(string(item()?['Credit'])), ''),
-        equals(trim(string(item()?['Credit'])), '0'),
-        equals(trim(string(item()?['Credit'])), '0.00'),
-        equals(trim(string(item()?['Credit'])), '$0.00')
-    ),
-    not(
-        contains(
-            toUpper(string(coalesce(item()?['Description'], ''))),
-            'CAPITAL ONE ONLINE PYMT'
-        )
-    )
-)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-connectionName: shared_encodiandocumentmanager_1
-operationId: ParseCsv
-apiId: /providers/Microsoft.PowerApps/apis/shared_encodiandocumentmanager
-
-
-
-
-
-
 {
-    "inputs": {
-        "host": {
-            "connectionName": "shared_sharepointonline",
-            "operationId": "OnNewFile",
-            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
-        },
-        "parameters": {
-            "dataset": "https://mailctp365.sharepoint.com/reporting",
-            "folderId": "%252fCCBills%252fTransactionsToUpload",
-            "inferContentType": true
-        },
-        "authentication": "@parameters('$authentication')"
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://mailctp365.sharepoint.com/reporting",
+      "folderId": "%252fCCBills%252fTransactionsToUpload",
+      "inferContentType": true
     },
-    "recurrence": {
-        "interval": 1,
-        "frequency": "Minute"
-    },
-    "metadata": {
-        "%252fCCBills%252fTransactionsToUpload": "/CCBills/TransactionsToUpload",
-        "operationMetadataId": "e197a878-8a21-49e4-90de-3bc3ba43f275"
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "OnNewFile"
     }
+  },
+  "recurrence": {
+    "frequency": "Minute",
+    "interval": 1
+  },
+  "metadata": {
+    "%252fCCBills%252fTransactionsToUpload": "/CCBills/TransactionsToUpload",
+    "operationMetadataId": "e197a878-8a21-49e4-90de-3bc3ba43f275"
+  }
 }
 
 {
-    "inputs": {
-        "host": {
-            "connectionName": "shared_encodiandocumentmanager_1",
-            "operationId": "ParseCsv",
-            "apiId": "/providers/Microsoft.PowerApps/apis/shared_encodiandocumentmanager"
-        },
-        "parameters": {
-            "operation/FileContent": "@triggerOutputs()?['body']",
-            "operation/csvColumnHeaders": "Transaction Date, Posted Date, Card No., Description, Category, Debit, Credit",
-            "operation/skipFirstLine": true
-        },
-        "authentication": "@parameters('$authentication')"
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "operation/FileContent": "@triggerOutputs()?['body']",
+      "operation/csvColumnHeaders": "Transaction Date, Posted Date, Card No., Description, Category, Debit, Credit",
+      "operation/skipFirstLine": true
     },
-    "metadata": {
-        "operationMetadataId": "dfea6605-1b5d-4fde-8133-3d2ffba26a55"
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_encodiandocumentmanager",
+      "connection": "shared_encodiandocumentmanager_1",
+      "operationId": "ParseCsv"
     }
+  },
+  "runAfter": {},
+  "metadata": {
+    "operationMetadataId": "dfea6605-1b5d-4fde-8133-3d2ffba26a55"
+  }
+}
+
+
+{
+  "type": "ParseJson",
+  "inputs": {
+    "content": "@outputs('Parse_CSV')?['body/csvData']",
+    "schema": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Transaction Date": {
+            "type": "string"
+          },
+          "Posted Date": {
+            "type": "string"
+          },
+          "Card No.": {
+            "type": "string"
+          },
+          "Description": {
+            "type": "string"
+          },
+          "Category": {
+            "type": "string"
+          },
+          "Debit": {
+            "type": "string"
+          },
+          "Credit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "Transaction Date",
+          "Posted Date",
+          "Card No.",
+          "Description",
+          "Category",
+          "Debit",
+          "Credit"
+        ]
+      }
+    }
+  },
+  "runAfter": {
+    "Parse_CSV": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "634eae11-209a-4921-97ee-7660a3e895b4"
+  }
 }
 
 {
-    "inputs": {
-        "content": "@outputs('Parse_CSV')?['body/csvData']",
-        "schema": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "Transaction Date": {
-                        "type": "string"
-                    },
-                    "Posted Date": {
-                        "type": "string"
-                    },
-                    "Card No.": {
-                        "type": "string"
-                    },
-                    "Description": {
-                        "type": "string"
-                    },
-                    "Category": {
-                        "type": "string"
-                    },
-                    "Debit": {
-                        "type": "string"
-                    },
-                    "Credit": {
-                        "type": "string"
-                    }
-                },
-                "required": [
-                    "Transaction Date",
-                    "Posted Date",
-                    "Card No.",
-                    "Description",
-                    "Category",
-                    "Debit",
-                    "Credit"
-                ]
-            }
+  "type": "Query",
+  "inputs": {
+    "from": "@body('Parse_JSON')",
+    "where": "@not(equals(item()?['Category'], 'Payment/Credit'))"
+  },
+  "runAfter": {
+    "Parse_JSON": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "61ef230b-8ff5-42a6-bd81-1e02e5752751"
+  }
+}
+
+{
+  "type": "Query",
+  "inputs": {
+    "from": "@body('Parse_JSON')",
+    "where": "@and(\n    not(empty(item()['Credit'])),\n    not(equals(trim(string(item()['Credit'])), '')),\n    not(equals(trim(string(item()['Credit'])), '0')),\n    not(equals(trim(string(item()['Credit'])), '0.00')),\n    not(equals(trim(string(item()['Credit'])), '$0.00'))\n)"
+  },
+  "runAfter": {
+    "Filter_array": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "1930f3d0-34d4-4905-acf9-e9d334b7edb9"
+  }
+}
+
+{
+  "type": "If",
+  "expression": {
+    "and": [
+      {
+        "greater": [
+          "@length(body('Filter_Credit_Transactions'))",
+          0
+        ]
+      }
+    ]
+  },
+  "actions": {
+    "Create_HTML_table": {
+      "type": "Table",
+      "inputs": {
+        "from": "@body('Filter_Credit_Transactions')",
+        "format": "HTML",
+        "columns": [
+          {
+            "header": "Transaction Date",
+            "value": "@item()?['Transaction Date']"
+          },
+          {
+            "header": "Posted Date",
+            "value": "@item()?['Posted Date'] "
+          },
+          {
+            "header": "Card Number ",
+            "value": "@item()?['Card No.']"
+          },
+          {
+            "header": "Description",
+            "value": "@item()?['Description']"
+          },
+          {
+            "header": "Category ",
+            "value": "@item()?['Category']"
+          },
+          {
+            "header": "Credit",
+            "value": "@item()?['Credit']"
+          }
+        ]
+      }
+    },
+    "Send_an_email_(V2)_1": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "emailMessage/To": "Accounting@mailctp.com",
+          "emailMessage/Subject": "Credit Transactions - @{variables('FileMonth')} @{variables('VarFileYear')}",
+          "emailMessage/Body": "<p class=\"editor-paragraph\">Hello Accounting Team,<br><br>The following credit transactions were identified during the monthly credit card transaction import.<br>These transactions were excluded from the normal debit transaction processing and are being provided for review.<br><br>@{body('Create_HTML_table')}<br><br>Please review the transactions above and take any necessary action.</p><p class=\"editor-paragraph\">Thank you.</p>",
+          "emailMessage/Importance": "Normal"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+          "connection": "shared_office365",
+          "operationId": "SendEmailV2"
         }
-    },
-    "metadata": {
-        "operationMetadataId": "634eae11-209a-4921-97ee-7660a3e895b4"
-    }
-}
-
-{
-    "inputs": {
-        "from": "@body('Parse_JSON')",
-        "where": "@not(equals(item()?['Category'], 'Payment/Credit'))"
-    },
-    "metadata": {
-        "operationMetadataId": "61ef230b-8ff5-42a6-bd81-1e02e5752751"
-    }
-}
-
-{
-    "inputs": {
-        "from": "@body('Filter_array')",
-        "where": "@not(contains(toUpper(item()?['Description']), 'CAPITAL ONE ONLINE PYMT'))"
-    },
-    "metadata": {
-        "operationMetadataId": "1930f3d0-34d4-4905-acf9-e9d334b7edb9"
-    }
-}
-
-{
-    "inputs": {
-        "variables": [
-            {
-                "name": "varMissingCardNos",
-                "type": "array"
-            }
+      },
+      "runAfter": {
+        "Create_HTML_table": [
+          "Succeeded"
         ]
-    },
-    "metadata": {
-        "operationMetadataId": "ebfa6fbc-7896-48e9-a3b4-61cc92a174f9"
+      }
     }
+  },
+  "else": {
+    "actions": {}
+  },
+  "runAfter": {
+    "Filter_Credit_Transactions": [
+      "Succeeded"
+    ]
+  }
 }
 
 {
-    "inputs": {
-        "variables": [
-            {
-                "name": "varCounter",
-                "type": "integer",
-                "value": 0
-            }
-        ]
-    },
-    "metadata": {
-        "operationMetadataId": "5b607add-93f8-4557-a2e7-f2b45e2a0dff"
-    }
+  "type": "Query",
+  "inputs": {
+    "from": "@body('Filter_array')",
+    "where": "@and(\r\n    or(\r\n        empty(item()['Credit']),\r\n        equals(trim(string(item()['Credit'])), ''),\r\n        equals(trim(string(item()['Credit'])), '0'),\r\n        equals(trim(string(item()['Credit'])), '0.00'),\r\n        equals(trim(string(item()['Credit'])), '$0.00')\r\n    ),\r\n    not(\r\n        contains(\r\n            toUpper(string(coalesce(item()['Description'], ''))),\r\n            'CAPITAL ONE ONLINE PYMT'\r\n        )\r\n    )\r\n)"
+  },
+  "runAfter": {
+    "Condition": [
+      "Succeeded"
+    ]
+  }
 }
 
 {
-    "inputs": {
-        "variables": [
-            {
-                "name": "varBlankArray",
-                "type": "array"
-            }
-        ]
-    },
-    "metadata": {
-        "operationMetadataId": "f8bec044-c528-4872-9a47-097d2c663a1b"
-    }
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
+        "name": "varMissingCardNos",
+        "type": "array"
+      }
+    ]
+  },
+  "runAfter": {
+    "Filter_normal_transactions": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "ebfa6fbc-7896-48e9-a3b4-61cc92a174f9"
+  }
 }
 
 {
-    "inputs": {
-        "variables": [
-            {
-                "name": "varCardNumber",
-                "type": "string"
-            }
-        ]
-    },
-    "metadata": {
-        "operationMetadataId": "cb12f034-b549-4a72-9b17-61c90657d545"
-    }
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
+        "name": "varCounter",
+        "type": "integer",
+        "value": 0
+      }
+    ]
+  },
+  "runAfter": {
+    "Initialize_Missing_Card_Numbers_Array": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "5b607add-93f8-4557-a2e7-f2b45e2a0dff"
+  }
 }
 
 {
-    "inputs": {
-        "variables": [
-            {
-                "name": "VarFileNameMonth",
-                "type": "string",
-                "value": "@base64ToString(triggerOutputs()?['headers/x-ms-file-name-encoded'])"
-            }
-        ]
-    },
-    "metadata": {
-        "operationMetadataId": "d334ea7b-ecc0-4218-8115-82be2288aa6a"
-    }
-}
-
-
-{
-    "inputs": {
-        "variables": [
-            {
-                "name": "varMissingManagers",
-                "type": "array"
-            }
-        ]
-    },
-    "metadata": {
-        "operationMetadataId": "150cc9f2-35b0-4358-99e8-e5c6230d301a"
-    }
-}
-
-
-{
-    "inputs": "@first(split(variables('VarFileNameMonth'),' '))",
-    "metadata": {
-        "operationMetadataId": "fd55bd23-194e-4115-8ae9-438b7e0b3fc7"
-    }
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
+        "name": "varBlankArray",
+        "type": "array"
+      }
+    ]
+  },
+  "runAfter": {
+    "Initialize_Counter": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "f8bec044-c528-4872-9a47-097d2c663a1b"
+  }
 }
 
 {
-    "inputs": {
-        "variables": [
-            {
-                "name": "FileMonth",
-                "type": "string",
-                "value": "@{outputs('Extract_Month_of_Statement_from_file_name')}"
-            }
-        ]
-    },
-    "metadata": {
-        "operationMetadataId": "3ed4d920-a886-45b6-861a-bae5858328b4"
-    }
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
+        "name": "varCardNumber",
+        "type": "string"
+      }
+    ]
+  },
+  "runAfter": {
+    "Initialize_blank_array_for_checks": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "cb12f034-b549-4a72-9b17-61c90657d545"
+  }
 }
 
-
-
 {
-    "inputs": "@length(variables('FileMonth'))",
-    "metadata": {
-        "operationMetadataId": "7826318a-e393-46de-834e-f87c72a5689d"
-    }
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
+        "name": "VarFileNameMonth",
+        "type": "string",
+        "value": "@base64ToString(triggerOutputs()?['headers/x-ms-file-name-encoded'])"
+      }
+    ]
+  },
+  "runAfter": {
+    "Initialize_variable_for_Card_Number": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "d334ea7b-ecc0-4218-8115-82be2288aa6a"
+  }
 }
 
-
 {
-    "inputs": {
-        "variables": [
-            {
-                "name": "MonthLength",
-                "type": "integer",
-                "value": "@outputs('get_length_of_the_month')"
-            }
-        ]
-    },
-    "metadata": {
-        "operationMetadataId": "d0c1edcb-ad10-46e4-a1af-8a943bed31df"
-    }
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
+        "name": "varMissingManagers",
+        "type": "array"
+      }
+    ]
+  },
+  "runAfter": {
+    "Initialize_variable_for_Month_of_Statement": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "150cc9f2-35b0-4358-99e8-e5c6230d301a"
+  }
 }
 
+{
+  "type": "Compose",
+  "inputs": "@first(split(variables('VarFileNameMonth'),' '))",
+  "runAfter": {
+    "Initialize_variable_for_employees_missing_managers": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "fd55bd23-194e-4115-8ae9-438b7e0b3fc7"
+  }
+}
 
 {
-    "inputs": {
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
+        "name": "FileMonth",
+        "type": "string",
+        "value": "@{outputs('Extract_Month_of_Statement_from_file_name')}"
+      }
+    ]
+  },
+  "runAfter": {
+    "Extract_Month_of_Statement_from_file_name": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "3ed4d920-a886-45b6-861a-bae5858328b4"
+  }
+}
+
+{
+  "type": "Compose",
+  "inputs": "@length(variables('FileMonth'))",
+  "runAfter": {
+    "Store_File_Month": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "7826318a-e393-46de-834e-f87c72a5689d"
+  }
+}
+
+{
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
         "name": "MonthLength",
-        "value": 1
-    },
-    "metadata": {
-        "operationMetadataId": "aba83dd9-3e32-4e0d-854b-fa3e0e3e174e"
-    }
+        "type": "integer",
+        "value": "@outputs('get_length_of_the_month')"
+      }
+    ]
+  },
+  "runAfter": {
+    "get_length_of_the_month": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "d0c1edcb-ad10-46e4-a1af-8a943bed31df"
+  }
 }
 
-
 {
-    "inputs": {
-        "variables": [
-            {
-                "name": "VarFileYear",
-                "type": "string"
-            }
-        ]
-    },
-    "metadata": {
-        "operationMetadataId": "e462176c-c8f0-4169-9de9-44529616dd9e"
-    }
+  "type": "IncrementVariable",
+  "inputs": {
+    "name": "MonthLength",
+    "value": 1
+  },
+  "runAfter": {
+    "store_the_length_of_the_month": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "aba83dd9-3e32-4e0d-854b-fa3e0e3e174e"
+  }
 }
 
-
 {
-    "inputs": "@substring(variables('VarFileNameMonth'), variables('MonthLength'), 4)",
-    "metadata": {
-        "operationMetadataId": "ddf85670-c9ba-4ffe-a969-49a0d7250955"
-    }
-}
-
-
-{
-    "inputs": {
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      {
         "name": "VarFileYear",
-        "value": "@{outputs('Extract_File_Year')}"
-    },
-    "metadata": {
-        "operationMetadataId": "376c9076-b900-493a-a422-42d035f4d32b"
-    }
+        "type": "string"
+      }
+    ]
+  },
+  "runAfter": {
+    "Add_1_to_length_of_month_to_account_for_space": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "e462176c-c8f0-4169-9de9-44529616dd9e"
+  }
 }
 
-
 {
-    "inputs": {
-        "host": {
-            "connectionName": "shared_office365users",
-            "operationId": "UserProfile_V2",
-            "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365users"
-        },
-        "parameters": {
-            "id": "dmeyer@mailctp.com"
-        },
-        "authentication": "@parameters('$authentication')"
-    },
-    "metadata": {
-        "operationMetadataId": "7632b630-9f24-43f1-a652-312733fcc7e9"
-    }
+  "type": "Compose",
+  "inputs": "@substring(variables('VarFileNameMonth'), variables('MonthLength'), 4)",
+  "runAfter": {
+    "Initialize_variable": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "ddf85670-c9ba-4ffe-a969-49a0d7250955"
+  }
 }
 
-
 {
-    "inputs": {
-        "host": {
-            "connectionName": "shared_office365users",
-            "operationId": "UserProfile_V2",
-            "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365users"
-        },
-        "parameters": {
-            "id": "dfriedrichs@mailctp.com"
-        },
-        "authentication": "@parameters('$authentication')"
-    },
-    "metadata": {
-        "operationMetadataId": "1ba1f506-3b41-45e0-a9a0-c9537f955861"
-    }
+  "type": "SetVariable",
+  "inputs": {
+    "name": "VarFileYear",
+    "value": "@{outputs('Extract_File_Year')}"
+  },
+  "runAfter": {
+    "Extract_File_Year": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "376c9076-b900-493a-a422-42d035f4d32b"
+  }
 }
 
-
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "id": "dmeyer@mailctp.com"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365users",
+      "connection": "shared_office365users",
+      "operationId": "UserProfile_V2"
+    }
+  },
+  "runAfter": {
+    "Set_variable": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "7632b630-9f24-43f1-a652-312733fcc7e9"
+  }
+}
 
 {
-    "inputs": {
-        "host": {
-            "connectionName": "shared_sharepointonline",
-            "operationId": "GetItems",
-            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
-        },
-        "parameters": {
-            "dataset": "https://mailctp365.sharepoint.com/reporting",
-            "table": "f1561c94-a2e5-4251-938e-622c879b6956",
-            "$top": 500
-        },
-        "authentication": "@parameters('$authentication')"
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "id": "dfriedrichs@mailctp.com"
     },
-    "metadata": {
-        "operationMetadataId": "54e91520-2f66-4875-ac6e-8c878bfd05d0"
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365users",
+      "connection": "shared_office365users",
+      "operationId": "UserProfile_V2"
     }
+  },
+  "runAfter": {
+    "Get_Doug_Meyer": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "1ba1f506-3b41-45e0-a9a0-c9537f955861"
+  }
+}
+
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://mailctp365.sharepoint.com/reporting",
+      "table": "f1561c94-a2e5-4251-938e-622c879b6956",
+      "$top": 500
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "GetItems"
+    }
+  },
+  "runAfter": {
+    "Get_David_Friedrichs": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "54e91520-2f66-4875-ac6e-8c878bfd05d0"
+  }
 }
 
 {
@@ -565,11 +696,9 @@ apiId: /providers/Microsoft.PowerApps/apis/shared_encodiandocumentmanager
   }
 }
 
-
-
 {
   "type": "Foreach",
-  "foreach": "@body('Filter_array_2')",
+  "foreach": "@body('Filter_normal_transactions')",
   "actions": {
     "Set_varCardNumber": {
       "type": "SetVariable",
@@ -1019,7 +1148,6 @@ apiId: /providers/Microsoft.PowerApps/apis/shared_encodiandocumentmanager
   }
 }
 
-
 {
   "type": "If",
   "expression": {
@@ -1191,50 +1319,53 @@ apiId: /providers/Microsoft.PowerApps/apis/shared_encodiandocumentmanager
   }
 }
 
-
-
-
-
-
-
 {
-    "inputs": {
-        "host": {
-            "connectionName": "shared_sharepointonline",
-            "operationId": "PatchItem",
-            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
-        },
-        "parameters": {
-            "dataset": "https://mailctp365.sharepoint.com/reporting",
-            "table": "3edfdf78-ee55-4ec8-a31b-de335df80ac3",
-            "id": 1,
-            "item/Sent": false
-        },
-        "authentication": "@parameters('$authentication')"
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://mailctp365.sharepoint.com/reporting",
+      "table": "3edfdf78-ee55-4ec8-a31b-de335df80ac3",
+      "id": 1,
+      "item/Sent": false
     },
-    "metadata": {
-        "operationMetadataId": "75b801eb-0198-460f-b7aa-f85bada820f6"
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "PatchItem"
     }
+  },
+  "runAfter": {
+    "Check_if_There_are_Any_Employees_that_Don't_have_Managers": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "75b801eb-0198-460f-b7aa-f85bada820f6"
+  }
 }
 
-
 {
-    "inputs": {
-        "host": {
-            "connectionName": "shared_sharepointonline",
-            "operationId": "MoveFileAsync",
-            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
-        },
-        "parameters": {
-            "dataset": "https://mailctp365.sharepoint.com/reporting",
-            "parameters/sourceFileId": "@triggerOutputs()?['headers/x-ms-file-id']",
-            "parameters/destinationDataset": "https://mailctp365.sharepoint.com/reporting",
-            "parameters/destinationFolderPath": "/CCBills/Bills",
-            "parameters/nameConflictBehavior": 1
-        },
-        "authentication": "@parameters('$authentication')"
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://mailctp365.sharepoint.com/reporting",
+      "parameters/sourceFileId": "@triggerOutputs()?['headers/x-ms-file-id']",
+      "parameters/destinationDataset": "https://mailctp365.sharepoint.com/reporting",
+      "parameters/destinationFolderPath": "/CCBills/Bills",
+      "parameters/nameConflictBehavior": 1
     },
-    "metadata": {
-        "operationMetadataId": "d02ea791-3cef-4192-92f8-16692d3d8e43"
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "MoveFileAsync"
     }
+  },
+  "runAfter": {
+    "Update_item_2": [
+      "Succeeded"
+    ]
+  },
+  "metadata": {
+    "operationMetadataId": "d02ea791-3cef-4192-92f8-16692d3d8e43"
+  }
 }
