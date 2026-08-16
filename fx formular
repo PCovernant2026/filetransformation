@@ -1,3 +1,12 @@
+connectionName: shared_encodiandocumentmanager_1
+operationId: ParseCsv
+apiId: /providers/Microsoft.PowerApps/apis/shared_encodiandocumentmanager
+
+
+
+
+
+
 {
     "inputs": {
         "host": {
